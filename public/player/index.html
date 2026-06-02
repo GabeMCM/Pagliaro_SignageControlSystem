@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signage Player</title>
+  <style>
+    body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; background: black; overflow: hidden; display: flex; justify-content: center; align-items: center; color: white; font-family: monospace; }
+    video, img, iframe { width: 100%; height: 100%; object-fit: contain; position: absolute; top: 0; left: 0; opacity: 0; transition: opacity 0.5s; border: none; pointer-events: none; }
+    .active { opacity: 1; pointer-events: auto; }
+    #status { z-index: 10; position: absolute; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; font-size: 1.5rem;}
+    
+    /* Menu de Salas */
+    .room-menu { z-index: 20; background: #111; border: 1px solid #333; padding: 40px; border-radius: 10px; text-align: center; }
+    .room-menu h1 { margin-top: 0; font-size: 24px; margin-bottom: 20px; }
+    .room-list { display: flex; flex-direction: column; gap: 10px; }
+    .room-btn { background: #10b981; color: black; border: none; padding: 15px 20px; font-size: 16px; font-weight: bold; cursor: pointer; border-radius: 5px; text-transform: uppercase; }
+    .room-btn:hover { background: #0ea5e9; }
+
+    #remote-overlay {
+      position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+      background: rgba(15, 15, 15, 0.9); border: 1px solid #333;
+      padding: 10px 20px; border-radius: 50px;
+      display: flex; gap: 30px; align-items: center;
+      opacity: 0; transition: opacity 0.3s; z-index: 10000;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    #remote-overlay.visible { opacity: 1; }
+    .control-group { display: flex; align-items: center; gap: 10px; }
+    .control-divider { width: 1px; height: 30px; background: #333; }
+    .group-icon { color: #555; display: flex; align-items: center; }
+    .group-icon svg { width: 24px; height: 24px; }
+    .remote-btn {
+      background: none; border: none; color: #a3a3a3; cursor: pointer;
+      padding: 8px; border-radius: 50%; transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .remote-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+    .remote-btn svg { width: 24px; height: 24px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .remote-btn.play-btn svg { fill: currentColor; }
+  </style>
+</head>
+<body>
+  <div id="status">Conectando...</div>
+  <div id="media-container"></div>
+  
+  <div id="remote-overlay">
+    <!-- Visual Controls -->
+    <div class="control-group">
+      <div class="group-icon" title="Visual Controls">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>
+      </div>
+      <button class="remote-btn" id="btn-v-prev" title="Anterior Visual">
+        <svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+      </button>
+      <button class="remote-btn play-btn" id="btn-v-play" title="Play / Pause Visual">
+        <svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+      </button>
+      <button class="remote-btn" id="btn-v-next" title="Próximo Visual">
+        <svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+      </button>
+    </div>
+
+    <div class="control-divider"></div>
+
+    <!-- Audio Controls -->
+    <div class="control-group">
+      <div class="group-icon" title="Audio Controls">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+      </div>
+      <button class="remote-btn" id="btn-a-prev" title="Anterior Áudio">
+        <svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+      </button>
+      <button class="remote-btn play-btn" id="btn-a-play" title="Play / Pause Áudio">
+        <svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+      </button>
+      <button class="remote-btn" id="btn-a-next" title="Próximo Áudio">
+        <svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+      </button>
+    </div>
+  </div>
+  
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "dev:server": "deno run --allow-net --allow-read --allow-write --allow-sys --watch server/main.ts",
+    "dev": "deno run -A dev.ts",
+    "build:front": "cd front && deno task build",
+    "start": "deno run --allow-net --allow-read --allow-write --allow-sys server/main.ts"
+  },
+  "imports": {
+    "hono": "jsr:@hono/hono@^4.4.0",
+    "@std/fs": "jsr:@std/fs@^0.229.0",
+    "@std/path": "jsr:@std/path@^0.225.0"
+  }
+}

@@ -1,0 +1,76 @@
+[
+  {
+    "id": "082d56d4-501f-416f-b94f-064597ba4fe9",
+    "name": "testing01",
+    "type": "visual",
+    "items": [
+      {
+        "url": "https://youtu.be/CoJxgs3yneI?list=PLAPpNTL9QCDvosgGmDoN0v8YwDFtBBo1n",
+        "type": "youtube",
+        "muted": false,
+        "volume": 100
+      },
+      {
+        "url": "/media/uploads/3squares.png",
+        "type": "image",
+        "duration": 8,
+        "muted": false,
+        "volume": 100
+      },
+      {
+        "url": "/media/uploads/4k-ai-mountain.jpg",
+        "type": "image",
+        "duration": 8,
+        "muted": false,
+        "volume": 100
+      },
+      {
+        "url": "/media/uploads/336253_medium.mp4",
+        "type": "video",
+        "muted": true,
+        "volume": 100
+      },
+      {
+        "url": "/media/uploads/36592_serial_experiments_lain.png",
+        "type": "image",
+        "duration": 8,
+        "muted": false,
+        "volume": 100
+      },
+      {
+        "url": "https://youtu.be/NO5RIXpCtI8?list=PLAPpNTL9QCDvosgGmDoN0v8YwDFtBBo1n",
+        "type": "youtube",
+        "muted": false,
+        "volume": 90
+      },
+      {
+        "url": "/media/uploads/acrylic.jpg",
+        "type": "image",
+        "duration": 8,
+        "muted": false,
+        "volume": 100
+      }
+    ],
+    "loop": true
+  },
+  {
+    "id": "2132b149-1585-48e1-af76-1c0ad493eff1",
+    "name": "testing01audio",
+    "type": "audio",
+    "items": [
+      {
+        "url": "/media/uploads/atlasaudio-tranquil-background-510655.mp3",
+        "type": "audio",
+        "muted": false,
+        "volume": 100
+      },
+      {
+        "url": "/media/uploads/atlasaudio-tranquil-background-510655.mp3",
+        "type": "audio",
+        "muted": false,
+        "volume": 13
+      }
+    ],
+    "loop": true
+  }
+]
