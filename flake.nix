@@ -1,0 +1,24 @@
+{
+  description = "Ambiente de desenvolvimento";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  };
+
+  outputs = { nixpkgs, ... }:
+    let
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+    in
+    {
+      devShells.${system}.default = pkgs.mkShell {
+        packages = [
+          pkgs.deno
+          pkgs.nodejs
+          pkgs.python3
+          pkgs.postgresql
+          pkgs.sqlite
+        ];
+      };
+    };
+}
