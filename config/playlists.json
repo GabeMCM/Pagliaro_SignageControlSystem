@@ -1,52 +1,27 @@
 [
   {
-    "id": "082d56d4-501f-416f-b94f-064597ba4fe9",
-    "name": "testing01",
-    "type": "visual",
+    "id": "2132b149-1585-48e1-af76-1c0ad493eff1",
+    "name": "Harpa",
+    "type": "audio",
     "items": [
       {
-        "url": "https://youtu.be/CoJxgs3yneI?list=PLAPpNTL9QCDvosgGmDoN0v8YwDFtBBo1n",
-        "type": "youtube",
+        "url": "https://www.dropbox.com/scl/fi/s3om6kk3nc9vlhr3lrm6u/Harpa-Crist-570-A-ltima-Hora-Levi-com-letra.mp3?rlkey=usvuu2zsh5yvkg1768o5lrs9z&st=36tn2m4a&raw=1",
+        "title": "Harpa-Crist-570-A-ltima-Hora-Levi-com-letra",
+        "type": "audio",
         "muted": false,
         "volume": 100
       },
       {
-        "url": "/media/uploads/3squares.png",
-        "type": "image",
-        "duration": 8,
+        "url": "https://www.dropbox.com/scl/fi/s3om6kk3nc9vlhr3lrm6u/Harpa-Crist-570-A-ltima-Hora-Levi-com-letra.mp3?rlkey=usvuu2zsh5yvkg1768o5lrs9z&st=36tn2m4a&raw=1",
+        "title": "Harpa-Crist-570-A-ltima-Hora-Levi-com-letra",
+        "type": "audio",
         "muted": false,
         "volume": 100
       },
       {
-        "url": "/media/uploads/4k-ai-mountain.jpg",
-        "type": "image",
-        "duration": 8,
-        "muted": false,
-        "volume": 100
-      },
-      {
-        "url": "/media/uploads/336253_medium.mp4",
-        "type": "video",
-        "muted": true,
-        "volume": 100
-      },
-      {
-        "url": "/media/uploads/36592_serial_experiments_lain.png",
-        "type": "image",
-        "duration": 8,
-        "muted": false,
-        "volume": 100
-      },
-      {
-        "url": "https://youtu.be/NO5RIXpCtI8?list=PLAPpNTL9QCDvosgGmDoN0v8YwDFtBBo1n",
-        "type": "youtube",
-        "muted": false,
-        "volume": 90
-      },
-      {
-        "url": "/media/uploads/acrylic.jpg",
-        "type": "image",
-        "duration": 8,
+        "url": "https://www.dropbox.com/scl/fi/s3om6kk3nc9vlhr3lrm6u/Harpa-Crist-570-A-ltima-Hora-Levi-com-letra.mp3?rlkey=usvuu2zsh5yvkg1768o5lrs9z&st=36tn2m4a&raw=1",
+        "title": "Harpa-Crist-570-A-ltima-Hora-Levi-com-letra",
+        "type": "audio",
         "muted": false,
         "volume": 100
       }
@@ -54,21 +29,33 @@
     "loop": true
   },
   {
-    "id": "2132b149-1585-48e1-af76-1c0ad493eff1",
-    "name": "testing01audio",
+    "id": "d84b6cae-4691-45a4-8d20-925570d5b841",
+    "name": "Marcelo Rossi",
     "type": "audio",
     "items": [
       {
-        "url": "/media/uploads/atlasaudio-tranquil-background-510655.mp3",
+        "url": "https://www.dropbox.com/scl/fi/apzuazyjqt2313l5x6m8q/Padre-Marcelo-Rossi-Anjos-De-Deus-Video-Ao-Vivo.mp3?rlkey=kkr3cpl7e1jadk1i80t8y2zx6&st=j14drv06&raw=1",
         "type": "audio",
-        "muted": false,
-        "volume": 100
+        "volume": 100,
+        "title": "Padre-Marcelo-Rossi-Anjos-De-Deus-Video-Ao-Vivo"
       },
       {
-        "url": "/media/uploads/atlasaudio-tranquil-background-510655.mp3",
+        "url": "https://www.dropbox.com/scl/fi/apzuazyjqt2313l5x6m8q/Padre-Marcelo-Rossi-Anjos-De-Deus-Video-Ao-Vivo.mp3?rlkey=kkr3cpl7e1jadk1i80t8y2zx6&st=j14drv06&raw=1",
         "type": "audio",
-        "muted": false,
-        "volume": 13
+        "volume": 100,
+        "title": "Padre-Marcelo-Rossi-Anjos-De-Deus-Video-Ao-Vivo"
+      },
+      {
+        "url": "https://www.dropbox.com/scl/fi/n18c1tzagdqv2q7208rkk/Padre-Marcelo-Rossi-Noites-Trai-oeiras-udio-Oficial.mp3?rlkey=vs27rga983sj58n85gvipt8hu&st=w39oq9pn&raw=1",
+        "type": "audio",
+        "volume": 100,
+        "title": "Padre-Marcelo-Rossi-Noites-Trai-oeiras-udio-Oficial"
+      },
+      {
+        "url": "https://www.dropbox.com/scl/fi/i1ockxfvx68jja1xf3dwe/Padre-Marcelo-Rossi-Segura-na-M-o-de-Deus-udio-Oficial.mp3?rlkey=9ffvgqlh4npbuaj6d5dbjdbgi&st=dsy7lj2j&raw=1",
+        "type": "audio",
+        "volume": 100,
+        "title": "Padre-Marcelo-Rossi-Segura-na-M-o-de-Deus-udio-Oficial"
       }
     ],
     "loop": true

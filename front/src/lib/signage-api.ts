@@ -1,21 +1,35 @@
 // API client for the Deno signage backend.
-// Configure with VITE_API_BASE (defaults to http://localhost:8000).
+// Configure with VITE_API_BASE (defaults to http://localhost:8001).
 
 export const API_BASE =
   (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) ||
-  (typeof window !== "undefined" ? window.location.origin : "http://localhost:8000");
+  (typeof window !== "undefined" ? window.location.origin : "http://localhost:8001");
+
+export interface DeviceInfo {
+  id: string;
+  room: string;
+  connectedAt: number;
+  ip: string;
+  userAgent: string;
+  deviceLabel: string;
+}
 
 export interface Room {
   id?: string;
   name: string;
   slug: string;
   description?: string;
+  defaultSiteUrl?: string;
+  defaultAudioStreamUrl?: string;
   online?: boolean;
+  clientsCount?: number;
+  maxClients?: number;
 }
 
 export interface PlaylistItem {
   url: string;
-  type?: "video" | "image" | "youtube" | "audio";
+  title?: string;
+  type?: "video" | "image" | "youtube" | "audio" | "web";
   duration?: number;
   muted?: boolean;
   volume?: number;
@@ -27,13 +41,22 @@ export interface Playlist {
   type: "visual" | "audio";
   items: PlaylistItem[];
   loop?: boolean;
+  loopMode?: "all" | "one" | "none";
+  shuffle?: boolean;
 }
 
 export interface RoomState {
   playlist: string | null;
   audioPlaylist: string | null;
-  visualStatus?: "playing" | "paused";
-  audioStatus?: "playing" | "paused";
+  audioStreamUrl?: string | null;
+  siteUrl?: string | null;
+  mode?: "playlist" | "site";
+  visualStatus?: "playing" | "paused" | "idle";
+  audioStatus?: "playing" | "paused" | "idle";
+  audioVolume?: number;
+  audioLoopMode?: "all" | "one" | "none";
+  audioShuffle?: boolean;
+  currentAudioIndex?: number;
 }
 
 const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
@@ -49,7 +72,7 @@ const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
     try {
       const errBody = await res.json();
       if (errBody && errBody.error) msg = errBody.error;
-    } catch (e) {}
+    } catch (_e) {}
     throw new Error(msg);
   }
   return res.json();
@@ -58,12 +81,12 @@ const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
 export const signageApi = {
   listRooms: () => request<Room[]>("/api/rooms"),
   createRoom: (room: Partial<Room>) =>
-    request<Room>("/api/rooms", {
+    request<{ success: boolean; room: Room }>("/api/rooms", {
       method: "POST",
       body: JSON.stringify(room),
     }),
   updateRoom: (id: string, updates: Partial<Room>) =>
-    request<Room>(`/api/rooms/${id}`, {
+    request<{ success: boolean; room: Room }>(`/api/rooms/${id}`, {
       method: "PUT",
       body: JSON.stringify(updates),
     }),
@@ -75,9 +98,11 @@ export const signageApi = {
     name: string;
     type: "visual" | "audio";
     items: PlaylistItem[];
-    loop: boolean;
+    loop?: boolean;
+    loopMode?: "all" | "one" | "none";
+    shuffle?: boolean;
   }) =>
-    request<Playlist>("/api/playlists", {
+    request<{ success: boolean; playlist: Playlist }>("/api/playlists", {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -87,17 +112,36 @@ export const signageApi = {
       name: string;
       type: "visual" | "audio";
       items: PlaylistItem[];
-      loop: boolean;
+      loop?: boolean;
+      loopMode?: "all" | "one" | "none";
+      shuffle?: boolean;
     }
   ) =>
-    request<Playlist>(`/api/playlists/${id}`, {
+    request<{ success: boolean; playlist: Playlist }>(`/api/playlists/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+  deletePlaylist: (id: string) =>
+    request<{ success: boolean }>(`/api/playlists/${id}`, { method: "DELETE" }),
 
   getState: (slug: string) => request<RoomState>(`/api/state/${slug}`),
-  setState: (slug: string, stateUpdate: { playlist?: string | null; audioPlaylist?: string | null }) =>
-    request<RoomState>(`/api/state/${slug}`, {
+  setState: (
+    slug: string,
+    stateUpdate: {
+      playlist?: string | null;
+      audioPlaylist?: string | null;
+      audioStreamUrl?: string | null;
+      siteUrl?: string | null;
+      mode?: "playlist" | "site";
+      audioVolume?: number;
+      audioLoopMode?: "all" | "one" | "none";
+      audioShuffle?: boolean;
+      currentAudioIndex?: number;
+      visualStatus?: "playing" | "paused" | "idle";
+      audioStatus?: "playing" | "paused" | "idle";
+    }
+  ) =>
+    request<{ success: boolean; state: RoomState }>(`/api/state/${slug}`, {
       method: "POST",
       body: JSON.stringify(stateUpdate),
     }),
@@ -105,14 +149,57 @@ export const signageApi = {
   reloadRoom: (slug: string) =>
     request<{ success: boolean }>(`/api/reload/${slug}`, { method: "POST" }),
     
-  sendCommand: (slug: string, target: "visual" | "audio", command: "play" | "pause" | "next" | "prev") =>
+  sendCommand: (
+    slug: string,
+    target: "visual" | "audio" | "site",
+    command: "play" | "pause" | "next" | "prev" | "reload" | "setVolume" | "setLoopMode" | "setShuffle" | "setTrackIndex",
+    value?: any
+  ) =>
     request<{ success: boolean }>(`/api/control/${slug}`, {
       method: "POST",
-      body: JSON.stringify({ target, command }),
+      body: JSON.stringify({ target, command, value }),
     }),
 
-  deletePlaylist: (id: string) => request(`/api/playlists/${id}`, { method: "DELETE" }),
-  getIp: () => request<{ ip: string }>("/api/system/ip"),
+  setAudioVolume: (slug: string, value: number) =>
+    request<{ success: boolean }>(`/api/control/${slug}`, {
+      method: "POST",
+      body: JSON.stringify({ target: "audio", command: "setVolume", value }),
+    }),
+
+  setLoopMode: (slug: string, mode: "all" | "one" | "none") =>
+    request<{ success: boolean }>(`/api/control/${slug}`, {
+      method: "POST",
+      body: JSON.stringify({ target: "audio", command: "setLoopMode", value: mode }),
+    }),
+
+  setShuffle: (slug: string, shuffle: boolean) =>
+    request<{ success: boolean }>(`/api/control/${slug}`, {
+      method: "POST",
+      body: JSON.stringify({ target: "audio", command: "setShuffle", value: shuffle }),
+    }),
+
+  setTrackIndex: (slug: string, index: number) =>
+    request<{ success: boolean }>(`/api/control/${slug}`, {
+      method: "POST",
+      body: JSON.stringify({ target: "audio", command: "setTrackIndex", value: index }),
+    }),
+
+  reloadSite: (slug: string) =>
+    request<{ success: boolean }>(`/api/control/${slug}`, {
+      method: "POST",
+      body: JSON.stringify({ target: "site", command: "reload" }),
+    }),
+
+  getIp: () =>
+    request<{
+      ip: string;
+      publicUrl?: string | null;
+      db?: { driver: string; database: string };
+    }>("/api/system/ip"),
+
+  listMedia: () => request<string[]>("/api/media"),
+  deleteMedia: (filename: string) =>
+    request<{ success: boolean }>(`/api/media/${filename}`, { method: "DELETE" }),
 
   uploadMedia: async (file: File) => {
     const formData = new FormData();
@@ -124,4 +211,19 @@ export const signageApi = {
     if (!res.ok) throw new Error("Upload falhou");
     return res.json() as Promise<{ success: boolean; filename: string }>;
   },
+
+  listRoomDevices: (slug: string) =>
+    request<{
+      success: boolean;
+      room: string;
+      count: number;
+      max: number;
+      devices: DeviceInfo[];
+    }>(`/api/rooms/${slug}/devices`),
+
+  kickDevice: (slug: string, clientId?: string, reason?: string) =>
+    request<{ success: boolean; message: string; count?: number }>(`/api/rooms/${slug}/kick`, {
+      method: "POST",
+      body: JSON.stringify({ clientId, reason }),
+    }),
 };

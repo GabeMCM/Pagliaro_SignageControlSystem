@@ -15,8 +15,9 @@ app.use("*", async (c, next) => {
   console.log(`${c.req.method} ${c.req.url} - ${c.res.status} - ${ms}ms`);
 });
 
-// Habilita CORS para todas as rotas /api permitindo o acesso local do front-end
-app.use("/api/*", cors());
+// Habilita CORS configurável por variável de ambiente
+const corsOrigin = Deno.env.get("CORS_ORIGIN") || "*";
+app.use("/api/*", cors({ origin: corsOrigin }));
 
 // Rotas da API REST
 app.route("/api", api);
@@ -46,6 +47,7 @@ app.get("*", async (c) => {
   }
 });
 
-console.log("Server running on http://localhost:8000");
+const PORT = Number(Deno.env.get("PORT") || 8001);
+console.log(`Server running on port ${PORT} (env: ${Deno.env.get("NODE_ENV") || "development"})`);
 
-Deno.serve({ port: 8000 }, app.fetch);
+Deno.serve({ port: PORT }, app.fetch);

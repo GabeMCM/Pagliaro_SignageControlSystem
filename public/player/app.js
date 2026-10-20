@@ -4,6 +4,7 @@ const API_BASE = window.location.origin;
 
 const statusEl = document.getElementById('status');
 const container = document.getElementById('media-container');
+const siteFrame = document.getElementById('site-frame');
 
 // --- YOUTUBE API ---
 const tag = document.createElement('script');
@@ -24,6 +25,18 @@ function extractYtId(url) {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
+// --- APP STATE ---
+let currentRoomState = {
+  playlist: null,
+  audioPlaylist: null,
+  audioStreamUrl: null,
+  siteUrl: null,
+  mode: "playlist",
+  visualStatus: "idle",
+  audioStatus: "idle",
+  audioVolume: 100,
+};
+
 // --- VISUAL ENGINE ---
 let visualPlaylist = null;
 let visualItems = [];
@@ -40,17 +53,77 @@ let aIndex = 0;
 let aIsPaused = false;
 let duckingActive = false;
 let duckingInterval = null;
+let masterVolume = 100; // 0 a 100
 
 const bgmPlayer = new Audio();
 bgmPlayer.onended = () => {
-  aIndex++;
-  playNextAudio();
+  if (!currentRoomState.audioStreamUrl) {
+    handleAudioEnded();
+  }
 };
-bgmPlayer.onerror = () => {
-  console.warn("Audio Error, skipping...");
-  aIndex++;
-  playNextAudio();
+bgmPlayer.onerror = (e) => {
+  console.warn("Audio Error:", e);
+  if (currentRoomState.audioStreamUrl) {
+    console.log("Tentando reconectar stream de áudio em 3s...");
+    setTimeout(() => {
+      if (currentRoomState.audioStreamUrl && !aIsPaused) {
+        bgmPlayer.src = normalizeAudioUrl(currentRoomState.audioStreamUrl);
+        bgmPlayer.play().catch(() => {});
+      }
+    }, 3000);
+  } else {
+    handleAudioEnded();
+  }
 };
+
+function handleAudioEnded() {
+  if (audioItems.length === 0) {
+    bgmPlayer.pause();
+    return;
+  }
+  
+  const loopMode = currentRoomState.audioLoopMode || (audioPlaylist && audioPlaylist.loopMode) || "all";
+  const shuffle = Boolean(currentRoomState.audioShuffle || (audioPlaylist && audioPlaylist.shuffle));
+
+  if (loopMode === "one") {
+    bgmPlayer.currentTime = 0;
+    bgmPlayer.play().catch(() => {});
+    return;
+  }
+
+  if (shuffle && audioItems.length > 1) {
+    let nextIdx = aIndex;
+    while (nextIdx === aIndex) {
+      nextIdx = Math.floor(Math.random() * audioItems.length);
+    }
+    aIndex = nextIdx;
+    playNextAudio();
+    return;
+  }
+
+  aIndex++;
+  if (aIndex >= audioItems.length) {
+    if (loopMode === "none") {
+      bgmPlayer.pause();
+      return;
+    }
+    aIndex = 0;
+  }
+  playNextAudio();
+}
+
+function calculateTargetAudioVolume() {
+  let itemVol = 1;
+  if (!currentRoomState.audioStreamUrl && audioItems[aIndex] && audioItems[aIndex].volume !== undefined) {
+    itemVol = audioItems[aIndex].volume / 100;
+  }
+  const masterRatio = masterVolume / 100;
+  let finalVol = itemVol * masterRatio;
+  if (duckingActive && currentRoomState.mode !== "site") {
+    finalVol *= 0.1;
+  }
+  return Math.max(0, Math.min(1, finalVol));
+}
 
 function fadeBgmVolume(targetVolume) {
   if (duckingInterval) clearInterval(duckingInterval);
@@ -62,25 +135,70 @@ function fadeBgmVolume(targetVolume) {
     } else {
       bgmPlayer.volume += (targetVolume > current) ? 0.05 : -0.05;
     }
-  }, 100);
+  }, 80);
 }
 
 function updateDucking(active) {
   duckingActive = active;
-  if (!audioItems[aIndex] || aIsPaused) return;
-  const baseVol = (audioItems[aIndex].volume !== undefined) ? audioItems[aIndex].volume / 100 : 1;
-  const target = active ? baseVol * 0.1 : baseVol;
-  fadeBgmVolume(target);
+  if (aIsPaused) return;
+  fadeBgmVolume(calculateTargetAudioVolume());
+}
+
+function setMasterVolume(vol) {
+  masterVolume = Math.max(0, Math.min(100, Number(vol)));
+  if (!aIsPaused) {
+    fadeBgmVolume(calculateTargetAudioVolume());
+  }
+}
+
+function normalizeAudioUrl(url) {
+  if (!url) return url;
+  let clean = url.trim();
+  // Dropbox: converte link de visualização ?dl=0 para ?raw=1
+  if (clean.includes("dropbox.com")) {
+    clean = clean.replace(/[?&]dl=[01]/g, "");
+    clean += (clean.includes("?") ? "&raw=1" : "?raw=1");
+    return clean;
+  }
+  // Google Drive: converte link de compartilhamento para streaming direto
+  const gdriveMatch = clean.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (gdriveMatch) {
+    return `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`;
+  }
+  return clean;
+}
+
+function startAudioPlayback() {
+  if (currentRoomState.audioStreamUrl) {
+    const src = normalizeAudioUrl(currentRoomState.audioStreamUrl);
+    if (bgmPlayer.src !== src) {
+      bgmPlayer.src = src;
+    }
+    bgmPlayer.volume = calculateTargetAudioVolume();
+    if (!aIsPaused) {
+      bgmPlayer.play().catch(e => {
+        console.warn("Audio stream autoplay blocked:", e);
+        requireUserInteraction("Clique para Iniciar o Áudio / Rádio");
+      });
+    }
+  } else {
+    playNextAudio();
+  }
 }
 
 function playNextAudio() {
+  if (currentRoomState.audioStreamUrl) {
+    startAudioPlayback();
+    return;
+  }
+
   if (audioItems.length === 0) {
     bgmPlayer.pause();
     return;
   }
   
   if (aIndex >= audioItems.length) {
-    if (audioPlaylist.loop) {
+    if (audioPlaylist && audioPlaylist.loop !== false) {
       aIndex = 0;
     } else {
       bgmPlayer.pause();
@@ -89,45 +207,103 @@ function playNextAudio() {
   }
 
   const item = audioItems[aIndex];
-  const src = item.url.startsWith('http') ? item.url : `${API_BASE}${item.url}`;
+  if (!item) return;
+  const rawSrc = item.url.startsWith('http') ? item.url : `${API_BASE}${item.url}`;
+  const src = normalizeAudioUrl(rawSrc);
   
   if (bgmPlayer.src !== src) {
     bgmPlayer.src = src;
   }
   
-  const baseVol = (item.volume !== undefined) ? item.volume / 100 : 1;
-  bgmPlayer.volume = duckingActive ? baseVol * 0.1 : baseVol;
+  bgmPlayer.volume = calculateTargetAudioVolume();
 
   if (!aIsPaused) {
     bgmPlayer.play().catch(e => {
       console.warn("BGM autoplay blocked:", e);
-      requireUserInteraction("Áudio Bloqueado pelo Navegador");
+      requireUserInteraction("Clique para Iniciar o Áudio");
     });
+  }
+  emitCommand('audio', 'trackChanged', aIndex);
+}
+
+// --- SITE ENGINE ---
+function activateSiteMode(url) {
+  if (!url) return;
+  currentRoomState.mode = "site";
+  currentRoomState.siteUrl = url;
+
+  // Limpa reprodução visual para economizar memória/CPU
+  if (vTimeoutId) { clearTimeout(vTimeoutId); vTimeoutId = null; }
+  if (ytPlayer && ytPlayer.destroy) {
+    try { ytPlayer.destroy(); } catch (e) {}
+    ytPlayer = null;
+  }
+  container.innerHTML = '';
+  updateDucking(false); // O site não abaixa o áudio de fundo
+
+  // Configura e exibe o iframe
+  if (siteFrame.src !== url) {
+    siteFrame.src = url;
+  }
+  siteFrame.classList.add('visible');
+  statusEl.style.display = 'none';
+
+  // Atualiza controles do overlay
+  const reloadBtn = document.getElementById('btn-site-reload');
+  if (reloadBtn) reloadBtn.style.display = 'flex';
+}
+
+function deactivateSiteMode() {
+  siteFrame.classList.remove('visible');
+  siteFrame.src = 'about:blank';
+  const reloadBtn = document.getElementById('btn-site-reload');
+  if (reloadBtn) reloadBtn.style.display = 'none';
+  currentRoomState.mode = "playlist";
+}
+
+function reloadSiteFrame() {
+  if (siteFrame && siteFrame.classList.contains('visible') && currentRoomState.siteUrl) {
+    console.log("Recarregando site remoto:", currentRoomState.siteUrl);
+    siteFrame.src = currentRoomState.siteUrl;
   }
 }
 
+// --- VISUAL PLAYLIST ENGINE ---
 function playNextVisual() {
+  // Se estiver em modo site, não roda visual
+  if (currentRoomState.mode === "site" && currentRoomState.siteUrl) {
+    return;
+  }
+
   statusEl.style.display = 'none';
   if (visualItems.length === 0) {
     container.innerHTML = '';
+    showStatus("Aguardando conteúdo...");
     return;
   }
   
   if (vIndex >= visualItems.length) {
-    if (visualPlaylist.loop) {
+    if (visualPlaylist && visualPlaylist.loop !== false) {
       vIndex = 0;
     } else {
       container.innerHTML = '';
-      showStatus("Fim da exibição visual.");
+      showStatus("Fim da exibição.");
       return;
     }
   }
 
   const item = visualItems[vIndex];
+  if (!item) return;
+
+  // Limpa player anterior de YouTube se existir
+  if (ytPlayer && ytPlayer.destroy) {
+    try { ytPlayer.destroy(); } catch (e) {}
+    ytPlayer = null;
+  }
   container.innerHTML = '';
+
   const src = item.url.startsWith('http') ? item.url : `${API_BASE}${item.url}`;
 
-  // Se visual pausado via prev/next, forçamos o play por conveniência
   if (vIsPaused) handleCommand('visual', 'play');
 
   if (item.type === 'youtube') {
@@ -164,8 +340,8 @@ function playNextVisual() {
               playNextVisual();
             } else if (event.data === YT.PlayerState.UNSTARTED) {
               setTimeout(() => {
-                if (ytPlayer && ytPlayer.getPlayerState() === YT.PlayerState.UNSTARTED) {
-                  requireUserInteraction("YouTube Autoplay Bloqueado");
+                if (ytPlayer && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === YT.PlayerState.UNSTARTED) {
+                  requireUserInteraction("Autoplay Bloqueado");
                 }
               }, 2000);
             }
@@ -185,16 +361,42 @@ function playNextVisual() {
     const video = document.createElement('video');
     video.src = src;
     video.autoplay = true;
+    video.playsInline = true;
     video.muted = item.muted === true;
     video.volume = item.volume !== undefined ? item.volume / 100 : 1;
     video.className = 'active';
     video.onended = () => { vIndex++; playNextVisual(); };
     video.onerror = () => { vIndex++; playNextVisual(); };
     container.appendChild(video);
+    video.play().catch(e => {
+      console.warn("Video autoplay blocked", e);
+      requireUserInteraction("Clique para Iniciar Vídeo");
+    });
+
+  } else if (item.type === 'web' || item.type === 'website') {
+    // Suporte a item do tipo website dentro de uma playlist visual
+    updateDucking(false);
+    const iframe = document.createElement('iframe');
+    iframe.src = src;
+    iframe.className = 'active';
+    iframe.allow = "autoplay; fullscreen; encrypted-media";
+    iframe.sandbox = "allow-same-origin allow-scripts allow-forms allow-popups";
+    container.appendChild(iframe);
+
+    vImageRemainingMs = item.duration ? item.duration * 1000 : 15000;
+    vImageStartTime = Date.now();
+    
+    if (!vIsPaused) {
+      if (vTimeoutId) clearTimeout(vTimeoutId);
+      vTimeoutId = setTimeout(() => {
+        vIndex++;
+        playNextVisual();
+      }, vImageRemainingMs);
+    }
 
   } else {
-    // Image
-    updateDucking(false); // Images don't have sound
+    // Imagem
+    updateDucking(false);
     
     const img = document.createElement('img');
     img.src = src;
@@ -214,10 +416,13 @@ function playNextVisual() {
   }
 }
 
-// --- CONTROLS & STATE ---
-function handleCommand(target, cmd) {
-  if (target === 'visual') {
-    if (visualItems.length === 0) return;
+// --- COMANDOS & ESTADO REMOTO ---
+function handleCommand(target, cmd, value) {
+  if (target === 'site') {
+    if (cmd === 'reload') {
+      reloadSiteFrame();
+    }
+  } else if (target === 'visual') {
     if (cmd === 'next') {
       vIsPaused = false;
       if (vTimeoutId) { clearTimeout(vTimeoutId); vTimeoutId = null; }
@@ -235,11 +440,12 @@ function handleCommand(target, cmd) {
         if (vid) vid.pause();
       } else if (item && item.type === 'youtube' && ytPlayer && ytPlayer.pauseVideo) {
         ytPlayer.pauseVideo();
-      } else if (item && item.type === 'image' && vTimeoutId) {
+      } else if (item && vTimeoutId) {
         clearTimeout(vTimeoutId); vTimeoutId = null;
         vImageRemainingMs -= (Date.now() - vImageStartTime);
       }
-      document.getElementById('btn-v-play').innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+      const btn = document.getElementById('btn-v-play');
+      if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
     } else if (cmd === 'play') {
       vIsPaused = false;
       const item = visualItems[vIndex];
@@ -248,31 +454,71 @@ function handleCommand(target, cmd) {
         if (vid) vid.play();
       } else if (item && item.type === 'youtube' && ytPlayer && ytPlayer.playVideo) {
         ytPlayer.playVideo();
-      } else if (item && item.type === 'image') {
+      } else if (item) {
         vImageStartTime = Date.now();
         vTimeoutId = setTimeout(() => { vIndex++; playNextVisual(); }, vImageRemainingMs > 0 ? vImageRemainingMs : 1000);
       }
-      document.getElementById('btn-v-play').innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+      const btn = document.getElementById('btn-v-play');
+      if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
     }
   } else if (target === 'audio') {
-    if (audioItems.length === 0) return;
-    if (cmd === 'next') {
-      aIsPaused = false;
-      aIndex++; playNextAudio();
-      document.getElementById('btn-a-play').innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+    if (cmd === 'setVolume' && value !== undefined) {
+      setMasterVolume(value);
+    } else if (cmd === 'setLoopMode' && value !== undefined) {
+      currentRoomState.audioLoopMode = value;
+    } else if (cmd === 'setShuffle' && value !== undefined) {
+      currentRoomState.audioShuffle = Boolean(value);
+    } else if (cmd === 'setTrackIndex' && value !== undefined) {
+      if (!currentRoomState.audioStreamUrl && audioItems.length > 0) {
+        const targetIdx = Number(value);
+        if (targetIdx >= 0 && targetIdx < audioItems.length) {
+          aIndex = targetIdx;
+          aIsPaused = false;
+          playNextAudio();
+          const btn = document.getElementById('btn-a-play');
+          if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+        }
+      }
+    } else if (cmd === 'trackChanged' && value !== undefined) {
+      currentRoomState.currentAudioIndex = Number(value);
+    } else if (cmd === 'next') {
+      if (!currentRoomState.audioStreamUrl && audioItems.length > 0) {
+        aIsPaused = false;
+        const shuffle = Boolean(currentRoomState.audioShuffle || (audioPlaylist && audioPlaylist.shuffle));
+        if (shuffle && audioItems.length > 1) {
+          let nextIdx = aIndex;
+          while (nextIdx === aIndex) {
+            nextIdx = Math.floor(Math.random() * audioItems.length);
+          }
+          aIndex = nextIdx;
+        } else {
+          aIndex = (aIndex + 1) % audioItems.length;
+        }
+        playNextAudio();
+        const btn = document.getElementById('btn-a-play');
+        if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+      }
     } else if (cmd === 'prev') {
-      aIsPaused = false;
-      aIndex--; if (aIndex < 0) aIndex = audioItems.length - 1;
-      playNextAudio();
-      document.getElementById('btn-a-play').innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+      if (!currentRoomState.audioStreamUrl && audioItems.length > 0) {
+        aIsPaused = false;
+        aIndex--; if (aIndex < 0) aIndex = audioItems.length - 1;
+        playNextAudio();
+        const btn = document.getElementById('btn-a-play');
+        if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+      }
     } else if (cmd === 'pause') {
       aIsPaused = true;
       bgmPlayer.pause();
-      document.getElementById('btn-a-play').innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
+      const btn = document.getElementById('btn-a-play');
+      if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
     } else if (cmd === 'play') {
       aIsPaused = false;
-      bgmPlayer.play();
-      document.getElementById('btn-a-play').innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+      if (currentRoomState.audioStreamUrl && !bgmPlayer.src) {
+        bgmPlayer.src = normalizeAudioUrl(currentRoomState.audioStreamUrl);
+      }
+      bgmPlayer.play().catch(e => console.warn(e));
+      const btn = document.getElementById('btn-a-play');
+      if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
     }
   }
 }
@@ -287,18 +533,18 @@ function showRemote() {
   if (remoteTimeoutId) clearTimeout(remoteTimeoutId);
   remoteTimeoutId = setTimeout(() => {
     remoteOverlay.classList.remove('visible');
-  }, 3000);
+  }, 3500);
 }
 
 document.addEventListener('mousemove', showRemote);
 document.addEventListener('touchstart', showRemote);
 
-async function emitCommand(target, cmd) {
+async function emitCommand(target, cmd, value) {
   try {
     await fetch(`${API_BASE}/api/control/${roomSlug}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target, command: cmd })
+      body: JSON.stringify({ target, command: cmd, value })
     });
   } catch (e) {
     console.error('Failed to emit command', e);
@@ -308,59 +554,75 @@ async function emitCommand(target, cmd) {
 document.getElementById('btn-v-prev')?.addEventListener('click', () => emitCommand('visual', 'prev'));
 document.getElementById('btn-v-play')?.addEventListener('click', () => emitCommand('visual', vIsPaused ? 'play' : 'pause'));
 document.getElementById('btn-v-next')?.addEventListener('click', () => emitCommand('visual', 'next'));
+document.getElementById('btn-site-reload')?.addEventListener('click', () => reloadSiteFrame());
 
 document.getElementById('btn-a-prev')?.addEventListener('click', () => emitCommand('audio', 'prev'));
 document.getElementById('btn-a-play')?.addEventListener('click', () => emitCommand('audio', aIsPaused ? 'play' : 'pause'));
 document.getElementById('btn-a-next')?.addEventListener('click', () => emitCommand('audio', 'next'));
 
-
-// --- INITIALIZATION ---
+// --- INICIALIZAÇÃO & SINCRONIZAÇÃO SILENCIOSA ---
 async function fetchState() {
   try {
     const res = await fetch(`${API_BASE}/api/state/${roomSlug}`);
     const data = await res.json();
-    
-    if (!data.playlist && !data.audioPlaylist) {
-      showStatus("Sala inativa.");
-      return;
+    currentRoomState = { ...currentRoomState, ...data };
+
+    if (data.audioVolume !== undefined) {
+      masterVolume = data.audioVolume;
     }
 
     const plRes = await fetch(`${API_BASE}/api/playlists`);
     const allPlaylists = await plRes.json();
-    
-    // Process Visual
-    if (data.playlist) {
-      const p = allPlaylists.find(x => x.id === data.playlist);
-      if (p && p.items.length > 0) {
-        visualPlaylist = p;
-        visualItems = p.items;
-        vIndex = 0;
-        playNextVisual();
-      } else {
-        container.innerHTML = '';
-      }
-    } else {
-      visualItems = [];
-      container.innerHTML = '';
-    }
 
-    // Process Audio
-    if (data.audioPlaylist) {
+    // 1. Processa Áudio de Fundo (Stream URL ou Playlist BGM)
+    if (data.audioStreamUrl) {
+      currentRoomState.audioStreamUrl = data.audioStreamUrl;
+      aIsPaused = data.audioStatus === "paused";
+      startAudioPlayback();
+    } else if (data.audioPlaylist) {
+      currentRoomState.audioStreamUrl = null;
       const p = allPlaylists.find(x => x.id === data.audioPlaylist);
       if (p && p.items.length > 0) {
         audioPlaylist = p;
         audioItems = p.items;
         aIndex = 0;
+        aIsPaused = data.audioStatus === "paused";
         playNextAudio();
       } else {
         bgmPlayer.pause();
       }
     } else {
+      currentRoomState.audioStreamUrl = null;
       audioItems = [];
       bgmPlayer.pause();
     }
+
+    // 2. Processa Modo Site vs Modo Playlist Visual
+    if (data.mode === "site" && data.siteUrl) {
+      activateSiteMode(data.siteUrl);
+    } else {
+      deactivateSiteMode();
+      if (data.playlist) {
+        const p = allPlaylists.find(x => x.id === data.playlist);
+        if (p && p.items.length > 0) {
+          visualPlaylist = p;
+          visualItems = p.items;
+          vIndex = 0;
+          vIsPaused = data.visualStatus === "paused";
+          playNextVisual();
+        } else {
+          container.innerHTML = '';
+          showStatus("Playlist visual vazia.");
+        }
+      } else {
+        visualItems = [];
+        container.innerHTML = '';
+        showStatus("Sala inativa (Idle).");
+      }
+    }
   } catch (err) {
-    showStatus("Erro ao buscar estado da sala.");
+    console.error(err);
+    showStatus("Erro ao sincronizar estado da sala.");
   }
 }
 
@@ -368,54 +630,132 @@ async function updateStateSilently() {
   try {
     const res = await fetch(`${API_BASE}/api/state/${roomSlug}`);
     const data = await res.json();
+    const oldState = { ...currentRoomState };
+    currentRoomState = { ...currentRoomState, ...data };
+
+    // Sincroniza Volume Mestre de Áudio
+    if (data.audioVolume !== undefined && data.audioVolume !== masterVolume) {
+      setMasterVolume(data.audioVolume);
+    }
+
     const plRes = await fetch(`${API_BASE}/api/playlists`);
     const allPlaylists = await plRes.json();
 
-    // Check Visual changes
-    if (data.playlist !== (visualPlaylist ? visualPlaylist.id : null)) {
-      if (data.playlist) {
-        const p = allPlaylists.find(x => x.id === data.playlist);
-        if (p && p.items.length > 0) {
-          visualPlaylist = p;
-          visualItems = p.items;
-          vIndex = 0;
-          vIsPaused = false;
-          playNextVisual();
-        } else {
-          visualPlaylist = null;
-          visualItems = [];
-          container.innerHTML = '';
-        }
+    // Sincroniza Áudio (Stream URL vs Playlist)
+    if (data.audioStreamUrl !== oldState.audioStreamUrl) {
+      currentRoomState.audioStreamUrl = data.audioStreamUrl;
+      if (data.audioStreamUrl) {
+        startAudioPlayback();
       } else {
-        visualPlaylist = null;
-        visualItems = [];
-        container.innerHTML = '';
+        bgmPlayer.pause();
+        if (data.audioPlaylist) {
+          const p = allPlaylists.find(x => x.id === data.audioPlaylist);
+          if (p && p.items.length > 0) {
+            audioPlaylist = p;
+            audioItems = p.items;
+            aIndex = 0;
+            playNextAudio();
+          }
+        }
       }
-    }
-
-    // Check Audio changes
-    if (data.audioPlaylist !== (audioPlaylist ? audioPlaylist.id : null)) {
-      if (data.audioPlaylist) {
-        const p = allPlaylists.find(x => x.id === data.audioPlaylist);
-        if (p && p.items.length > 0) {
-          audioPlaylist = p;
-          audioItems = p.items;
-          aIndex = 0;
-          aIsPaused = false;
-          playNextAudio();
+    } else if (!data.audioStreamUrl) {
+      // Sincroniza Playlist de Áudio
+      if (data.audioPlaylist !== (audioPlaylist ? audioPlaylist.id : null)) {
+        if (data.audioPlaylist) {
+          const p = allPlaylists.find(x => x.id === data.audioPlaylist);
+          if (p && p.items.length > 0) {
+            audioPlaylist = p;
+            audioItems = p.items;
+            aIndex = 0;
+            aIsPaused = data.audioStatus === "paused";
+            playNextAudio();
+          } else {
+            audioPlaylist = null;
+            audioItems = [];
+            bgmPlayer.pause();
+          }
         } else {
           audioPlaylist = null;
           audioItems = [];
           bgmPlayer.pause();
         }
-      } else {
-        audioPlaylist = null;
-        audioItems = [];
-        bgmPlayer.pause();
+      } else if (data.audioPlaylist) {
+        // Atualiza itens da playlist de áudio se ela foi editada
+        const p = allPlaylists.find(x => x.id === data.audioPlaylist);
+        if (p) {
+          const wasEmpty = audioItems.length === 0;
+          audioPlaylist = p;
+          audioItems = p.items || [];
+          if (wasEmpty && audioItems.length > 0 && !aIsPaused) {
+            aIndex = 0;
+            playNextAudio();
+          }
+        }
+      }
+    }
+
+    if (data.audioLoopMode !== undefined) currentRoomState.audioLoopMode = data.audioLoopMode;
+    if (data.audioShuffle !== undefined) currentRoomState.audioShuffle = data.audioShuffle;
+
+    if (data.audioStatus === "paused" && !aIsPaused) {
+      aIsPaused = true;
+      bgmPlayer.pause();
+    } else if (data.audioStatus === "playing" && aIsPaused) {
+      aIsPaused = false;
+      if (currentRoomState.audioStreamUrl && !bgmPlayer.src) {
+        bgmPlayer.src = normalizeAudioUrl(currentRoomState.audioStreamUrl);
+      }
+      bgmPlayer.play().catch(e => console.warn(e));
+    }
+
+    // Sincroniza Modo Site vs Visual
+    if (data.mode === "site" && data.siteUrl) {
+      if (oldState.mode !== "site" || oldState.siteUrl !== data.siteUrl) {
+        activateSiteMode(data.siteUrl);
+      }
+    } else {
+      // Modo Playlist
+      if (oldState.mode === "site") {
+        deactivateSiteMode();
+      }
+
+      // Verifica alterações na Playlist Visual
+      if (data.playlist !== (visualPlaylist ? visualPlaylist.id : null)) {
+        if (data.playlist) {
+          const p = allPlaylists.find(x => x.id === data.playlist);
+          if (p && p.items.length > 0) {
+            visualPlaylist = p;
+            visualItems = p.items;
+            vIndex = 0;
+            vIsPaused = data.visualStatus === "paused";
+            playNextVisual();
+          } else {
+            visualPlaylist = null;
+            visualItems = [];
+            container.innerHTML = '';
+            showStatus("Playlist vazia.");
+          }
+        } else {
+          visualPlaylist = null;
+          visualItems = [];
+          container.innerHTML = '';
+          showStatus("Sala inativa (Idle).");
+        }
+      } else if (data.playlist) {
+        // A playlist visual foi atualizada ao vivo
+        const p = allPlaylists.find(x => x.id === data.playlist);
+        if (p) {
+          visualPlaylist = p;
+          visualItems = p.items || [];
+          if (vIndex >= visualItems.length) {
+            vIndex = 0;
+            playNextVisual();
+          }
+        }
       }
     }
   } catch (e) {
-    console.error("Hot reload failed", e);
+    console.error("Hot reload silently failed", e);
   }
 }
 
@@ -424,27 +764,92 @@ function showStatus(text) {
   statusEl.style.display = 'block';
 }
 
+let autoReconnect = true;
+let clientId = null;
+let deviceLabel = null;
+
+function returnToLobby(noticeMessage) {
+  console.log("Retornando ao lobby:", noticeMessage);
+  autoReconnect = false;
+
+  // 1. Interrompe reproduções imediatamente
+  aIsPaused = true;
+  bgmPlayer.pause();
+  bgmPlayer.src = '';
+
+  if (vTimeoutId) { clearTimeout(vTimeoutId); vTimeoutId = null; }
+  if (ytPlayer && ytPlayer.destroy) {
+    try { ytPlayer.destroy(); } catch (_e) {}
+    ytPlayer = null;
+  }
+  container.innerHTML = '';
+  deactivateSiteMode();
+
+  // 2. Remove o parâmetro ?room= da URL sem recarregar a página
+  roomSlug = '';
+  window.history.pushState({}, '', window.location.pathname);
+
+  // 3. Exibe o menu do lobby com aviso
+  showRoomSelection(noticeMessage);
+}
+
 function connectWebSocket() {
+  if (!roomSlug) return;
   const wsUrl = API_BASE.replace('http', 'ws');
   const ws = new WebSocket(`${wsUrl}/ws/${roomSlug}`);
   
+  ws.onopen = () => {
+    console.log("WebSocket conectado à sala", roomSlug);
+  };
+
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-      if (data.type === "reload") {
+      if (data.type === "clientAssigned") {
+        clientId = data.clientId;
+        deviceLabel = data.deviceLabel;
+        console.log(`[Player] Conectado como ${deviceLabel} [ID: ${clientId}]`);
+      } else if (data.type === "roomFull") {
+        autoReconnect = false;
+        try { ws.close(4002, "Room Full"); } catch (_e) {}
+        showStatus(data.message || "Limite de 2 dispositivos atingido para esta sala.");
+        setTimeout(() => returnToLobby(data.message), 3000);
+      } else if (data.type === "kickToLobby") {
+        autoReconnect = false;
+        try { ws.close(4001, "Kicked to lobby"); } catch (_e) {}
+        returnToLobby(data.reason || "Você foi retirado da sala pelo administrador.");
+      } else if (data.type === "reload") {
         location.reload();
+      } else if (data.type === "reloadSite") {
+        reloadSiteFrame();
+      } else if (data.type === "roomDeleted") {
+        showStatus("Esta sala foi excluída no painel.");
+        setTimeout(() => returnToLobby("Esta sala foi excluída no painel."), 3000);
       } else if (data.type === "updateState") {
         updateStateSilently();
-      } else if (data.type === "control" && data.command && data.target) {
-        handleCommand(data.target, data.command);
+      } else if (data.type === "control") {
+        handleCommand(data.target, data.command, data.value);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn("WS parse error", e);
+    }
   };
   
-  ws.onclose = () => setTimeout(connectWebSocket, 3000);
+  ws.onclose = (event) => {
+    if (!autoReconnect || event.code === 4001 || event.code === 4002) {
+      console.log(`WebSocket desconectado (código ${event.code}). Aguardando no lobby.`);
+      return;
+    }
+    console.warn("WebSocket fechado. Reconectando em 3s...");
+    setTimeout(() => {
+      if (autoReconnect && roomSlug) {
+        connectWebSocket();
+      }
+    }, 3000);
+  };
 }
 
-// Interaction Overlay
+// Interaction Overlay (Desbloqueio de Autoplay)
 let overlayShown = false;
 function requireUserInteraction(reason) {
   if (overlayShown) return;
@@ -452,26 +857,35 @@ function requireUserInteraction(reason) {
   
   const overlay = document.createElement('div');
   overlay.id = 'interaction-overlay';
-  overlay.style = "position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;";
+  overlay.style = "position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;";
   overlay.innerHTML = `
-    <h2 style="color:white;">${reason}</h2>
-    <button style="padding:15px 30px;font-size:1.5rem;background:#10b981;color:black;border:none;border-radius:10px;cursor:pointer;">Clique para Iniciar Mídia</button>
+    <h2 style="color:white;font-size:1.5rem;">${reason}</h2>
+    <p style="color:#aaa;font-size:1rem;">Navegadores exigem interação para permitir áudio automático.</p>
+    <button style="padding:15px 32px;font-size:1.25rem;background:#10b981;color:black;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">Iniciar Mídia</button>
   `;
   
   overlay.querySelector('button').onclick = () => {
     overlay.remove();
     overlayShown = false;
-    // Resume Visual
+    // Resumo de Áudio
+    if (!aIsPaused) {
+      if (currentRoomState.audioStreamUrl || audioItems.length > 0) {
+        bgmPlayer.play().catch(e => console.warn(e));
+      }
+    }
+    // Resumo de Vídeo/YouTube
     const vItem = visualItems[vIndex];
-    if (vItem && vItem.type === 'youtube' && ytPlayer && ytPlayer.playVideo) ytPlayer.playVideo();
-    else if (vItem && vItem.type === 'video') { const vid = container.querySelector('video'); if (vid) vid.play(); }
-    
-    // Resume Audio
-    if (!aIsPaused && audioItems.length > 0) bgmPlayer.play();
+    if (vItem && vItem.type === 'youtube' && ytPlayer && ytPlayer.playVideo) {
+      ytPlayer.playVideo();
+    } else if (vItem && vItem.type === 'video') {
+      const vid = container.querySelector('video');
+      if (vid) vid.play().catch(e => console.warn(e));
+    }
   };
   document.body.appendChild(overlay);
 }
 
+// --- BOOTSTRAP ---
 if (!roomSlug) {
   showRoomSelection();
 } else {
@@ -479,30 +893,72 @@ if (!roomSlug) {
   connectWebSocket();
 }
 
-async function showRoomSelection() {
+async function showRoomSelection(notice) {
   showStatus("Carregando salas disponíveis...");
-  const res = await fetch(`${API_BASE}/api/rooms`);
-  const rooms = await res.json();
-  statusEl.style.display = 'none';
-  
-  const menu = document.createElement('div');
-  menu.className = 'room-menu';
-  menu.innerHTML = `<h1>Selecione uma Sala</h1><div class="room-list"></div>`;
-  const list = menu.querySelector('.room-list');
-  
-  if (rooms.length === 0) list.innerHTML = '<p style="color: #666; font-size: 14px;">Nenhuma sala configurada.</p>';
-  rooms.forEach(room => {
-    const btn = document.createElement('button');
-    btn.className = 'room-btn';
-    btn.textContent = room.name;
-    btn.onclick = () => {
-      window.history.pushState({}, '', '?room=' + room.slug);
-      roomSlug = room.slug;
-      fetchState();
-      connectWebSocket();
-      menu.remove();
-    };
-    list.appendChild(btn);
-  });
-  document.body.appendChild(menu);
+  try {
+    const res = await fetch(`${API_BASE}/api/rooms`);
+    const rooms = await res.json();
+    statusEl.style.display = 'none';
+
+    // Remove menu anterior caso já exista
+    const oldMenu = document.querySelector('.room-menu');
+    if (oldMenu) oldMenu.remove();
+    
+    const menu = document.createElement('div');
+    menu.className = 'room-menu';
+
+    let noticeHtml = '';
+    if (notice) {
+      noticeHtml = `<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 20px; line-height: 1.4;">⚠️ ${notice}</div>`;
+    }
+    
+    menu.innerHTML = `
+      ${noticeHtml}
+      <h1>Lobby - Selecione uma Tela / Sala</h1>
+      <p style="color: #888; font-size: 13px; margin-top: -12px; margin-bottom: 24px;">Limite de 2 telas simultâneas por sala</p>
+      <div class="room-list"></div>
+    `;
+    const list = menu.querySelector('.room-list');
+    
+    if (rooms.length === 0) {
+      list.innerHTML = '<p style="color: #888; font-size: 14px;">Nenhuma sala configurada no sistema.</p>';
+    }
+    rooms.forEach(room => {
+      const count = room.clientsCount ?? 0;
+      const max = room.maxClients ?? 2;
+      const isFull = count >= max;
+
+      const btn = document.createElement('button');
+      btn.className = 'room-btn';
+      if (isFull) {
+        btn.style.background = '#262626';
+        btn.style.color = '#737373';
+        btn.style.border = '1px solid #404040';
+      }
+      btn.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; width:100%; gap: 12px;">
+          <span>${room.name}</span>
+          <span style="font-size:12px; font-weight:normal; background:rgba(0,0,0,0.4); padding:3px 10px; border-radius:6px; flex-shrink:0;">
+            ${count}/${max} telas ${isFull ? '• Cheia' : ''}
+          </span>
+        </div>
+      `;
+      btn.onclick = () => {
+        if (isFull) {
+          alert(`A sala "${room.name}" já atingiu o limite de ${max} telas conectadas. Retire um dispositivo pelo painel ou aguarde uma vaga.`);
+          return;
+        }
+        window.history.pushState({}, '', '?room=' + room.slug);
+        roomSlug = room.slug;
+        autoReconnect = true;
+        fetchState();
+        connectWebSocket();
+        menu.remove();
+      };
+      list.appendChild(btn);
+    });
+    document.body.appendChild(menu);
+  } catch (_e) {
+    showStatus("Erro ao conectar ao servidor.");
+  }
 }

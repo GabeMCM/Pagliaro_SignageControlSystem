@@ -1,18 +1,22 @@
 import { Hono } from "hono";
 import { join } from "@std/path";
 import { db } from "../services/db.ts";
+import { wsManager } from "../ws/manager.ts";
 
 export const mediaRoute = new Hono();
 const UPLOADS_DIR = "./media/uploads";
 
 mediaRoute.get("/", async (c) => {
-  const files = [];
+  const files: string[] = [];
   try {
+    // Garante que o diretório existe
+    await Deno.mkdir(UPLOADS_DIR, { recursive: true }).catch(() => {});
     for await (const entry of Deno.readDir(UPLOADS_DIR)) {
-      if (entry.isFile) {
+      if (entry.isFile && !entry.name.startsWith(".")) {
         files.push(entry.name);
       }
     }
+    files.sort((a, b) => a.localeCompare(b));
   } catch (error) {
     console.error("Erro ao ler diretório de uploads:", error);
   }
@@ -26,17 +30,21 @@ mediaRoute.post("/upload", async (c) => {
   if (file && file instanceof File) {
     const arrBuffer = await file.arrayBuffer();
     const uint8Arr = new Uint8Array(arrBuffer);
-    const filename = file.name.replace(/\s+/g, "_");
     
-    // Assegura que o diretório existe
+    // Sanitiza o nome do arquivo
+    const cleanName = file.name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9._-]/g, "_");
+    
     try {
       await Deno.mkdir(UPLOADS_DIR, { recursive: true });
     } catch {
       // Ignora erro se já existir
     }
     
-    await Deno.writeFile(join(UPLOADS_DIR, filename), uint8Arr);
-    return c.json({ success: true, filename });
+    await Deno.writeFile(join(UPLOADS_DIR, cleanName), uint8Arr);
+    return c.json({ success: true, filename: cleanName });
   }
   return c.json({ error: "Nenhum arquivo enviado" }, 400);
 });
@@ -53,7 +61,13 @@ mediaRoute.delete("/:filename", async (c) => {
     for (const pl of playlists) {
       if (pl.items && Array.isArray(pl.items)) {
         const initialLen = pl.items.length;
-        pl.items = pl.items.filter((item: string) => item !== filename);
+        pl.items = pl.items.filter((item: any) => {
+          if (typeof item === "string") return item !== filename;
+          if (item && item.url) {
+            return !item.url.endsWith("/" + filename) && item.url !== filename;
+          }
+          return true;
+        });
         if (pl.items.length !== initialLen) {
           changed = true;
         }
@@ -62,6 +76,8 @@ mediaRoute.delete("/:filename", async (c) => {
     
     if (changed) {
       await db.savePlaylists(playlists);
+      // Notifica as salas ativas
+      wsManager.broadcastAll(JSON.stringify({ type: "updateState" }));
     }
     
     return c.json({ success: true });

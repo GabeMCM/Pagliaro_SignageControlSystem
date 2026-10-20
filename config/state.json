@@ -1,8 +1,13 @@
 {
   "teste": {
-    "playlist": "082d56d4-501f-416f-b94f-064597ba4fe9",
-    "audioPlaylist": "2132b149-1585-48e1-af76-1c0ad493eff1",
-    "visualStatus": "paused",
-    "audioStatus": "paused"
+    "playlist": null,
+    "audioPlaylist": "d84b6cae-4691-45a4-8d20-925570d5b841",
+    "visualStatus": "playing",
+    "audioStatus": "playing",
+    "siteUrl": "https://www.adiau.com.br/v2/messages/?hash=pLwCBfBbbtbxAB3SON1JldHP&transmission=120574&code=pt-br&screenName=Flores&clientModel=SCROLL&clientId=5052",
+    "mode": "site",
+    "audioStreamUrl": null,
+    "audioVolume": 100,
+    "currentAudioIndex": 0
   }
 }

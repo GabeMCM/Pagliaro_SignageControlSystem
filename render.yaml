@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: signage-control-system
+    runtime: docker
+    plan: free
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: PORT
+        value: 8001
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: MONGODB_URI
+        sync: false # O Render solicitará que você insira sua senha/URI com segurança pelo painel
+      - key: MONGODB_DB_NAME
+        value: signage_control
