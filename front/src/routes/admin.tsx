@@ -2,7 +2,7 @@ import { createFileRoute, Outlet, Link, useParams, useRouter } from "@tanstack/r
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { signageApi, type Room } from "@/lib/signage-api";
-import { Radio, Plus, Circle, Menu, X, PanelLeftClose, PanelLeftOpen, Globe, Radio as RadioIcon, Copy, Check } from "lucide-react";
+import { Radio, Plus, Circle, Menu, X, PanelLeftClose, PanelLeftOpen, Globe, Radio as RadioIcon, Copy, Check, Monitor } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Signage Admin" }] }),
@@ -17,6 +17,18 @@ function AdminLayout() {
     queryFn: signageApi.listRooms,
     refetchInterval: 3000,
   });
+
+  const { data: devices = [] } = useQuery<any[]>({
+    queryKey: ["devices"],
+    queryFn: async () => {
+      const res = await fetch("/api/devices");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    refetchInterval: 4000,
+  });
+
+  const onlineDevicesCount = devices.filter((d: any) => d.online).length;
 
   const { data: systemInfo } = useQuery({
     queryKey: ["systemIp"],
@@ -158,7 +170,36 @@ function AdminLayout() {
           )}
         </div>
 
-        <div className={`px-5 pt-5 pb-2 text-[10px] uppercase tracking-[0.25em] text-neutral-500 flex items-center justify-between ${collapsed ? "hidden" : ""}`}>
+        {/* Link Global para Aparelhos / Telas Conectadas */}
+        <div className="px-2 pt-3 pb-2 border-b border-neutral-800/80">
+          <Link
+            to="/admin/devices"
+            onClick={() => setSidebarOpen(false)}
+            className={`group flex items-center justify-between gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+              router.state.location.pathname === "/admin/devices"
+                ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shadow-xs"
+                : "text-neutral-300 hover:bg-neutral-900 hover:text-white"
+            } ${collapsed ? "justify-center px-0" : ""}`}
+            title={collapsed ? `Aparelhos (${onlineDevicesCount} online)` : undefined}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Monitor className={`h-4 w-4 flex-shrink-0 ${router.state.location.pathname === "/admin/devices" ? "text-emerald-400" : "text-neutral-400 group-hover:text-emerald-400 transition"}`} />
+              {!collapsed && <span>Aparelhos / Telas</span>}
+            </div>
+            {!collapsed && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+                onlineDevicesCount > 0
+                  ? "bg-emerald-950 text-emerald-400 border border-emerald-500/30"
+                  : "bg-neutral-900 text-neutral-500"
+              }`}>
+                {onlineDevicesCount > 0 && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                <span>{onlineDevicesCount}</span>
+              </span>
+            )}
+          </Link>
+        </div>
+
+        <div className={`px-5 pt-4 pb-2 text-[10px] uppercase tracking-[0.25em] text-neutral-500 flex items-center justify-between ${collapsed ? "hidden" : ""}`}>
           <span>Rooms ({rooms.length})</span>
           <span className="text-[9px] text-neutral-600">
             {rooms.filter(r => r.online).length} online

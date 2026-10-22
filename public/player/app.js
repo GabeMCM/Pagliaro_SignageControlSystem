@@ -1,3 +1,172 @@
+// Global error handler para Smart TVs (evita tela preta silenciosa)
+window.onerror = function(msg, url, line, col, error) {
+  console.error("Player Error:", msg, line, col, error);
+  var statusDiv = document.getElementById('status');
+  if (statusDiv) {
+    statusDiv.style.display = 'block';
+    statusDiv.style.background = '#7f1d1d';
+    statusDiv.style.color = '#fecaca';
+    statusDiv.innerHTML = '<div style="font-weight:bold;margin-bottom:4px;">Aviso do Player:</div><div style="font-size:12px;">' + (msg || 'Erro ao carregar') + '</div><button onclick="window.location.reload()" style="margin-top:8px;padding:6px 12px;background:#fff;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:11px;">Recarregar Tela</button>';
+  }
+  return false;
+};
+
+function safeGetStorage(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (e) {
+    return null;
+  }
+}
+
+function safeSetStorage(key, val) {
+  try {
+    localStorage.setItem(key, val);
+  } catch (e) {}
+}
+
+function generateHardwareFingerprint() {
+  try {
+    var components = [];
+    if (typeof navigator !== 'undefined') {
+      components.push(navigator.userAgent || '');
+      components.push(navigator.platform || '');
+      components.push(navigator.hardwareConcurrency || '');
+      components.push(navigator.language || '');
+    }
+    if (typeof screen !== 'undefined') {
+      components.push(screen.width + 'x' + screen.height + 'x' + screen.colorDepth);
+    }
+    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+      try {
+        components.push(Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+      } catch (_e) {}
+    }
+    try {
+      var canvas = document.createElement('canvas');
+      var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      if (gl) {
+        var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+          components.push(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || '');
+        }
+      }
+    } catch (_e) {}
+
+    var str = components.join('|||');
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    var hex = (hash >>> 0).toString(16);
+    while (hex.length < 8) hex = '0' + hex;
+
+    var prefix = 'dev_';
+    var ua = (typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '').toLowerCase();
+    if (ua.indexOf('tizen') !== -1) prefix = 'samsung_';
+    else if (ua.indexOf('webos') !== -1 || ua.indexOf('netcast') !== -1) prefix = 'lg_';
+    else if (ua.indexOf('android') !== -1 && ua.indexOf('tv') !== -1) prefix = 'androidtv_';
+    else if (ua.indexOf('windows') !== -1) prefix = 'pc_';
+    else if (ua.indexOf('macintosh') !== -1 || ua.indexOf('mac os') !== -1) prefix = 'mac_';
+    else if (ua.indexOf('linux') !== -1) prefix = 'linux_';
+
+    return prefix + hex;
+  } catch (_e) {
+    return 'dev_' + Math.random().toString(36).substring(2, 10);
+  }
+}
+
+function getPersistentDeviceId() {
+  var id = safeGetStorage('signage_device_id');
+  if (!id) {
+    try {
+      if (typeof document !== 'undefined' && document.cookie) {
+        var match = document.cookie.match(/(?:^|; )signage_device_id=([^;]*)/);
+        if (match && match[1]) {
+          id = decodeURIComponent(match[1]);
+        }
+      }
+    } catch (_e) {}
+  }
+  if (!id) {
+    id = generateHardwareFingerprint();
+  }
+  safeSetStorage('signage_device_id', id);
+  try {
+    if (typeof document !== 'undefined') {
+      document.cookie = 'signage_device_id=' + encodeURIComponent(id) + '; max-age=315360000; path=/; SameSite=Lax';
+    }
+  } catch (e) {}
+  return id;
+}
+
+const currentDeviceId = getPersistentDeviceId();
+
+function playIdentifyChime() {
+  try {
+    var AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    var ctx = new AudioContextClass();
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+    osc.frequency.setValueAtTime(880.00, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.65);
+  } catch (_e) {}
+}
+
+var identifyTimer = null;
+function showDeviceIdentifyOverlay(info) {
+  var overlay = document.getElementById('device-identify-overlay');
+  if (!overlay) return;
+
+  playIdentifyChime();
+
+  var titleEl = document.getElementById('identify-modal-title');
+  var idEl = document.getElementById('identify-modal-id');
+  var roomEl = document.getElementById('identify-modal-room');
+  var ipEl = document.getElementById('identify-modal-ip');
+  var resEl = document.getElementById('identify-modal-res');
+  var secEl = document.getElementById('identify-timer-sec');
+
+  if (titleEl) titleEl.textContent = info.name || "Aparelho Identificado";
+  if (idEl) idEl.textContent = info.deviceId || currentDeviceId;
+  if (roomEl) roomEl.textContent = info.room || (roomSlug ? roomSlug : "Nenhuma (Lobby)");
+  if (ipEl) ipEl.textContent = info.ip || window.location.hostname;
+  if (resEl) resEl.textContent = window.innerWidth + " x " + window.innerHeight;
+
+  overlay.classList.add('visible');
+
+  var remaining = info.duration || 15;
+  if (secEl) secEl.textContent = remaining;
+
+  if (identifyTimer) clearInterval(identifyTimer);
+  identifyTimer = setInterval(function() {
+    remaining--;
+    if (secEl) secEl.textContent = remaining;
+    if (remaining <= 0) {
+      clearInterval(identifyTimer);
+      identifyTimer = null;
+      overlay.classList.remove('visible');
+    }
+  }, 1000);
+
+  overlay.onclick = function() {
+    if (identifyTimer) {
+      clearInterval(identifyTimer);
+      identifyTimer = null;
+    }
+    overlay.classList.remove('visible');
+  };
+}
+
 const urlParams = new URLSearchParams(window.location.search);
 let roomSlug = urlParams.get('room');
 const API_BASE = window.location.origin;
@@ -271,32 +440,243 @@ document.addEventListener('dblclick', (e) => {
   }
 });
 
-// --- MODO STANDBY / BLACKOUT VIRTUAL (Pausa / Fim de Expediente) ---
+// --- MODO STANDBY / BLACKOUT COM RELÓGIO, DATA E CLIMA (Uberaba - MG) ---
+const STANDBY_SVGS = {
+  sun: `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`,
+  moon: `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#93c5fd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`,
+  cloudSun: `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fcd34d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="M20 12h2"/><path d="m19.07 4.93-1.41 1.41"/><path d="M15.947 12.65a4 4 0 0 0-5.925-4.128"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"/></svg>`,
+  cloudMoon: `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#bfdbfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.188 8.5A6 6 0 0 1 16 4a6 6 0 0 0-6 6c0 1.25.383 2.41 1.036 3.376"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"/></svg>`,
+  cloud: `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`,
+  cloudRain: `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>`,
+  cloudLightning: `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16.326A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.973"/><path d="m13 12-3 5h4l-3 5"/></svg>`,
+  cloudFog: `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 17H7"/><path d="M17 21H9"/></svg>`,
+};
+
+function getStandbyWeatherVisuals(code, isDay) {
+  if (code === 0) {
+    return {
+      description: isDay ? "Céu limpo" : "Noite estrelada",
+      iconSvg: isDay ? STANDBY_SVGS.sun : STANDBY_SVGS.moon,
+    };
+  }
+  if (code === 1 || code === 2) {
+    return {
+      description: "Parcialmente nublado",
+      iconSvg: isDay ? STANDBY_SVGS.cloudSun : STANDBY_SVGS.cloudMoon,
+    };
+  }
+  if (code === 3) {
+    return {
+      description: "Nublado",
+      iconSvg: STANDBY_SVGS.cloud,
+    };
+  }
+  if (code === 45 || code === 48) {
+    return {
+      description: "Nevoeiro",
+      iconSvg: STANDBY_SVGS.cloudFog,
+    };
+  }
+  if (code >= 51 && code <= 57) {
+    return {
+      description: "Garoa / Chuvisco",
+      iconSvg: STANDBY_SVGS.cloudRain,
+    };
+  }
+  if (code >= 61 && code <= 67) {
+    return {
+      description: code >= 65 ? "Chuva forte" : "Chuva",
+      iconSvg: STANDBY_SVGS.cloudRain,
+    };
+  }
+  if (code >= 80 && code <= 82) {
+    return {
+      description: "Pancadas de chuva",
+      iconSvg: STANDBY_SVGS.cloudRain,
+    };
+  }
+  if (code >= 95) {
+    return {
+      description: "Tempestade",
+      iconSvg: STANDBY_SVGS.cloudLightning,
+    };
+  }
+  return {
+    description: "Tempo estável",
+    iconSvg: isDay ? STANDBY_SVGS.sun : STANDBY_SVGS.moon,
+  };
+}
+
+function formatStandbyDate(date) {
+  const weekdayNames = [
+    "Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira",
+    "Quinta-feira", "Sexta-feira", "Sábado"
+  ];
+  const monthNames = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+  ];
+  return `${weekdayNames[date.getDay()]}, ${date.getDate()} de ${monthNames[date.getMonth()]} de ${date.getFullYear()}`;
+}
+
+function tickStandbyClock() {
+  const now = new Date();
+  const hm = document.getElementById('standby-clock-hm');
+  const sec = document.getElementById('standby-clock-sec');
+  const dateEl = document.getElementById('standby-date');
+  if (hm) {
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    hm.textContent = `${hours}:${minutes}`;
+  }
+  if (sec) {
+    sec.textContent = `:${String(now.getSeconds()).padStart(2, '0')}`;
+  }
+  if (dateEl) {
+    dateEl.textContent = formatStandbyDate(now);
+  }
+}
+
+function shiftStandbyAntiBurnIn() {
+  const content = document.getElementById('standby-content');
+  if (!content) return;
+  // Deslocamento sutil entre -15px e +15px para proteção contínua de painéis OLED/LED
+  const x = Math.floor(Math.random() * 31) - 15;
+  const y = Math.floor(Math.random() * 21) - 10;
+  content.style.transform = `translate(${x}px, ${y}px)`;
+}
+
+let lastStandbyWeatherFetch = 0;
+async function fetchStandbyWeather(force = false) {
+  const now = Date.now();
+  if (!force && now - lastStandbyWeatherFetch < 10 * 60 * 1000) {
+    return;
+  }
+  lastStandbyWeatherFetch = now;
+
+  let weather = null;
+  // 1. Tenta buscar pelo backend local (/api/weather/uberaba com cache de 15 min)
+  try {
+    const res = await fetch(`${API_BASE}/api/weather/uberaba`);
+    if (res.ok) {
+      weather = await res.json();
+    }
+  } catch (err) {
+    console.warn("Falha ao consultar clima pelo backend, tentando rota direta:", err);
+  }
+
+  // 2. Fallback direto caso o backend falhe
+  if (!weather || weather.temperature === null || weather.temperature === undefined) {
+    try {
+      const url = "https://api.open-meteo.com/v1/forecast?latitude=-19.7483&longitude=-47.9319&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=America%2FSao_Paulo&forecast_days=1";
+      const directRes = await fetch(url);
+      if (directRes.ok) {
+        const raw = await directRes.json();
+        var cur = raw && raw.current ? raw.current : {};
+        var dly = raw && raw.daily ? raw.daily : {};
+        var maxArr = dly.temperature_2m_max;
+        var minArr = dly.temperature_2m_min;
+        weather = {
+          city: "Uberaba",
+          state: "MG",
+          temperature: Math.round(cur.temperature_2m !== undefined ? cur.temperature_2m : 0),
+          apparentTemperature: Math.round(cur.apparent_temperature !== undefined ? cur.apparent_temperature : 0),
+          humidity: Math.round(cur.relative_humidity_2m !== undefined ? cur.relative_humidity_2m : 0),
+          weatherCode: cur.weather_code !== undefined ? cur.weather_code : 0,
+          isDay: cur.is_day !== undefined ? cur.is_day : 1,
+          tempMax: Math.round(maxArr && maxArr[0] !== undefined ? maxArr[0] : (cur.temperature_2m || 0)),
+          tempMin: Math.round(minArr && minArr[0] !== undefined ? minArr[0] : (cur.temperature_2m || 0)),
+        };
+      }
+    } catch (e) {
+      console.error("Falha ao obter clima diretamente de Open-Meteo:", e);
+    }
+  }
+
+  if (!weather || weather.temperature === null || weather.temperature === undefined) {
+    var descEl = document.getElementById('standby-weather-desc');
+    if (descEl) descEl.textContent = "Clima indisponível";
+    return;
+  }
+
+  var visuals = getStandbyWeatherVisuals(weather.weatherCode, weather.isDay !== 0);
+
+  var iconEl = document.getElementById('standby-weather-icon');
+  var tempEl = document.getElementById('standby-weather-temp');
+  var descEl = document.getElementById('standby-weather-desc');
+  var feelsEl = document.getElementById('standby-weather-feels');
+  var maxEl = document.getElementById('standby-temp-max');
+  var minEl = document.getElementById('standby-temp-min');
+  var humEl = document.getElementById('standby-humidity');
+
+  if (iconEl) iconEl.innerHTML = visuals.iconSvg;
+  if (tempEl) tempEl.textContent = weather.temperature + "°";
+  if (descEl) descEl.textContent = visuals.description;
+  var feelsTemp = (weather.apparentTemperature !== undefined && weather.apparentTemperature !== null) ? weather.apparentTemperature : weather.temperature;
+  if (feelsEl) feelsEl.textContent = "Sensação " + feelsTemp + "°C";
+  if (maxEl) maxEl.textContent = weather.tempMax + "°";
+  if (minEl) minEl.textContent = weather.tempMin + "°";
+  if (humEl) humEl.textContent = weather.humidity + "%";
+}
+
 let isStandbyActive = false;
+let standbyClockInterval = null;
+let standbyWeatherInterval = null;
+let standbyJitterInterval = null;
+
 function applyStandbyMode(active) {
   isStandbyActive = active;
   let overlay = document.getElementById('standby-blackout-overlay');
+  
   if (active) {
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'standby-blackout-overlay';
-      overlay.style = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000000;z-index:99990;display:flex;align-items:center;justify-content:center;transition:opacity 0.6s ease;';
-      overlay.innerHTML = `
-        <div style="display:flex;align-items:center;gap:10px;opacity:0.3;color:#ffffff;font-size:13px;font-family:sans-serif;letter-spacing:0.25em;text-transform:uppercase;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
-          <span>Standby • Sala em Pausa</span>
-        </div>
-      `;
-      document.body.appendChild(overlay);
+    if (overlay) {
+      overlay.style.display = 'flex';
+      void overlay.offsetWidth;
+      overlay.classList.add('standby-visible');
     }
-    overlay.style.display = 'flex';
+
+    // Inicia relógio imediatamente e configura intervalo de 1s
+    tickStandbyClock();
+    if (standbyClockInterval) clearInterval(standbyClockInterval);
+    standbyClockInterval = setInterval(tickStandbyClock, 1000);
+
+    // Consulta clima imediatamente e a cada 10 minutos
+    fetchStandbyWeather();
+    if (standbyWeatherInterval) clearInterval(standbyWeatherInterval);
+    standbyWeatherInterval = setInterval(() => fetchStandbyWeather(), 10 * 60 * 1000);
+
+    // Anti-burn-in jitter a cada 2.5 minutos
+    if (standbyJitterInterval) clearInterval(standbyJitterInterval);
+    standbyJitterInterval = setInterval(shiftStandbyAntiBurnIn, 150000);
+
+    // Pausa som de fundo
     if (!bgmPlayer.paused) {
       bgmPlayer.pause();
     }
   } else {
     if (overlay) {
-      overlay.style.display = 'none';
+      overlay.classList.remove('standby-visible');
+      setTimeout(() => {
+        if (!isStandbyActive && overlay) {
+          overlay.style.display = 'none';
+        }
+      }, 600);
     }
+
+    if (standbyClockInterval) {
+      clearInterval(standbyClockInterval);
+      standbyClockInterval = null;
+    }
+    if (standbyWeatherInterval) {
+      clearInterval(standbyWeatherInterval);
+      standbyWeatherInterval = null;
+    }
+    if (standbyJitterInterval) {
+      clearInterval(standbyJitterInterval);
+      standbyJitterInterval = null;
+    }
+
+    // Restaura áudio caso não esteja pausado pelo operador
     if (!aIsPaused && (currentRoomState.audioStreamUrl || audioItems.length > 0)) {
       bgmPlayer.play().catch(e => console.warn(e));
     }
@@ -683,14 +1063,21 @@ async function emitCommand(target, cmd, value) {
   }
 }
 
-document.getElementById('btn-v-prev')?.addEventListener('click', () => emitCommand('visual', 'prev'));
-document.getElementById('btn-v-play')?.addEventListener('click', () => emitCommand('visual', vIsPaused ? 'play' : 'pause'));
-document.getElementById('btn-v-next')?.addEventListener('click', () => emitCommand('visual', 'next'));
-document.getElementById('btn-site-reload')?.addEventListener('click', () => reloadSiteFrame());
+var btnVPrev = document.getElementById('btn-v-prev');
+if (btnVPrev) btnVPrev.addEventListener('click', function() { emitCommand('visual', 'prev'); });
+var btnVPlay = document.getElementById('btn-v-play');
+if (btnVPlay) btnVPlay.addEventListener('click', function() { emitCommand('visual', vIsPaused ? 'play' : 'pause'); });
+var btnVNext = document.getElementById('btn-v-next');
+if (btnVNext) btnVNext.addEventListener('click', function() { emitCommand('visual', 'next'); });
+var btnSiteReload = document.getElementById('btn-site-reload');
+if (btnSiteReload) btnSiteReload.addEventListener('click', function() { reloadSiteFrame(); });
 
-document.getElementById('btn-a-prev')?.addEventListener('click', () => emitCommand('audio', 'prev'));
-document.getElementById('btn-a-play')?.addEventListener('click', () => emitCommand('audio', aIsPaused ? 'play' : 'pause'));
-document.getElementById('btn-a-next')?.addEventListener('click', () => emitCommand('audio', 'next'));
+var btnAPrev = document.getElementById('btn-a-prev');
+if (btnAPrev) btnAPrev.addEventListener('click', function() { emitCommand('audio', 'prev'); });
+var btnAPlay = document.getElementById('btn-a-play');
+if (btnAPlay) btnAPlay.addEventListener('click', function() { emitCommand('audio', aIsPaused ? 'play' : 'pause'); });
+var btnANext = document.getElementById('btn-a-next');
+if (btnANext) btnANext.addEventListener('click', function() { emitCommand('audio', 'next'); });
 
 // --- INICIALIZAÇÃO & SINCRONIZAÇÃO SILENCIOSA ---
 async function fetchState() {
@@ -936,16 +1323,28 @@ function returnToLobby(noticeMessage) {
 function connectWebSocket() {
   if (!roomSlug) return;
   const wsUrl = API_BASE.replace('http', 'ws');
-  const ws = new WebSocket(`${wsUrl}/ws/${roomSlug}`);
+  const ws = new WebSocket(`${wsUrl}/ws/${roomSlug}?deviceId=${encodeURIComponent(currentDeviceId)}`);
   
   ws.onopen = () => {
-    console.log("WebSocket conectado à sala", roomSlug);
+    console.log("WebSocket conectado à sala", roomSlug, "Aparelho:", currentDeviceId);
   };
 
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-      if (data.type === "clientAssigned") {
+      if (data.type === "identify") {
+        showDeviceIdentifyOverlay(data);
+        return;
+      } else if (data.type === "bindRoom") {
+        if (data.roomSlug && data.roomSlug !== roomSlug) {
+          safeSetStorage('signage_last_room', data.roomSlug);
+          window.location.replace('/player/index.html?room=' + encodeURIComponent(data.roomSlug));
+        } else if (!data.roomSlug && roomSlug) {
+          safeSetStorage('signage_last_room', '');
+          window.location.replace('/player/index.html');
+        }
+        return;
+      } else if (data.type === "clientAssigned") {
         clientId = data.clientId;
         deviceLabel = data.deviceLabel;
         console.log(`[Player] Conectado como ${deviceLabel} [ID: ${clientId}]`);
@@ -1026,30 +1425,91 @@ function requireUserInteraction(reason) {
   document.body.appendChild(overlay);
 }
 
-// --- BOOTSTRAP ---
-requestWakeLock();
+let hubWs = null;
+let hubPingInterval = null;
 
-if (!roomSlug) {
-  showRoomSelection();
-} else {
-  localStorage.setItem('signage_last_room', roomSlug);
-  fetchState();
-  connectWebSocket();
+function connectHubWebSocket() {
+  if (roomSlug || hubWs) return;
+  const wsUrl = API_BASE.replace('http', 'ws');
+  const url = `${wsUrl}/ws/hub?deviceId=${encodeURIComponent(currentDeviceId)}&path=${encodeURIComponent(window.location.pathname)}&res=${window.screen.width}x${window.screen.height}`;
+  
+  try {
+    hubWs = new WebSocket(url);
+    hubWs.onopen = function() {
+      console.log("[Hub WS] Conectado como aparelho no lobby:", currentDeviceId);
+      if (hubPingInterval) clearInterval(hubPingInterval);
+      hubPingInterval = setInterval(function() {
+        if (hubWs && hubWs.readyState === WebSocket.OPEN) {
+          hubWs.send(JSON.stringify({ type: "ping" }));
+        }
+      }, 25000);
+    };
+    hubWs.onmessage = function(event) {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "identify") {
+          showDeviceIdentifyOverlay(data);
+        } else if (data.type === "bindRoom") {
+          if (data.roomSlug) {
+            safeSetStorage('signage_last_room', data.roomSlug);
+            window.location.replace('/player/index.html?room=' + encodeURIComponent(data.roomSlug));
+          }
+        } else if (data.type === "reload") {
+          window.location.reload();
+        }
+      } catch (_e) {}
+    };
+    hubWs.onclose = function() {
+      if (hubPingInterval) clearInterval(hubPingInterval);
+      hubWs = null;
+      if (!roomSlug) {
+        setTimeout(connectHubWebSocket, 3000);
+      }
+    };
+  } catch (e) {
+    console.warn("Hub WS connection error:", e);
+    setTimeout(connectHubWebSocket, 5000);
+  }
+}
+
+async function registerDeviceWithServer() {
+  try {
+    const res = await fetch(`${API_BASE}/api/devices/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: currentDeviceId,
+        screenResolution: `${window.screen.width}x${window.screen.height}`,
+        path: window.location.pathname + window.location.search,
+        assignedRoomSlug: roomSlug || null,
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (!roomSlug && data && data.device && data.device.assignedRoomSlug) {
+        console.log("Aparelho vinculado remotamente à sala:", data.device.assignedRoomSlug);
+        safeSetStorage('signage_last_room', data.device.assignedRoomSlug);
+        window.location.replace('/player/index.html?room=' + encodeURIComponent(data.device.assignedRoomSlug));
+      }
+    }
+  } catch (e) {
+    console.warn("Falha no registro inicial do dispositivo:", e);
+  }
 }
 
 let reconnectCountdownTimer = null;
 
 async function showRoomSelection(notice, skipCountdown = false) {
-  if (reconnectCountdownTimer) {
-    clearInterval(reconnectCountdownTimer);
-    reconnectCountdownTimer = null;
-  }
-
-  showStatus("Carregando salas disponíveis...");
   try {
+    if (reconnectCountdownTimer) {
+      clearInterval(reconnectCountdownTimer);
+      reconnectCountdownTimer = null;
+    }
+
+    showStatus("Carregando salas disponíveis...");
     const res = await fetch(`${API_BASE}/api/rooms`);
+    if (!res.ok) throw new Error("Status " + res.status);
     const rooms = await res.json();
-    statusEl.style.display = 'none';
 
     // Remove menu anterior caso já exista
     const oldMenu = document.querySelector('.room-menu');
@@ -1063,9 +1523,11 @@ async function showRoomSelection(notice, skipCountdown = false) {
       noticeHtml = `<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 20px; line-height: 1.4; display: flex; align-items: center; gap: 8px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${notice}</span></div>`;
     }
 
-    const lastRoomSlug = localStorage.getItem('signage_last_room');
+    const lastRoomSlug = safeGetStorage('signage_last_room');
     const lastRoom = (!skipCountdown && !notice && lastRoomSlug) ? rooms.find(r => r.slug === lastRoomSlug) : null;
-    const canAutoReconnect = Boolean(lastRoom && (lastRoom.clientsCount ?? 0) < (lastRoom.maxClients ?? 2));
+    const lastRoomCount = (lastRoom && lastRoom.clientsCount !== undefined) ? lastRoom.clientsCount : 0;
+    const lastRoomMax = (lastRoom && lastRoom.maxClients !== undefined) ? lastRoom.maxClients : 2;
+    const canAutoReconnect = Boolean(lastRoom && lastRoomCount < lastRoomMax);
 
     let autoReconnectHtml = '';
     if (canAutoReconnect) {
@@ -1098,6 +1560,10 @@ async function showRoomSelection(notice, skipCountdown = false) {
       <h1>Lobby - Selecione uma Tela / Sala</h1>
       <p style="color: #888; font-size: 13px; margin-top: -12px; margin-bottom: 24px;">Limite de 2 telas simultâneas por sala</p>
       <div class="room-list"></div>
+      <div style="margin-top: 24px; padding: 12px 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; font-size: 12px; color: #9ca3af; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+        <div>Identificação deste aparelho: <strong style="color: #34d399; font-family: monospace; font-size: 13px;">${currentDeviceId}</strong></div>
+        <div style="font-size: 11px; color: #6b7280;">Pode ser vinculado remotamente pelo Painel Admin</div>
+      </div>
     `;
 
     const enterRoom = (room) => {
@@ -1105,10 +1571,14 @@ async function showRoomSelection(notice, skipCountdown = false) {
         clearInterval(reconnectCountdownTimer);
         reconnectCountdownTimer = null;
       }
-      localStorage.setItem('signage_last_room', room.slug);
+      safeSetStorage('signage_last_room', room.slug);
       window.history.pushState({}, '', '?room=' + room.slug);
       roomSlug = room.slug;
       autoReconnect = true;
+      if (hubWs) {
+        try { hubWs.close(); } catch (_e) {}
+        hubWs = null;
+      }
       fetchState();
       connectWebSocket();
       menu.remove();
@@ -1127,17 +1597,24 @@ async function showRoomSelection(notice, skipCountdown = false) {
         }
       }, 1000);
 
-      menu.querySelector('#btn-cancel-countdown')?.addEventListener('click', () => {
-        if (reconnectCountdownTimer) {
-          clearInterval(reconnectCountdownTimer);
-          reconnectCountdownTimer = null;
-        }
-        document.getElementById('auto-reconnect-card')?.remove();
-      });
+      const cancelBtn = menu.querySelector('#btn-cancel-countdown');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+          if (reconnectCountdownTimer) {
+            clearInterval(reconnectCountdownTimer);
+            reconnectCountdownTimer = null;
+          }
+          const card = document.getElementById('auto-reconnect-card');
+          if (card) card.remove();
+        });
+      }
 
-      menu.querySelector('#btn-now-countdown')?.addEventListener('click', () => {
-        enterRoom(lastRoom);
-      });
+      const nowBtn = menu.querySelector('#btn-now-countdown');
+      if (nowBtn) {
+        nowBtn.addEventListener('click', () => {
+          enterRoom(lastRoom);
+        });
+      }
     }
 
     const list = menu.querySelector('.room-list');
@@ -1146,8 +1623,8 @@ async function showRoomSelection(notice, skipCountdown = false) {
       list.innerHTML = '<p style="color: #888; font-size: 14px;">Nenhuma sala configurada no sistema.</p>';
     }
     rooms.forEach(room => {
-      const count = room.clientsCount ?? 0;
-      const max = room.maxClients ?? 2;
+      const count = room.clientsCount !== undefined ? room.clientsCount : 0;
+      const max = room.maxClients !== undefined ? room.maxClients : 2;
       const isFull = count >= max;
 
       const btn = document.createElement('button');
@@ -1174,8 +1651,40 @@ async function showRoomSelection(notice, skipCountdown = false) {
       };
       list.appendChild(btn);
     });
+    statusEl.style.display = 'none';
     document.body.appendChild(menu);
   } catch (_e) {
-    showStatus("Erro ao conectar ao servidor.");
+    showStatus("Buscando salas disponíveis no servidor... (Reconectando em 3s)");
+    setTimeout(() => {
+      showRoomSelection(notice, skipCountdown);
+    }, 3500);
   }
 }
+
+// --- BOOTSTRAP INICIAL DO PLAYER ---
+try {
+  requestWakeLock();
+} catch (_e) {}
+
+try {
+  registerDeviceWithServer().catch(function(err) {
+    console.warn("Falha no registro inicial do dispositivo:", err);
+  });
+} catch (_e) {}
+
+if (!roomSlug) {
+  try {
+    connectHubWebSocket();
+  } catch (_e) {}
+  showRoomSelection().catch(function(err) {
+    console.error("Erro fatal ao carregar lobby:", err);
+    showStatus("Erro ao abrir lobby: " + (err.message || err));
+  });
+} else {
+  safeSetStorage('signage_last_room', roomSlug);
+  fetchState().catch(function(err) {
+    console.error("Erro ao carregar estado:", err);
+  });
+  connectWebSocket();
+}
+

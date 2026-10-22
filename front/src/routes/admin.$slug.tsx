@@ -562,7 +562,7 @@ function RoomOperator() {
                 if (
                   confirm(
                     nextStandby
-                      ? "Ativar Modo Standby? A TV ficará com a tela preta e o som pausado para o intervalo."
+                      ? "Ativar Modo Standby? A TV exibirá data, relógio e clima de Uberaba-MG (som pausado)."
                       : "Retomar a exibição normal na TV?"
                   )
                 ) {
@@ -649,7 +649,7 @@ function RoomOperator() {
           <div className="flex items-center gap-2.5">
             <Moon className="h-5 w-5 text-amber-400 flex-shrink-0 animate-pulse" />
             <div className="text-xs sm:text-sm">
-              <strong>Modo Standby Ativo:</strong> A tela da TV está preta e o som pausado. Os visitantes não veem nada.
+              <strong>Modo Standby Ativo:</strong> A TV está exibindo relógio, data e previsão do tempo de Uberaba-MG (com som pausado).
             </div>
           </div>
           <button

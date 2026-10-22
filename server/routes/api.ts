@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { db } from "../services/db.ts";
-import { wsManager } from "../ws/manager.ts";
+import { wsManager, detectDeviceType } from "../ws/manager.ts";
 
 export const api = new Hono();
 
@@ -501,3 +501,247 @@ api.get("/system/ip", (c) => {
     db: db.getStatus(),
   });
 });
+
+// ========================
+// WEATHER (Uberaba - MG)
+// ========================
+let cachedWeather: {
+  timestamp: number;
+  data: any;
+} | null = null;
+
+const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutos de cache
+
+api.get("/weather/uberaba", async (c) => {
+  const now = Date.now();
+  if (cachedWeather && (now - cachedWeather.timestamp < WEATHER_CACHE_TTL_MS)) {
+    return c.json(cachedWeather.data);
+  }
+
+  try {
+    const url = "https://api.open-meteo.com/v1/forecast?latitude=-19.7483&longitude=-47.9319&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=America%2FSao_Paulo&forecast_days=1";
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) {
+      throw new Error(`Open-Meteo returned status ${res.status}`);
+    }
+    const raw = await res.json();
+
+    const weatherData = {
+      city: "Uberaba",
+      state: "MG",
+      temperature: Math.round(raw.current?.temperature_2m ?? 0),
+      apparentTemperature: Math.round(raw.current?.apparent_temperature ?? 0),
+      humidity: Math.round(raw.current?.relative_humidity_2m ?? 0),
+      weatherCode: raw.current?.weather_code ?? 0,
+      isDay: raw.current?.is_day ?? 1,
+      tempMax: Math.round(raw.daily?.temperature_2m_max?.[0] ?? raw.current?.temperature_2m ?? 0),
+      tempMin: Math.round(raw.daily?.temperature_2m_min?.[0] ?? raw.current?.temperature_2m ?? 0),
+      precipitation: raw.current?.precipitation ?? 0,
+      updatedAt: new Date().toISOString(),
+    };
+
+    cachedWeather = {
+      timestamp: now,
+      data: weatherData,
+    };
+
+    return c.json(weatherData);
+  } catch (err: any) {
+    console.error("Erro ao obter previsão do tempo de Uberaba:", err?.message || err);
+    if (cachedWeather) {
+      return c.json({ ...cachedWeather.data, stale: true });
+    }
+    return c.json({
+      error: "Falha ao obter clima",
+      city: "Uberaba",
+      state: "MG",
+      temperature: null,
+    }, 500);
+  }
+});
+
+// ========================
+// DEVICES (Gestão Remota de Aparelhos / TVs)
+// ========================
+
+// 1. Registro e Heartbeat de Aparelho (chamado pela raiz /, /player, etc.)
+api.post("/devices/register", async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = body.id;
+    if (!id || typeof id !== "string") {
+      return c.json({ error: "ID do aparelho é obrigatório." }, 400);
+    }
+
+    const ip =
+      c.req.header("x-forwarded-for")?.split(",")[0].trim() ||
+      c.req.header("cf-connecting-ip") ||
+      "localhost";
+    const userAgent = c.req.header("user-agent") || body.userAgent || "Navegador Web";
+    const detectedLabel = detectDeviceType(userAgent);
+
+    const existing = await db.getDevice(id);
+    const rooms = await db.getRooms();
+    const boundRoomSlug = existing?.assignedRoomSlug || body.assignedRoomSlug || null;
+    const assignedRoom = rooms.find((r: any) => r.slug === boundRoomSlug);
+
+    const device = {
+      id,
+      name: existing?.name || body.name || `${detectedLabel} (${id.slice(-4)})`,
+      detectedLabel,
+      userAgent,
+      ip,
+      screenResolution: body.screenResolution || existing?.screenResolution || "",
+      assignedRoomSlug: boundRoomSlug,
+      assignedRoomName: assignedRoom?.name || null,
+      currentPath: body.path || existing?.currentPath || "/",
+      lastSeenAt: Date.now(),
+      firstSeenAt: existing?.firstSeenAt || Date.now(),
+    };
+
+    await db.saveDevice(device);
+    wsManager.broadcastDevicesUpdate();
+
+    return c.json({
+      success: true,
+      device: {
+        ...device,
+        online: wsManager.isDeviceOnline(id),
+      },
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message || "Erro ao registrar aparelho" }, 500);
+  }
+});
+
+// 2. Lista todos os aparelhos cadastrados com status online em tempo real
+api.get("/devices", async (c) => {
+  const devices = await db.getDevices();
+  const rooms = await db.getRooms();
+
+  const enriched = devices.map((d: any) => {
+    const room = rooms.find((r: any) => r.slug === d.assignedRoomSlug);
+    return {
+      ...d,
+      assignedRoomName: room?.name || d.assignedRoomName || null,
+      online: wsManager.isDeviceOnline(d.id),
+    };
+  });
+
+  // Ordena: primeiro os online, depois por último visto mais recente
+  enriched.sort((a: any, b: any) => {
+    if (a.online !== b.online) return a.online ? -1 : 1;
+    return (b.lastSeenAt || 0) - (a.lastSeenAt || 0);
+  });
+
+  return c.json(enriched);
+});
+
+// 3. Detalhes de um aparelho
+api.get("/devices/:id", async (c) => {
+  const id = c.req.param("id");
+  const device = await db.getDevice(id);
+  if (!device) {
+    return c.json({ error: "Aparelho não encontrado" }, 404);
+  }
+  return c.json({
+    ...device,
+    online: wsManager.isDeviceOnline(id),
+  });
+});
+
+// 4. Atualizar nome ou vincular sala
+api.patch("/devices/:id", async (c) => {
+  const id = c.req.param("id");
+  const device = await db.getDevice(id);
+  if (!device) {
+    return c.json({ error: "Aparelho não encontrado" }, 404);
+  }
+
+  const body = await c.req.json();
+  if (body.name !== undefined && typeof body.name === "string") {
+    device.name = body.name.trim() || device.detectedLabel;
+  }
+
+  if (body.assignedRoomSlug !== undefined) {
+    const targetRoomSlug = body.assignedRoomSlug ? String(body.assignedRoomSlug).trim() : null;
+    await wsManager.bindDeviceToRoom(id, targetRoomSlug);
+    device.assignedRoomSlug = targetRoomSlug;
+    const rooms = await db.getRooms();
+    const assignedRoom = rooms.find((r: any) => r.slug === targetRoomSlug);
+    device.assignedRoomName = assignedRoom?.name || null;
+  }
+
+  await db.saveDevice(device);
+  wsManager.broadcastDevicesUpdate();
+
+  return c.json({
+    success: true,
+    device: {
+      ...device,
+      online: wsManager.isDeviceOnline(id),
+    },
+  });
+});
+
+// 5. Identificar aparelho visualmente (piscar tela / banner na TV)
+api.post("/devices/:id/identify", async (c) => {
+  const id = c.req.param("id");
+  const device = await db.getDevice(id);
+  const body = await c.req.json().catch(() => ({}));
+
+  const sent = wsManager.identifyDevice(id, {
+    duration: body.duration || 15,
+    message: body.message,
+    name: device?.name,
+    room: device?.assignedRoomSlug,
+  });
+
+  return c.json({
+    success: sent,
+    message: sent
+      ? "Sinal de identificação enviado para a tela do aparelho com sucesso!"
+      : "Aparelho não está conectado no momento. O sinal não pôde ser entregue.",
+  });
+});
+
+// 6. Recarregar tela do aparelho remotamente
+api.post("/devices/:id/reload", (c) => {
+  const id = c.req.param("id");
+  const sent = wsManager.reloadDevice(id);
+  return c.json({
+    success: sent,
+    message: sent ? "Comando de recarregamento enviado à tela." : "Aparelho offline.",
+  });
+});
+
+// 7. Limpar todos os aparelhos desconectados (faxina de testes / inativos)
+api.post("/devices/clean-offline", async (c) => {
+  try {
+    const devices = await db.getDevices();
+    let deletedCount = 0;
+    for (const d of devices) {
+      if (!wsManager.isDeviceOnline(d.id)) {
+        await db.deleteDevice(d.id);
+        deletedCount++;
+      }
+    }
+    wsManager.broadcastDevicesUpdate();
+    return c.json({
+      success: true,
+      deletedCount,
+      message: `${deletedCount} aparelho(s) desconectado(s) removido(s) com sucesso.`,
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message || "Erro ao limpar aparelhos" }, 500);
+  }
+});
+
+// 8. Excluir aparelho individual
+api.delete("/devices/:id", async (c) => {
+  const id = c.req.param("id");
+  await db.deleteDevice(id);
+  wsManager.broadcastDevicesUpdate();
+  return c.json({ success: true, message: "Aparelho removido com sucesso." });
+});
+

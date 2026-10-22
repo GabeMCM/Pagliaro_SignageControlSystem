@@ -59,7 +59,7 @@ async function migrateLocalDataIfEmpty() {
     if (roomsCount === 0) {
       const localRooms = (await readJson("rooms.json")) || [];
       if (localRooms.length > 0) {
-        console.log(`📦 [MongoDB] Migrando ${localRooms.length} salas locais para o MongoDB Atlas...`);
+        console.log(`[MongoDB] Migrando ${localRooms.length} salas locais para o MongoDB Atlas...`);
         const clean = localRooms.map((r: any) => {
           const { _id, ...rest } = r;
           return rest;
@@ -74,7 +74,7 @@ async function migrateLocalDataIfEmpty() {
     if (plCount === 0) {
       const localPlaylists = (await readJson("playlists.json")) || [];
       if (localPlaylists.length > 0) {
-        console.log(`📦 [MongoDB] Migrando ${localPlaylists.length} playlists locais para o MongoDB Atlas...`);
+        console.log(`[MongoDB] Migrando ${localPlaylists.length} playlists locais para o MongoDB Atlas...`);
         const clean = localPlaylists.map((p: any) => {
           const { _id, ...rest } = p;
           return rest;
@@ -90,7 +90,7 @@ async function migrateLocalDataIfEmpty() {
       const localState = (await readJson("state.json")) || {};
       const entries = Object.entries(localState);
       if (entries.length > 0) {
-        console.log(`📦 [MongoDB] Migrando estados de salas locais para o MongoDB Atlas...`);
+        console.log(`[MongoDB] Migrando estados de salas locais para o MongoDB Atlas...`);
         for (const [slug, roomState] of entries) {
           if (roomState) {
             await stateCol.updateOne(
@@ -102,15 +102,30 @@ async function migrateLocalDataIfEmpty() {
         }
       }
     }
+
+    // 4. Migra Dispositivos se a coleção estiver vazia
+    const devCol = mongoDb.collection("devices");
+    const devCount = await devCol.countDocuments();
+    if (devCount === 0) {
+      const localDevs = (await readJson("devices.json")) || [];
+      if (localDevs.length > 0) {
+        console.log(`[MongoDB] Migrando ${localDevs.length} dispositivos locais para o MongoDB Atlas...`);
+        const clean = localDevs.map((d: any) => {
+          const { _id, ...rest } = d;
+          return rest;
+        });
+        await devCol.insertMany(clean);
+      }
+    }
   } catch (e) {
-    console.warn("⚠️ [MongoDB] Aviso durante migração inicial de dados:", e);
+    console.warn("[MongoDB] Aviso durante migração inicial de dados:", e);
   }
 }
 
 // Inicializa a conexão com o MongoDB Atlas se MONGODB_URI estiver presente
 if (MONGODB_URI) {
   try {
-    console.log("🔄 [Database] Conectando ao MongoDB Atlas...");
+    console.log("[Database] Conectando ao MongoDB Atlas...");
     mongoClient = new MongoClient(MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 10000,
@@ -118,7 +133,7 @@ if (MONGODB_URI) {
     await mongoClient.connect();
     mongoDb = mongoClient.db(MONGODB_DB_NAME);
     isConnectedToMongo = true;
-    console.log(`✅ [MongoDB Atlas] Conectado com sucesso ao banco '${MONGODB_DB_NAME}'!`);
+    console.log(`[MongoDB Atlas] Conectado com sucesso ao banco '${MONGODB_DB_NAME}'!`);
 
     await migrateLocalDataIfEmpty();
   } catch (err) {
@@ -248,6 +263,82 @@ export const db = {
       }
     }
     return writeJson("state.json", state);
+  },
+
+  /**
+   * Retorna todos os aparelhos/dispositivos cadastrados
+   */
+  getDevices: async (): Promise<any[]> => {
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        return await mongoDb.collection("devices").find({}, { projection: { _id: 0 } }).toArray();
+      } catch (e) {
+        console.error("[MongoDB] Erro ao buscar dispositivos:", e);
+      }
+    }
+    return (await readJson("devices.json")) || [];
+  },
+
+  /**
+   * Retorna um aparelho específico pelo ID
+   */
+  getDevice: async (id: string): Promise<any | null> => {
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        return await mongoDb.collection("devices").findOne({ id }, { projection: { _id: 0 } });
+      } catch (e) {
+        console.error("[MongoDB] Erro ao buscar dispositivo:", e);
+      }
+    }
+    const list: any[] = (await readJson("devices.json")) || [];
+    return list.find((d) => d.id === id) || null;
+  },
+
+  /**
+   * Salva ou atualiza os dados de um aparelho
+   */
+  saveDevice: async (device: any): Promise<boolean> => {
+    if (!device || !device.id) return false;
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        const { _id, ...rest } = device;
+        await mongoDb.collection("devices").updateOne(
+          { id: device.id },
+          { $set: rest },
+          { upsert: true }
+        );
+        return true;
+      } catch (e) {
+        console.error("[MongoDB] Erro ao salvar dispositivo:", e);
+        return false;
+      }
+    }
+    const list: any[] = (await readJson("devices.json")) || [];
+    const idx = list.findIndex((d) => d.id === device.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...device };
+    } else {
+      list.push(device);
+    }
+    return writeJson("devices.json", list);
+  },
+
+  /**
+   * Remove um aparelho cadastrado
+   */
+  deleteDevice: async (id: string): Promise<boolean> => {
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        await mongoDb.collection("devices").deleteOne({ id });
+        return true;
+      } catch (e) {
+        console.error("[MongoDB] Erro ao deletar dispositivo:", e);
+        return false;
+      }
+    }
+    let list: any[] = (await readJson("devices.json")) || [];
+    list = list.filter((d) => d.id !== id);
+    return writeJson("devices.json", list);
   },
 
   /**

@@ -32,6 +32,7 @@ app.route("/ws", wsRoute);
 app.use("/media/*", serveStatic({ root: "./" }));
 
 // Rota estática para o Kiosk Player
+app.get("/player", (c) => c.redirect("/player/index.html"));
 app.use("/player/*", serveStatic({ root: "./public" }));
 
 // Rotas estáticas para o frontend do Admin (Vite Build SPA)
