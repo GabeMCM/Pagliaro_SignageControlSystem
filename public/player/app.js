@@ -226,6 +226,134 @@ function playNextAudio() {
   emitCommand('audio', 'trackChanged', aIndex);
 }
 
+// --- SCREEN WAKE LOCK (Impede suspensão/apagar de tela na Smart TV) ---
+let wakeLock = null;
+async function requestWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log('[WakeLock] Tela ativa (suspensão prevenida).');
+      wakeLock.addEventListener('release', () => {
+        wakeLock = null;
+      });
+    } catch (err) {
+      console.warn('[WakeLock] Não disponível ou recusado:', err);
+    }
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !wakeLock) {
+    requestWakeLock();
+  }
+});
+
+// --- ATALHOS DE TELA CHEIA (Tecla F e Duplo Clique) ---
+function toggleFullScreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'f' || e.key === 'F') {
+    toggleFullScreen();
+  }
+});
+
+document.addEventListener('dblclick', (e) => {
+  if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+    toggleFullScreen();
+  }
+});
+
+// --- MODO STANDBY / BLACKOUT VIRTUAL (Pausa / Fim de Expediente) ---
+let isStandbyActive = false;
+function applyStandbyMode(active) {
+  isStandbyActive = active;
+  let overlay = document.getElementById('standby-blackout-overlay');
+  if (active) {
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'standby-blackout-overlay';
+      overlay.style = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000000;z-index:99990;display:flex;align-items:center;justify-content:center;transition:opacity 0.6s ease;';
+      overlay.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;opacity:0.3;color:#ffffff;font-size:13px;font-family:sans-serif;letter-spacing:0.25em;text-transform:uppercase;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+          <span>Standby • Sala em Pausa</span>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+    }
+    overlay.style.display = 'flex';
+    if (!bgmPlayer.paused) {
+      bgmPlayer.pause();
+    }
+  } else {
+    if (overlay) {
+      overlay.style.display = 'none';
+    }
+    if (!aIsPaused && (currentRoomState.audioStreamUrl || audioItems.length > 0)) {
+      bgmPlayer.play().catch(e => console.warn(e));
+    }
+  }
+}
+
+// --- AUDIO WATCHDOG (Anti-buffering infinito / Recuperação suave de travamentos) ---
+let audioStallSecs = 0;
+let lastObservedAudioTime = -1;
+
+setInterval(() => {
+  // Ignora se o áudio estiver pausado pelo operador ou em modo Standby
+  if (aIsPaused || isStandbyActive) {
+    audioStallSecs = 0;
+    lastObservedAudioTime = -1;
+    return;
+  }
+  if (!currentRoomState.audioStreamUrl && audioItems.length === 0) {
+    audioStallSecs = 0;
+    lastObservedAudioTime = -1;
+    return;
+  }
+
+  // Detecta se o navegador pausou o áudio em background
+  if (bgmPlayer.paused && !aIsPaused && !isStandbyActive) {
+    audioStallSecs += 3;
+    if (audioStallSecs >= 6) {
+      console.log("[Audio Watchdog] Áudio pausado involuntariamente pelo sistema. Retomando...");
+      bgmPlayer.play().catch(e => console.warn("[Watchdog] Play:", e));
+      audioStallSecs = 0;
+    }
+    return;
+  }
+
+  // Detecta se a posição do áudio congelou no mesmo ponto (buffering infinito de rede/Dropbox)
+  const currentPos = bgmPlayer.currentTime;
+  if (currentPos > 0 && Math.abs(currentPos - lastObservedAudioTime) < 0.15) {
+    audioStallSecs += 3;
+    if (audioStallSecs >= 9) { // 9 segundos congelado
+      console.warn(`[Audio Watchdog] Congelamento de áudio detectado em ${currentPos.toFixed(1)}s. Recuperando suavemente...`);
+      audioStallSecs = 0;
+      lastObservedAudioTime = -1;
+      if (currentRoomState.audioStreamUrl) {
+        // Rádio/Stream: reconecta o fluxo
+        bgmPlayer.src = normalizeAudioUrl(currentRoomState.audioStreamUrl);
+        bgmPlayer.play().catch(e => console.warn(e));
+      } else {
+        // Playlist Dropbox: avança suavemente para a próxima faixa sem parar o sistema
+        handleAudioEnded();
+      }
+    }
+  } else {
+    audioStallSecs = 0;
+    lastObservedAudioTime = currentPos;
+  }
+}, 3000);
+
 // --- SITE ENGINE ---
 function activateSiteMode(url) {
   if (!url) return;
@@ -520,6 +648,10 @@ function handleCommand(target, cmd, value) {
       const btn = document.getElementById('btn-a-play');
       if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
     }
+  } else if (target === 'room') {
+    if (cmd === 'setStandby') {
+      applyStandbyMode(Boolean(value));
+    }
   }
 }
 
@@ -566,6 +698,9 @@ async function fetchState() {
     const res = await fetch(`${API_BASE}/api/state/${roomSlug}`);
     const data = await res.json();
     currentRoomState = { ...currentRoomState, ...data };
+
+    // Sincroniza Modo Standby / Blackout
+    applyStandbyMode(Boolean(data.standby));
 
     if (data.audioVolume !== undefined) {
       masterVolume = data.audioVolume;
@@ -632,6 +767,11 @@ async function updateStateSilently() {
     const data = await res.json();
     const oldState = { ...currentRoomState };
     currentRoomState = { ...currentRoomState, ...data };
+
+    // Sincroniza Modo Standby / Blackout
+    if (data.standby !== undefined) {
+      applyStandbyMode(Boolean(data.standby));
+    }
 
     // Sincroniza Volume Mestre de Áudio
     if (data.audioVolume !== undefined && data.audioVolume !== masterVolume) {
@@ -789,8 +929,8 @@ function returnToLobby(noticeMessage) {
   roomSlug = '';
   window.history.pushState({}, '', window.location.pathname);
 
-  // 3. Exibe o menu do lobby com aviso
-  showRoomSelection(noticeMessage);
+  // 3. Exibe o menu do lobby com aviso (sem contagem automática de reconexão se foi retirado)
+  showRoomSelection(noticeMessage, true);
 }
 
 function connectWebSocket() {
@@ -867,6 +1007,7 @@ function requireUserInteraction(reason) {
   overlay.querySelector('button').onclick = () => {
     overlay.remove();
     overlayShown = false;
+    requestWakeLock();
     // Resumo de Áudio
     if (!aIsPaused) {
       if (currentRoomState.audioStreamUrl || audioItems.length > 0) {
@@ -886,14 +1027,24 @@ function requireUserInteraction(reason) {
 }
 
 // --- BOOTSTRAP ---
+requestWakeLock();
+
 if (!roomSlug) {
   showRoomSelection();
 } else {
+  localStorage.setItem('signage_last_room', roomSlug);
   fetchState();
   connectWebSocket();
 }
 
-async function showRoomSelection(notice) {
+let reconnectCountdownTimer = null;
+
+async function showRoomSelection(notice, skipCountdown = false) {
+  if (reconnectCountdownTimer) {
+    clearInterval(reconnectCountdownTimer);
+    reconnectCountdownTimer = null;
+  }
+
   showStatus("Carregando salas disponíveis...");
   try {
     const res = await fetch(`${API_BASE}/api/rooms`);
@@ -909,15 +1060,86 @@ async function showRoomSelection(notice) {
 
     let noticeHtml = '';
     if (notice) {
-      noticeHtml = `<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 20px; line-height: 1.4;">⚠️ ${notice}</div>`;
+      noticeHtml = `<div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 20px; line-height: 1.4; display: flex; align-items: center; gap: 8px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${notice}</span></div>`;
     }
-    
+
+    const lastRoomSlug = localStorage.getItem('signage_last_room');
+    const lastRoom = (!skipCountdown && !notice && lastRoomSlug) ? rooms.find(r => r.slug === lastRoomSlug) : null;
+    const canAutoReconnect = Boolean(lastRoom && (lastRoom.clientsCount ?? 0) < (lastRoom.maxClients ?? 2));
+
+    let autoReconnectHtml = '';
+    if (canAutoReconnect) {
+      autoReconnectHtml = `
+        <div id="auto-reconnect-card" style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px; padding: 14px 18px; margin-bottom: 22px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+          <div>
+            <div style="color: #10b981; font-weight: bold; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+              <span>Reconexão Automática da TV</span>
+            </div>
+            <div style="color: #cbd5e1; font-size: 13px; margin-top: 3px;">
+              Reconectando a <strong style="color: #fff;">${lastRoom.name}</strong> em <span id="countdown-val" style="color: #10b981; font-weight: bold; font-size: 15px;">5</span>s...
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; margin-left: auto;">
+            <button id="btn-cancel-countdown" style="background: #262626; border: 1px solid #404040; color: #d4d4d4; padding: 8px 14px; border-radius: 6px; font-size: 12px; cursor: pointer;">
+              Trocar de Sala
+            </button>
+            <button id="btn-now-countdown" style="background: #10b981; border: none; color: black; font-weight: bold; padding: 8px 16px; border-radius: 6px; font-size: 12px; cursor: pointer;">
+              Entrar Agora
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
     menu.innerHTML = `
       ${noticeHtml}
+      ${autoReconnectHtml}
       <h1>Lobby - Selecione uma Tela / Sala</h1>
       <p style="color: #888; font-size: 13px; margin-top: -12px; margin-bottom: 24px;">Limite de 2 telas simultâneas por sala</p>
       <div class="room-list"></div>
     `;
+
+    const enterRoom = (room) => {
+      if (reconnectCountdownTimer) {
+        clearInterval(reconnectCountdownTimer);
+        reconnectCountdownTimer = null;
+      }
+      localStorage.setItem('signage_last_room', room.slug);
+      window.history.pushState({}, '', '?room=' + room.slug);
+      roomSlug = room.slug;
+      autoReconnect = true;
+      fetchState();
+      connectWebSocket();
+      menu.remove();
+    };
+
+    if (canAutoReconnect) {
+      let secondsRemaining = 5;
+      reconnectCountdownTimer = setInterval(() => {
+        secondsRemaining--;
+        const el = document.getElementById('countdown-val');
+        if (el) el.textContent = secondsRemaining;
+        if (secondsRemaining <= 0) {
+          clearInterval(reconnectCountdownTimer);
+          reconnectCountdownTimer = null;
+          enterRoom(lastRoom);
+        }
+      }, 1000);
+
+      menu.querySelector('#btn-cancel-countdown')?.addEventListener('click', () => {
+        if (reconnectCountdownTimer) {
+          clearInterval(reconnectCountdownTimer);
+          reconnectCountdownTimer = null;
+        }
+        document.getElementById('auto-reconnect-card')?.remove();
+      });
+
+      menu.querySelector('#btn-now-countdown')?.addEventListener('click', () => {
+        enterRoom(lastRoom);
+      });
+    }
+
     const list = menu.querySelector('.room-list');
     
     if (rooms.length === 0) {
@@ -948,12 +1170,7 @@ async function showRoomSelection(notice) {
           alert(`A sala "${room.name}" já atingiu o limite de ${max} telas conectadas. Retire um dispositivo pelo painel ou aguarde uma vaga.`);
           return;
         }
-        window.history.pushState({}, '', '?room=' + room.slug);
-        roomSlug = room.slug;
-        autoReconnect = true;
-        fetchState();
-        connectWebSocket();
-        menu.remove();
+        enterRoom(room);
       };
       list.appendChild(btn);
     });

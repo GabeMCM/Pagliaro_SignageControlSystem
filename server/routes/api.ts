@@ -392,6 +392,11 @@ api.post("/state/:roomSlug", async (c) => {
   if (body.audioShuffle !== undefined) state[room].audioShuffle = Boolean(body.audioShuffle);
   if (body.currentAudioIndex !== undefined) state[room].currentAudioIndex = Number(body.currentAudioIndex);
 
+  // Standby / Blackout Virtual
+  if (body.standby !== undefined) {
+    state[room].standby = Boolean(body.standby);
+  }
+
   // Atualização manual de status
   if (body.visualStatus !== undefined) state[room].visualStatus = body.visualStatus;
   if (body.audioStatus !== undefined) state[room].audioStatus = body.audioStatus;
@@ -458,6 +463,10 @@ api.post("/control/:roomSlug", async (c) => {
     } else if (body.command === "setTrackIndex" || body.command === "trackChanged") {
       state[room].currentAudioIndex = Number(body.value ?? 0);
     }
+  } else if (body.target === "room") {
+    if (body.command === "setStandby") {
+      state[room].standby = Boolean(body.value);
+    }
   }
   
   await db.saveState(state);
@@ -477,7 +486,15 @@ api.post("/control/:roomSlug", async (c) => {
 api.get("/system/ip", (c) => {
   const interfaces = Deno.networkInterfaces();
   const ipv4 = interfaces.find(i => i.family === "IPv4" && !i.address.startsWith("127."));
-  const publicUrl = Deno.env.get("PUBLIC_URL") || Deno.env.get("RENDER_EXTERNAL_URL");
+  
+  const host = c.req.header("x-forwarded-host") || c.req.header("host");
+  const proto = c.req.header("x-forwarded-proto") || (host?.includes("localhost") ? "http" : "https");
+  const headerOrigin = host ? `${proto}://${host}` : null;
+
+  const publicUrl = Deno.env.get("PUBLIC_URL") ||
+    Deno.env.get("RENDER_EXTERNAL_URL") ||
+    (headerOrigin && !headerOrigin.includes("localhost") && !headerOrigin.includes("127.0.0.1") ? headerOrigin : null);
+
   return c.json({
     ip: ipv4?.address || "localhost",
     publicUrl: publicUrl || null,

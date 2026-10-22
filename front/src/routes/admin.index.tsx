@@ -15,7 +15,7 @@ function AdminHome() {
   });
 
   return (
-    <div className="flex h-full flex-col items-center justify-center p-4 md:p-8 text-neutral-100 font-mono overflow-y-auto">
+    <div className="flex h-full flex-col items-center justify-center p-4 pb-24 md:p-8 md:pb-12 text-neutral-100 font-sans antialiased overflow-y-auto">
       <div className="w-full max-w-md space-y-6 text-center">
         <div>
           <div className="text-[10px] uppercase tracking-[0.4em] text-emerald-400">

@@ -57,6 +57,7 @@ export interface RoomState {
   audioLoopMode?: "all" | "one" | "none";
   audioShuffle?: boolean;
   currentAudioIndex?: number;
+  standby?: boolean;
 }
 
 const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
@@ -139,11 +140,18 @@ export const signageApi = {
       currentAudioIndex?: number;
       visualStatus?: "playing" | "paused" | "idle";
       audioStatus?: "playing" | "paused" | "idle";
+      standby?: boolean;
     }
   ) =>
     request<{ success: boolean; state: RoomState }>(`/api/state/${slug}`, {
       method: "POST",
       body: JSON.stringify(stateUpdate),
+    }),
+
+  setStandby: (slug: string, standby: boolean) =>
+    request<{ success: boolean; state: RoomState }>(`/api/state/${slug}`, {
+      method: "POST",
+      body: JSON.stringify({ standby }),
     }),
 
   reloadRoom: (slug: string) =>

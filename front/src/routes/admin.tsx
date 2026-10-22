@@ -2,7 +2,7 @@ import { createFileRoute, Outlet, Link, useParams, useRouter } from "@tanstack/r
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { signageApi, type Room } from "@/lib/signage-api";
-import { Radio, Plus, Circle, Menu, X, PanelLeftClose, PanelLeftOpen, Globe, Radio as RadioIcon } from "lucide-react";
+import { Radio, Plus, Circle, Menu, X, PanelLeftClose, PanelLeftOpen, Globe, Radio as RadioIcon, Copy, Check } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Signage Admin" }] }),
@@ -26,14 +26,36 @@ function AdminLayout() {
   const [creating, setCreating] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // active slug from URL
   const params = useParams({ strict: false }) as { slug?: string };
   const activeSlug = params.slug;
   const activeRoom = rooms.find((r) => r.slug === activeSlug);
 
+  // Determina o link de acesso para as TVs / Player (nuvem Render ou rede interna)
+  const currentOrigin = typeof window !== "undefined" && window.location.origin
+    ? window.location.origin
+    : (systemInfo?.publicUrl || `http://${systemInfo?.ip || "localhost"}:8001`);
+
+  const isLocal = currentOrigin.includes("localhost") || currentOrigin.includes("127.0.0.1");
+  const rawBase = (!isLocal || systemInfo?.publicUrl)
+    ? (systemInfo?.publicUrl || currentOrigin)
+    : (systemInfo?.ip ? `http://${systemInfo.ip}:${typeof window !== "undefined" && window.location.port ? window.location.port : "8001"}` : currentOrigin);
+
+  const cleanBase = rawBase.replace(/\/player\/?$/, "").replace(/\/+$/, "");
+  const playerAccessUrl = `${cleanBase}/player`;
+
+  const handleCopyLink = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(playerAccessUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    }
+  };
+
   return (
-    <div className="flex flex-col md:flex-row h-screen w-full bg-neutral-950 text-neutral-100 font-mono overflow-hidden">
+    <div className="flex flex-col md:flex-row h-screen h-[100dvh] w-full bg-neutral-950 text-neutral-100 font-sans antialiased overflow-hidden">
       {/* Mobile Top Header */}
       <div className="md:hidden flex items-center justify-between border-b border-neutral-800 bg-black px-4 py-3 flex-shrink-0 z-30">
         <div className="flex items-center gap-2 min-w-0">
@@ -68,7 +90,7 @@ function AdminLayout() {
         className={`
         ${sidebarOpen ? "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] flex shadow-2xl" : "hidden"} 
         md:flex md:relative md:z-auto ${collapsed ? "md:w-16" : "md:w-72"} flex-col border-r border-neutral-800 bg-neutral-950 md:bg-black flex-shrink-0
-        h-full md:h-screen transition-all duration-300
+        h-full md:h-screen md:h-[100dvh] transition-all duration-300
       `}
       >
         <div className="flex flex-col border-b border-neutral-800 px-4 py-3.5">
@@ -97,20 +119,41 @@ function AdminLayout() {
               <X className="h-5 w-5" />
             </button>
           </div>
-          {(!collapsed || sidebarOpen) && systemInfo && (
-            <div className="mt-2 text-[10px] text-neutral-500 flex items-center justify-between flex-wrap gap-1">
-              <div>
-                Player: <span className="text-emerald-400/90 font-semibold">{systemInfo.publicUrl || `${systemInfo.ip}:${typeof window !== "undefined" && window.location.port ? window.location.port : "8001"}`}</span>
+          {(!collapsed || sidebarOpen) && (
+            <div className="mt-2 text-[10px] text-neutral-500 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-1 flex-wrap">
+                <span className="text-neutral-400 font-medium">Link do Player (TVs):</span>
+                {systemInfo?.db && (
+                  <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold ${
+                    systemInfo.db.driver === "mongodb"
+                      ? "bg-emerald-950/60 text-emerald-400 border border-emerald-500/30"
+                      : "bg-neutral-900 text-neutral-500 border border-neutral-800"
+                  }`}>
+                    {systemInfo.db.driver === "mongodb" ? "MongoDB Atlas" : "JSON Local"}
+                  </span>
+                )}
               </div>
-              {systemInfo.db && (
-                <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold ${
-                  systemInfo.db.driver === "mongodb"
-                    ? "bg-emerald-950/60 text-emerald-400 border border-emerald-500/30"
-                    : "bg-neutral-900 text-neutral-500 border border-neutral-800"
-                }`}>
-                  {systemInfo.db.driver === "mongodb" ? "Atlas 🍃" : "JSON 📁"}
-                </span>
-              )}
+              <div className="flex items-center justify-between gap-1.5 bg-neutral-900/80 px-2 py-1.5 rounded-lg border border-neutral-800 min-w-0">
+                <a
+                  href={playerAccessUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="truncate min-w-0 flex-1 hover:underline"
+                  title="Abrir Kiosk Player em nova aba"
+                >
+                  <span className="text-emerald-400/90 font-semibold truncate block">
+                    {playerAccessUrl}
+                  </span>
+                </a>
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="text-neutral-400 hover:text-white p-1 rounded hover:bg-neutral-800 transition flex-shrink-0"
+                  title={copiedLink ? "Link copiado!" : "Copiar link do Player"}
+                >
+                  {copiedLink ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -165,7 +208,7 @@ function AdminLayout() {
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-hidden min-w-0 w-full max-w-full">
         <Outlet />
       </main>
     </div>
