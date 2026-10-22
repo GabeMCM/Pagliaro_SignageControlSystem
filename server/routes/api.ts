@@ -483,7 +483,7 @@ api.post("/control/:roomSlug", async (c) => {
 // ========================
 // SYSTEM
 // ========================
-api.get("/system/ip", (c) => {
+api.get("/system/ip", async (c) => {
   const interfaces = Deno.networkInterfaces();
   const ipv4 = interfaces.find(i => i.family === "IPv4" && !i.address.startsWith("127."));
   
@@ -495,10 +495,12 @@ api.get("/system/ip", (c) => {
     Deno.env.get("RENDER_EXTERNAL_URL") ||
     (headerOrigin && !headerOrigin.includes("localhost") && !headerOrigin.includes("127.0.0.1") ? headerOrigin : null);
 
+  const dbStatus = await db.getStatus();
+
   return c.json({
     ip: ipv4?.address || "localhost",
     publicUrl: publicUrl || null,
-    db: db.getStatus(),
+    db: dbStatus,
   });
 });
 

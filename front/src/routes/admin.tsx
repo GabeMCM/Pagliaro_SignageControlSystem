@@ -136,11 +136,18 @@ function AdminLayout() {
               <div className="flex items-center justify-between gap-1 flex-wrap">
                 <span className="text-neutral-400 font-medium">Link do Player (TVs):</span>
                 {systemInfo?.db && (
-                  <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold ${
-                    systemInfo.db.driver === "mongodb"
-                      ? "bg-emerald-950/60 text-emerald-400 border border-emerald-500/30"
-                      : "bg-neutral-900 text-neutral-500 border border-neutral-800"
-                  }`}>
+                  <span
+                    className={`text-[9px] px-1.5 py-0.2 rounded font-semibold cursor-help transition ${
+                      systemInfo.db.driver === "mongodb"
+                        ? "bg-emerald-950/60 text-emerald-400 border border-emerald-500/30"
+                        : "bg-neutral-900 text-neutral-400 border border-neutral-700 hover:border-amber-500/50 hover:text-amber-300"
+                    }`}
+                    title={
+                      systemInfo.db.driver === "mongodb"
+                        ? `Conectado com sucesso ao banco '${systemInfo.db.database}' no MongoDB Atlas.`
+                        : (systemInfo.db.error || "Armazenamento local em JSON. Configure a variável MONGODB_URI no painel do Render para conectar ao MongoDB Atlas.")
+                    }
+                  >
                     {systemInfo.db.driver === "mongodb" ? "MongoDB Atlas" : "JSON Local"}
                   </span>
                 )}

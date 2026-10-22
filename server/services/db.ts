@@ -122,25 +122,49 @@ async function migrateLocalDataIfEmpty() {
   }
 }
 
-// Inicializa a conexão com o MongoDB Atlas se MONGODB_URI estiver presente
-if (MONGODB_URI) {
+let mongoConnectionError: string | null = null;
+let isConnecting = false;
+
+export async function tryConnectMongo(): Promise<boolean> {
+  const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
+  if (!currentUri) {
+    mongoConnectionError = "Variável MONGODB_URI não configurada no servidor (Render).";
+    return false;
+  }
+  if (isConnectedToMongo) return true;
+  if (isConnecting) return false;
+
+  isConnecting = true;
   try {
     console.log("[Database] Conectando ao MongoDB Atlas...");
-    mongoClient = new MongoClient(MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
+    mongoClient = new MongoClient(currentUri, {
+      serverSelectionTimeoutMS: 6000,
       connectTimeoutMS: 10000,
     });
     await mongoClient.connect();
-    mongoDb = mongoClient.db(MONGODB_DB_NAME);
+    const currentDbName = Deno.env.get("MONGODB_DB_NAME") || MONGODB_DB_NAME;
+    mongoDb = mongoClient.db(currentDbName);
     isConnectedToMongo = true;
-    console.log(`[MongoDB Atlas] Conectado com sucesso ao banco '${MONGODB_DB_NAME}'!`);
+    mongoConnectionError = null;
+    console.log(`[MongoDB Atlas] Conectado com sucesso ao banco '${currentDbName}'!`);
 
     await migrateLocalDataIfEmpty();
-  } catch (err) {
-    console.error("⚠️ [MongoDB Atlas] Falha ao conectar ao banco. Usando armazenamento local em JSON como fallback.", err);
+    return true;
+  } catch (err: any) {
+    mongoConnectionError = err?.message || String(err);
+    console.error("⚠️ [MongoDB Atlas] Falha ao conectar ao banco:", mongoConnectionError);
     isConnectedToMongo = false;
+    return false;
+  } finally {
+    isConnecting = false;
   }
+}
+
+// Inicializa a conexão com o MongoDB Atlas na inicialização
+if (MONGODB_URI) {
+  tryConnectMongo().catch(() => {});
 } else {
+  mongoConnectionError = "Variável MONGODB_URI não configurada no servidor (Render).";
   console.log("ℹ️ [Database] MONGODB_URI não configurada. Usando armazenamento local em arquivos JSON (./config/).");
 }
 
@@ -342,10 +366,19 @@ export const db = {
   },
 
   /**
-   * Retorna o status da conexão atual
+   * Retorna o status da conexão atual com detalhes de diagnóstico
    */
-  getStatus: () => ({
-    driver: isConnectedToMongo ? "mongodb" : "json",
-    database: isConnectedToMongo ? MONGODB_DB_NAME : "local-files",
-  }),
+  getStatus: async () => {
+    const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
+    if (!isConnectedToMongo && currentUri && !isConnecting) {
+      await tryConnectMongo();
+    }
+    const currentDbName = Deno.env.get("MONGODB_DB_NAME") || MONGODB_DB_NAME;
+    return {
+      driver: isConnectedToMongo ? "mongodb" : "json",
+      database: isConnectedToMongo ? currentDbName : "local-files",
+      hasUri: Boolean(currentUri),
+      error: isConnectedToMongo ? null : mongoConnectionError,
+    };
+  },
 };

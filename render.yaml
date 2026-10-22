@@ -14,4 +14,4 @@ services:
       - key: MONGODB_URI
         sync: false # O Render solicitará que você insira sua senha/URI com segurança pelo painel
       - key: MONGODB_DB_NAME
-        value: signage_control
+        value: cap-signage
