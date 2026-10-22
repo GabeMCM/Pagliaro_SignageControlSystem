@@ -3,7 +3,7 @@
     "dev:server": "deno run --allow-net --allow-read --allow-write --allow-sys --allow-env --watch server/main.ts",
     "dev:front": "cd front && deno task dev",
     "dev": "deno run -A dev.ts",
-    "build:front": "cd front && deno task build",
+    "build:front": "cd front && deno install && deno task build",
     "start": "deno run --allow-net --allow-read --allow-write --allow-sys --allow-env server/main.ts"
   },
   "imports": {

@@ -1,5 +1,4 @@
-# Imagem oficial e otimizada do Deno
-FROM denoland/deno:2.1.9
+FROM docker.io/denoland/deno:latest
 
 WORKDIR /app
 

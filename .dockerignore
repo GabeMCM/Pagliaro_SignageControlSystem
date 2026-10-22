@@ -1,0 +1,8 @@
+.git
+.direnv
+.gemini
+front/node_modules
+front/dist
+*.log
+.env
+.env.*
