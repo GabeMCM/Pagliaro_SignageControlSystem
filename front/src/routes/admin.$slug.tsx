@@ -385,8 +385,63 @@ function RoomOperator() {
       standby?: boolean;
       audioStatus?: "playing" | "paused";
     }) => signageApi.setState(slug, updates),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["state", slug] }),
+    onMutate: async (updates) => {
+      await qc.cancelQueries({ queryKey: ["state", slug] });
+      const previousState = qc.getQueryData(["state", slug]);
+      qc.setQueryData(["state", slug], (old: any) => ({
+        ...(old || {}),
+        ...updates,
+      }));
+      return { previousState };
+    },
+    onError: (_err, _updates, context: any) => {
+      if (context?.previousState) {
+        qc.setQueryData(["state", slug], context.previousState);
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["state", slug] });
+    },
   });
+
+  // Disparo com Resposta Instantânea (0ms no celular e broadcast imediato na TV)
+  const handleOptimisticCommand = (
+    target: "visual" | "audio" | "site" | "room",
+    command: "play" | "pause" | "next" | "prev" | "reload" | "setVolume" | "setLoopMode" | "setShuffle" | "setTrackIndex" | "setStandby",
+    value?: any
+  ) => {
+    qc.setQueryData(["state", slug], (old: any) => {
+      if (!old) return old;
+      const updated = { ...old };
+      if (target === "audio") {
+        if (command === "play") updated.audioStatus = "playing";
+        else if (command === "pause") updated.audioStatus = "paused";
+        else if (command === "setVolume") updated.audioVolume = Number(value);
+        else if (command === "setLoopMode") updated.audioLoopMode = value;
+        else if (command === "setShuffle") updated.audioShuffle = Boolean(value);
+        else if (command === "setTrackIndex") updated.currentAudioIndex = Number(value);
+        else if (command === "next" && activeAudio?.items && activeAudio.items.length > 0) {
+          updated.audioStatus = "playing";
+          const max = activeAudio.items.length;
+          updated.currentAudioIndex = ((updated.currentAudioIndex || 0) + 1) % max;
+        } else if (command === "prev" && activeAudio?.items && activeAudio.items.length > 0) {
+          updated.audioStatus = "playing";
+          const max = activeAudio.items.length;
+          const curr = updated.currentAudioIndex || 0;
+          updated.currentAudioIndex = curr <= 0 ? max - 1 : curr - 1;
+        }
+      } else if (target === "room" && command === "setStandby") {
+        updated.standby = Boolean(value);
+      }
+      return updated;
+    });
+
+    if (command === "setVolume") {
+      signageApi.setAudioVolume(slug, Number(value)).catch(() => qc.invalidateQueries({ queryKey: ["state", slug] }));
+    } else {
+      signageApi.sendCommand(slug, target as any, command as any, value).catch(() => qc.invalidateQueries({ queryKey: ["state", slug] }));
+    }
+  };
 
   const deleteRoomMut = useMutation({
     mutationFn: (id: string) => signageApi.deleteRoom(id),
@@ -1458,7 +1513,7 @@ function RoomOperator() {
                 {/* Botões Prev / Play-Pause / Next */}
                 <div className="grid grid-cols-[auto_1fr_auto] items-center gap-1.5 w-full sm:w-auto">
                   <button
-                    onClick={() => signageApi.sendCommand(slug, "audio", "prev")}
+                    onClick={() => handleOptimisticCommand("audio", "prev")}
                     disabled={isAudioStreamActive || !activeAudio || activeAudio.items.length === 0}
                     className="min-h-[40px] w-10 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
                     title="Música Anterior"
@@ -1468,7 +1523,7 @@ function RoomOperator() {
 
                   {isAudioPlaying ? (
                     <button
-                      onClick={() => signageApi.sendCommand(slug, "audio", "pause")}
+                      onClick={() => handleOptimisticCommand("audio", "pause")}
                       className="min-h-[40px] px-4 rounded-[2px] bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 flex items-center justify-center gap-1.5 font-bold text-xs uppercase tracking-wider transition"
                     >
                       <Pause className="h-4 w-4 flex-shrink-0" />
@@ -1476,7 +1531,7 @@ function RoomOperator() {
                     </button>
                   ) : (
                     <button
-                      onClick={() => signageApi.sendCommand(slug, "audio", "play")}
+                      onClick={() => handleOptimisticCommand("audio", "play")}
                       className="min-h-[40px] px-4 rounded-[2px] bg-white text-black hover:bg-neutral-200 flex items-center justify-center gap-1.5 font-bold text-xs uppercase tracking-wider shadow-sm transition"
                     >
                       <Play className="h-4 w-4 flex-shrink-0 ml-0.5" />
@@ -1485,7 +1540,7 @@ function RoomOperator() {
                   )}
 
                   <button
-                    onClick={() => signageApi.sendCommand(slug, "audio", "next")}
+                    onClick={() => handleOptimisticCommand("audio", "next")}
                     disabled={isAudioStreamActive || !activeAudio || activeAudio.items.length === 0}
                     className="min-h-[40px] w-10 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
                     title="Próxima Música"
@@ -1499,7 +1554,7 @@ function RoomOperator() {
                   <VolumeWheelPicker
                     compact
                     value={currentAudioVolume}
-                    onChange={(val) => signageApi.setAudioVolume(slug, val)}
+                    onChange={(val) => handleOptimisticCommand("audio", "setVolume", val)}
                   />
 
                   {/* 9 Botões Rápidos de Volume (0% a 100% de 12,5 em 12,5%) */}
@@ -1513,7 +1568,7 @@ function RoomOperator() {
                         return (
                           <button
                             key={preset.val}
-                            onClick={() => signageApi.setAudioVolume(slug, preset.val)}
+                            onClick={() => handleOptimisticCommand("audio", "setVolume", preset.val)}
                             className={`min-h-[28px] px-1 py-0.5 rounded-[2px] text-[10px] font-semibold transition text-center truncate flex items-center justify-center ${
                               isSelected
                                 ? "bg-white text-black font-bold border border-white shadow-xs"
