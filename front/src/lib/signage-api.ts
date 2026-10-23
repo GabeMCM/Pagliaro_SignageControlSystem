@@ -77,6 +77,30 @@ export interface RoomState {
   standby?: boolean;
 }
 
+export interface ScheduleTask {
+  id: string;
+  roomSlug: string;
+  title: string;
+  scheduledAt: string; // ISO ou "YYYY-MM-DDTHH:mm"
+  enabled: boolean;
+  executed?: boolean;
+  executedAt?: number | null;
+  createdAt?: number;
+  actions: {
+    standby?: boolean; // false = liga tela / sai de suspensão, true = modo suspenso
+    siteUrl?: string | null;
+    mode?: "site" | "playlist";
+    playlist?: string | null;
+    audioPlaylist?: string | null;
+    audioStreamUrl?: string | null;
+    audioVolume?: number;
+    audioStatus?: "playing" | "paused" | "idle";
+    currentAudioIndex?: number;
+    audioLoopMode?: "all" | "one" | "none";
+    audioShuffle?: boolean;
+  };
+}
+
 const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
   const res = await fetch(`${API_BASE}${url}`, {
     ...options,
@@ -266,4 +290,37 @@ export const signageApi = {
     request<{ success: boolean; video: YoutubeTrackResult }>(
       `/api/youtube/video?url=${encodeURIComponent(urlOrId)}`
     ),
+
+  listSchedules: (roomSlug?: string) =>
+    request<ScheduleTask[]>(roomSlug ? `/api/schedules?room=${encodeURIComponent(roomSlug)}` : `/api/schedules`),
+
+  getSchedule: (id: string) =>
+    request<ScheduleTask>(`/api/schedules/${id}`),
+
+  createSchedule: (data: Partial<ScheduleTask>) =>
+    request<{ success: boolean; schedule: ScheduleTask }>("/api/schedules", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateSchedule: (id: string, data: Partial<ScheduleTask>) =>
+    request<{ success: boolean; schedule: ScheduleTask }>(`/api/schedules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  deleteSchedule: (id: string) =>
+    request<{ success: boolean }>(`/api/schedules/${id}`, {
+      method: "DELETE",
+    }),
+
+  toggleSchedule: (id: string) =>
+    request<{ success: boolean; enabled: boolean; schedule: ScheduleTask }>(`/api/schedules/${id}/toggle`, {
+      method: "POST",
+    }),
+
+  runScheduleNow: (id: string) =>
+    request<{ success: boolean; message: string }>(`/api/schedules/${id}/run`, {
+      method: "POST",
+    }),
 };

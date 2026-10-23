@@ -117,6 +117,21 @@ async function migrateLocalDataIfEmpty() {
         await devCol.insertMany(clean);
       }
     }
+
+    // 5. Migra Agendamentos/Automações se a coleção estiver vazia
+    const schedCol = mongoDb.collection("schedules");
+    const schedCount = await schedCol.countDocuments();
+    if (schedCount === 0) {
+      const localScheds = (await readJson("schedules.json")) || [];
+      if (localScheds.length > 0) {
+        console.log(`[MongoDB] Migrando ${localScheds.length} agendamentos locais para o MongoDB Atlas...`);
+        const clean = localScheds.map((s: any) => {
+          const { _id, ...rest } = s;
+          return rest;
+        });
+        await schedCol.insertMany(clean);
+      }
+    }
   } catch (e) {
     console.warn("[MongoDB] Aviso durante migração inicial de dados:", e);
   }
@@ -168,25 +183,36 @@ if (MONGODB_URI) {
   console.log("ℹ️ [Database] MONGODB_URI não configurada. Usando armazenamento local em arquivos JSON (./config/).");
 }
 
+// Caches em memória para acelerar respostas para 0ms e evitar latência de rede no Render
+let roomsCache: any[] | null = null;
+let playlistsCache: any[] | null = null;
+let stateCache: Record<string, any> | null = null;
+
 export const db = {
   /**
    * Retorna a lista de todas as salas cadastradas
    */
   getRooms: async (): Promise<any[]> => {
+    if (roomsCache) return roomsCache;
     if (isConnectedToMongo && mongoDb) {
       try {
-        return await mongoDb.collection("rooms").find({}, { projection: { _id: 0 } }).toArray();
+        const rooms = await mongoDb.collection("rooms").find({}, { projection: { _id: 0 } }).toArray();
+        roomsCache = rooms;
+        return rooms;
       } catch (e) {
         console.error("[MongoDB] Erro ao buscar salas:", e);
       }
     }
-    return (await readJson("rooms.json")) || [];
+    const local = (await readJson("rooms.json")) || [];
+    roomsCache = local;
+    return local;
   },
 
   /**
    * Salva/atualiza a lista completa de salas
    */
   saveRooms: async (rooms: any[]): Promise<boolean> => {
+    roomsCache = rooms;
     if (isConnectedToMongo && mongoDb) {
       try {
         const col = mongoDb.collection("rooms");
@@ -211,20 +237,26 @@ export const db = {
    * Retorna a lista de todas as playlists
    */
   getPlaylists: async (): Promise<any[]> => {
+    if (playlistsCache) return playlistsCache;
     if (isConnectedToMongo && mongoDb) {
       try {
-        return await mongoDb.collection("playlists").find({}, { projection: { _id: 0 } }).toArray();
+        const playlists = await mongoDb.collection("playlists").find({}, { projection: { _id: 0 } }).toArray();
+        playlistsCache = playlists;
+        return playlists;
       } catch (e) {
         console.error("[MongoDB] Erro ao buscar playlists:", e);
       }
     }
-    return (await readJson("playlists.json")) || [];
+    const local = (await readJson("playlists.json")) || [];
+    playlistsCache = local;
+    return local;
   },
 
   /**
    * Salva/atualiza a lista completa de playlists
    */
   savePlaylists: async (playlists: any[]): Promise<boolean> => {
+    playlistsCache = playlists;
     if (isConnectedToMongo && mongoDb) {
       try {
         const col = mongoDb.collection("playlists");
@@ -249,6 +281,7 @@ export const db = {
    * Retorna o estado atual de todas as salas (objeto indexado por slug)
    */
   getState: async (): Promise<Record<string, any>> => {
+    if (stateCache) return { ...stateCache };
     if (isConnectedToMongo && mongoDb) {
       try {
         const docs = await mongoDb.collection("state").find({}).toArray();
@@ -257,18 +290,46 @@ export const db = {
           const { _id, slug, ...roomState } = doc;
           stateObj[slug || _id] = roomState;
         }
-        return stateObj;
+        stateCache = stateObj;
+        return { ...stateObj };
       } catch (e) {
         console.error("[MongoDB] Erro ao buscar estado:", e);
       }
     }
-    return (await readJson("state.json")) || {};
+    const local = (await readJson("state.json")) || {};
+    stateCache = local;
+    return { ...local };
+  },
+
+  /**
+   * Salva/atualiza o estado de apenas UMA sala no banco e no cache de forma ultra-rápida
+   */
+  saveRoomState: async (slug: string, roomState: any): Promise<boolean> => {
+    if (!stateCache) {
+      stateCache = await db.getState();
+    }
+    stateCache[slug] = roomState;
+
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        await mongoDb.collection("state").updateOne(
+          { slug },
+          { $set: { slug, ...(typeof roomState === "object" ? roomState : { playlist: roomState }) } },
+          { upsert: true }
+        );
+        return true;
+      } catch (e) {
+        console.error(`[MongoDB] Erro ao salvar estado da sala ${slug}:`, e);
+      }
+    }
+    return writeJson("state.json", stateCache);
   },
 
   /**
    * Salva/atualiza o estado das salas
    */
   saveState: async (state: Record<string, any>): Promise<boolean> => {
+    stateCache = { ...state };
     if (isConnectedToMongo && mongoDb) {
       try {
         const col = mongoDb.collection("state");
@@ -363,6 +424,89 @@ export const db = {
     let list: any[] = (await readJson("devices.json")) || [];
     list = list.filter((d) => d.id !== id);
     return writeJson("devices.json", list);
+  },
+
+  /**
+   * Retorna lista de tarefas agendadas (opcionalmente filtrada por sala)
+   */
+  getSchedules: async (roomSlug?: string): Promise<any[]> => {
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        const query = roomSlug ? { roomSlug } : {};
+        return await mongoDb
+          .collection("schedules")
+          .find(query, { projection: { _id: 0 } })
+          .sort({ scheduledAt: 1 })
+          .toArray();
+      } catch (e) {
+        console.error("[MongoDB] Erro ao buscar agendamentos:", e);
+      }
+    }
+    const list: any[] = (await readJson("schedules.json")) || [];
+    const filtered = roomSlug ? list.filter((s) => s.roomSlug === roomSlug) : list;
+    return filtered.sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+  },
+
+  /**
+   * Retorna um agendamento específico pelo ID
+   */
+  getSchedule: async (id: string): Promise<any | null> => {
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        return await mongoDb.collection("schedules").findOne({ id }, { projection: { _id: 0 } });
+      } catch (e) {
+        console.error("[MongoDB] Erro ao buscar agendamento:", e);
+      }
+    }
+    const list: any[] = (await readJson("schedules.json")) || [];
+    return list.find((s) => s.id === id) || null;
+  },
+
+  /**
+   * Salva ou atualiza uma tarefa agendada
+   */
+  saveSchedule: async (task: any): Promise<boolean> => {
+    if (!task || !task.id) return false;
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        const { _id, ...rest } = task;
+        await mongoDb.collection("schedules").updateOne(
+          { id: task.id },
+          { $set: rest },
+          { upsert: true }
+        );
+        return true;
+      } catch (e) {
+        console.error("[MongoDB] Erro ao salvar agendamento:", e);
+        return false;
+      }
+    }
+    const list: any[] = (await readJson("schedules.json")) || [];
+    const idx = list.findIndex((s) => s.id === task.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...task };
+    } else {
+      list.push(task);
+    }
+    return writeJson("schedules.json", list);
+  },
+
+  /**
+   * Remove uma tarefa agendada
+   */
+  deleteSchedule: async (id: string): Promise<boolean> => {
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        await mongoDb.collection("schedules").deleteOne({ id });
+        return true;
+      } catch (e) {
+        console.error("[MongoDB] Erro ao deletar agendamento:", e);
+        return false;
+      }
+    }
+    let list: any[] = (await readJson("schedules.json")) || [];
+    list = list.filter((s) => s.id !== id);
+    return writeJson("schedules.json", list);
   },
 
   /**

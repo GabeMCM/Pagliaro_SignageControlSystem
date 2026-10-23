@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { db } from "../services/db.ts";
 import { wsManager, detectDeviceType } from "../ws/manager.ts";
 import { youtubeService } from "../services/youtube.ts";
+import { executeSchedule, type ScheduleTask } from "../services/scheduler.ts";
 
 export const api = new Hono();
 
@@ -402,10 +403,11 @@ api.post("/state/:roomSlug", async (c) => {
   if (body.visualStatus !== undefined) state[room].visualStatus = body.visualStatus;
   if (body.audioStatus !== undefined) state[room].audioStatus = body.audioStatus;
 
-  await db.saveState(state);
-  
-  // Emite evento para os Kiosks/Players conectados
+  // 1. Emite evento para os Kiosks/Players conectados imediatamente (sub-10ms!)
   wsManager.broadcast(room, JSON.stringify({ type: "updateState", state: state[room] }));
+  
+  // 2. Persiste no banco apenas esta sala de forma rápida
+  await db.saveRoomState(room, state[room]);
   
   return c.json({ success: true, state: state[room] });
 });
@@ -420,6 +422,14 @@ api.post("/control/:roomSlug", async (c) => {
   const room = c.req.param("roomSlug");
   const body = await c.req.json();
   
+  // 1. BROADCAST IMEDIATO para as TVs via WebSocket (latência < 10ms!)
+  wsManager.broadcast(room, JSON.stringify({
+    type: "control",
+    target: body.target,
+    command: body.command,
+    value: body.value,
+  }));
+
   const state = await db.getState();
   if (typeof state[room] === "string") {
     state[room] = { playlist: state[room], audioPlaylist: null };
@@ -470,13 +480,8 @@ api.post("/control/:roomSlug", async (c) => {
     }
   }
   
-  await db.saveState(state);
-  wsManager.broadcast(room, JSON.stringify({
-    type: "control",
-    target: body.target,
-    command: body.command,
-    value: body.value,
-  }));
+  // 2. Persiste estado apenas para esta sala (sem percorrer todas as outras)
+  await db.saveRoomState(room, state[room]);
   
   return c.json({ success: true, message: `Command ${body.command} broadcasted to ${body.target}`, state: state[room] });
 });
@@ -796,6 +801,14 @@ api.get("/youtube/video", async (c) => {
 });
 
 // 4. Proxy de Streaming Direto de Áudio (AAC/MP4 sem anúncios e com Zero Storage)
+api.options("/youtube/stream/:videoId", (c) => {
+  return c.text("", 204, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "Range, User-Agent, Content-Type",
+  });
+});
+
 api.get("/youtube/stream/:videoId", async (c) => {
   const rawId = c.req.param("videoId");
   const videoId = youtubeService.extractVideoId(rawId);
@@ -837,12 +850,22 @@ api.get("/youtube/stream/:videoId", async (c) => {
     responseHeaders.set("Content-Type", res.headers.get("content-type") || mimeType || "audio/mp4");
     responseHeaders.set("Accept-Ranges", "bytes");
     responseHeaders.set("Cache-Control", "public, max-age=3600");
+    responseHeaders.set("Access-Control-Allow-Origin", "*");
+    responseHeaders.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    responseHeaders.set("Access-Control-Allow-Headers", "Range, User-Agent, Content-Type");
 
     const contentRange = res.headers.get("content-range");
     if (contentRange) responseHeaders.set("Content-Range", contentRange);
 
     const contentLength = res.headers.get("content-length");
     if (contentLength) responseHeaders.set("Content-Length", contentLength);
+
+    if (c.req.method === "HEAD") {
+      return new Response(null, {
+        status: res.status,
+        headers: responseHeaders,
+      });
+    }
 
     return new Response(res.body, {
       status: res.status,
@@ -853,5 +876,103 @@ api.get("/youtube/stream/:videoId", async (c) => {
     return c.text(err.message || "Erro no proxy de áudio", 500);
   }
 });
+
+// ========================
+// AGENDAMENTOS E AUTOMAÇÕES (Timeline de Cerimônias e Velórios)
+// ========================
+
+// 1. Lista agendamentos (filtro opcional por sala: ?room=slug)
+api.get("/schedules", async (c) => {
+  const room = c.req.query("room");
+  const schedules = await db.getSchedules(room);
+  return c.json(schedules);
+});
+
+// 2. Detalhes de um agendamento
+api.get("/schedules/:id", async (c) => {
+  const id = c.req.param("id");
+  const schedule = await db.getSchedule(id);
+  if (!schedule) {
+    return c.json({ error: "Agendamento não encontrado" }, 404);
+  }
+  return c.json(schedule);
+});
+
+// 3. Criar novo agendamento
+api.post("/schedules", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body || !body.roomSlug || !body.title || !body.scheduledAt) {
+      return c.json({ error: "Sala, título e data/hora são obrigatórios." }, 400);
+    }
+
+    const newSchedule: ScheduleTask = {
+      id: crypto.randomUUID(),
+      roomSlug: String(body.roomSlug).trim(),
+      title: String(body.title).trim(),
+      scheduledAt: String(body.scheduledAt).trim(),
+      enabled: body.enabled !== false,
+      executed: false,
+      executedAt: null,
+      createdAt: Date.now(),
+      actions: body.actions || {},
+    };
+
+    await db.saveSchedule(newSchedule);
+    return c.json({ success: true, schedule: newSchedule }, 201);
+  } catch (err: any) {
+    return c.json({ error: err.message || "Erro ao salvar agendamento" }, 500);
+  }
+});
+
+// 4. Atualizar agendamento existente
+api.put("/schedules/:id", async (c) => {
+  const id = c.req.param("id");
+  const existing = await db.getSchedule(id);
+  if (!existing) {
+    return c.json({ error: "Agendamento não encontrado" }, 404);
+  }
+
+  const body = await c.req.json();
+  const updated: ScheduleTask = {
+    ...existing,
+    ...body,
+    id, // Protege ID
+  };
+
+  await db.saveSchedule(updated);
+  return c.json({ success: true, schedule: updated });
+});
+
+// 5. Excluir agendamento
+api.delete("/schedules/:id", async (c) => {
+  const id = c.req.param("id");
+  const deleted = await db.deleteSchedule(id);
+  return c.json({ success: deleted });
+});
+
+// 6. Ativar / Desativar (Pausar) agendamento
+api.post("/schedules/:id/toggle", async (c) => {
+  const id = c.req.param("id");
+  const schedule = await db.getSchedule(id);
+  if (!schedule) {
+    return c.json({ error: "Agendamento não encontrado" }, 404);
+  }
+  schedule.enabled = !schedule.enabled;
+  await db.saveSchedule(schedule);
+  return c.json({ success: true, enabled: schedule.enabled, schedule });
+});
+
+// 7. Testar / Executar Imediatamente
+api.post("/schedules/:id/run", async (c) => {
+  const id = c.req.param("id");
+  const schedule = await db.getSchedule(id);
+  if (!schedule) {
+    return c.json({ error: "Agendamento não encontrado" }, 404);
+  }
+  const executed = await executeSchedule(schedule, false);
+  return c.json({ success: executed, message: "Ação executada na tela da sala com sucesso!" });
+});
+
 
 

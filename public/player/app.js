@@ -224,24 +224,118 @@ let duckingActive = false;
 let duckingInterval = null;
 let masterVolume = 100; // 0 a 100
 
-const bgmPlayer = new Audio();
+// Player de Áudio Centralizado (conecta ao elemento do DOM)
+let bgmPlayer = document.getElementById('bgm-player');
+if (!bgmPlayer) {
+  bgmPlayer = document.createElement('audio');
+  bgmPlayer.id = 'bgm-player';
+  bgmPlayer.preload = 'auto';
+  bgmPlayer.crossOrigin = 'anonymous';
+  bgmPlayer.playsInline = true;
+  document.body.appendChild(bgmPlayer);
+} else {
+  bgmPlayer.preload = 'auto';
+  bgmPlayer.crossOrigin = 'anonymous';
+  bgmPlayer.playsInline = true;
+}
+
+// Controle de Desbloqueio Definitivo de Áudio (Autoplay Bypass)
+let isAudioUnlocked = false; // Começa falso por sessão do documento para garantir ativação real do navegador
+let consecutiveAudioErrors = 0;
+let audioRetryTimeout = null;
+
+function unlockAudioSubsystem() {
+  isAudioUnlocked = true;
+  safeSetStorage('signage_audio_unlocked', 'true');
+  console.log("[Audio] Subsistema de áudio desbloqueado com sucesso.");
+
+  // 1. Desbloqueia Web Audio Context nativo
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      if (!window._masterAudioCtx) {
+        window._masterAudioCtx = new AudioCtx();
+      }
+      if (window._masterAudioCtx.state === 'suspended') {
+        window._masterAudioCtx.resume();
+      }
+      const buffer = window._masterAudioCtx.createBuffer(1, 1, 22050);
+      const source = window._masterAudioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(window._masterAudioCtx.destination);
+      source.start(0);
+    }
+  } catch (err) {
+    console.warn("[AudioContext Unlock] Aviso:", err);
+  }
+
+  // 2. Desmuta o player principal e retoma som se necessário
+  try {
+    bgmPlayer.muted = false;
+    if (!aIsPaused) {
+      if (currentRoomState.audioStreamUrl || audioItems.length > 0) {
+        bgmPlayer.play().catch(e => console.warn("[bgmPlayer Play on Unlock]:", e));
+      }
+    }
+  } catch (_e) {}
+
+  // 3. Remove overlay de interação se estiver na tela
+  const overlay = document.getElementById('interaction-overlay');
+  if (overlay) {
+    overlay.remove();
+    overlayShown = false;
+  }
+}
+
+// Qualquer toque, clique ou tecla em qualquer lugar da tela desbloqueia o áudio permanentemente
+// Usamos capture: true para garantir captura antes de qualquer parada de propagação
+['click', 'touchstart', 'keydown', 'pointerdown'].forEach(evt => {
+  window.addEventListener(evt, unlockAudioSubsystem, { capture: true, passive: true });
+  document.addEventListener(evt, unlockAudioSubsystem, { capture: true, passive: true });
+});
+
 bgmPlayer.onended = () => {
   if (!currentRoomState.audioStreamUrl) {
     handleAudioEnded();
   }
 };
+
+bgmPlayer.onplaying = () => {
+  consecutiveAudioErrors = 0;
+};
+
 bgmPlayer.onerror = (e) => {
-  console.warn("Audio Error:", e);
+  const errCode = bgmPlayer.error ? bgmPlayer.error.code : 0;
+  const errMsg = bgmPlayer.error ? bgmPlayer.error.message : "";
+  console.warn(`[Audio Error] Código ${errCode}: ${errMsg}`, e);
+
+  consecutiveAudioErrors++;
+  if (consecutiveAudioErrors >= 8) {
+    console.error("[Audio] Muitas falhas consecutivas de áudio. Aguardando 10s antes de tentar novamente.");
+    if (audioRetryTimeout) clearTimeout(audioRetryTimeout);
+    audioRetryTimeout = setTimeout(() => {
+      consecutiveAudioErrors = 0;
+      handleAudioEnded();
+    }, 10000);
+    return;
+  }
+
   if (currentRoomState.audioStreamUrl) {
     console.log("Tentando reconectar stream de áudio em 3s...");
-    setTimeout(() => {
+    if (audioRetryTimeout) clearTimeout(audioRetryTimeout);
+    audioRetryTimeout = setTimeout(() => {
       if (currentRoomState.audioStreamUrl && !aIsPaused) {
         bgmPlayer.src = normalizeAudioUrl(currentRoomState.audioStreamUrl);
         bgmPlayer.play().catch(() => {});
       }
     }, 3000);
   } else {
-    handleAudioEnded();
+    // Dá um intervalo suave de 1.5s antes de avançar para a próxima faixa
+    // para evitar loop infinito que trava o navegador
+    if (audioRetryTimeout) clearTimeout(audioRetryTimeout);
+    audioRetryTimeout = setTimeout(() => {
+      handleAudioEnded();
+    }, 1500);
   }
 };
 
@@ -355,10 +449,17 @@ function startAudioPlayback() {
     }
     bgmPlayer.volume = calculateTargetAudioVolume();
     if (!aIsPaused) {
-      bgmPlayer.play().catch(e => {
-        console.warn("Audio stream autoplay blocked:", e);
-        requireUserInteraction("Clique para Iniciar o Áudio / Rádio");
-      });
+      const p = bgmPlayer.play();
+      if (p !== undefined) {
+        p.catch(e => {
+          console.warn("Audio stream play blocked:", e);
+          if (e && e.name === "NotAllowedError" && !isAudioUnlocked) {
+            bgmPlayer.muted = true;
+            bgmPlayer.play().catch(() => {});
+            requireUserInteraction("Clique para Iniciar o Áudio / Rádio");
+          }
+        });
+      }
     }
   } else {
     playNextAudio();
@@ -397,10 +498,17 @@ function playNextAudio() {
   bgmPlayer.volume = calculateTargetAudioVolume();
 
   if (!aIsPaused) {
-    bgmPlayer.play().catch(e => {
-      console.warn("BGM autoplay blocked:", e);
-      requireUserInteraction("Clique para Iniciar o Áudio");
-    });
+    const p = bgmPlayer.play();
+    if (p !== undefined) {
+      p.catch(e => {
+        console.warn("BGM autoplay blocked:", e);
+        if (e && e.name === "NotAllowedError" && !isAudioUnlocked) {
+          bgmPlayer.muted = true;
+          bgmPlayer.play().catch(() => {});
+          requireUserInteraction("Clique para Iniciar o Áudio");
+        }
+      });
+    }
   }
   emitCommand('audio', 'trackChanged', aIndex);
 }
@@ -858,7 +966,7 @@ function playNextVisual() {
               playNextVisual();
             } else if (event.data === YT.PlayerState.UNSTARTED) {
               setTimeout(() => {
-                if (ytPlayer && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === YT.PlayerState.UNSTARTED) {
+                if (!isAudioUnlocked && ytPlayer && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === YT.PlayerState.UNSTARTED) {
                   requireUserInteraction("Autoplay Bloqueado");
                 }
               }, 2000);
@@ -888,7 +996,9 @@ function playNextVisual() {
     container.appendChild(video);
     video.play().catch(e => {
       console.warn("Video autoplay blocked", e);
-      requireUserInteraction("Clique para Iniciar Vídeo");
+      if (e && e.name === "NotAllowedError" && !isAudioUnlocked) {
+        requireUserInteraction("Clique para Iniciar Vídeo");
+      }
     });
 
   } else if (item.type === 'web' || item.type === 'website') {
@@ -1158,10 +1268,9 @@ async function fetchState() {
   }
 }
 
-async function updateStateSilently() {
+async function updateStateSilently(providedState) {
   try {
-    const res = await fetch(`${API_BASE}/api/state/${roomSlug}`);
-    const data = await res.json();
+    const data = providedState || await (await fetch(`${API_BASE}/api/state/${roomSlug}`)).json();
     const oldState = { ...currentRoomState };
     currentRoomState = { ...currentRoomState, ...data };
 
@@ -1334,15 +1443,24 @@ function connectWebSocket() {
   if (!roomSlug) return;
   const wsUrl = API_BASE.replace('http', 'ws');
   const ws = new WebSocket(`${wsUrl}/ws/${roomSlug}?deviceId=${encodeURIComponent(currentDeviceId)}`);
+  let pingTimer = null;
   
   ws.onopen = () => {
     console.log("WebSocket conectado à sala", roomSlug, "Aparelho:", currentDeviceId);
+    // Heartbeat ping a cada 25 segundos para impedir que o Render ou proxy encerrem a conexão
+    pingTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 25000);
   };
 
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-      if (data.type === "identify") {
+      if (data.type === "pong") {
+        return;
+      } else if (data.type === "identify") {
         showDeviceIdentifyOverlay(data);
         return;
       } else if (data.type === "bindRoom") {
@@ -1375,7 +1493,7 @@ function connectWebSocket() {
         showStatus("Esta sala foi excluída no painel.");
         setTimeout(() => returnToLobby("Esta sala foi excluída no painel."), 3000);
       } else if (data.type === "updateState") {
-        updateStateSilently();
+        updateStateSilently(data.state);
       } else if (data.type === "control") {
         handleCommand(data.target, data.command, data.value);
       }
@@ -1385,6 +1503,10 @@ function connectWebSocket() {
   };
   
   ws.onclose = (event) => {
+    if (pingTimer) {
+      clearInterval(pingTimer);
+      pingTimer = null;
+    }
     if (!autoReconnect || event.code === 4001 || event.code === 4002) {
       console.log(`WebSocket desconectado (código ${event.code}). Aguardando no lobby.`);
       return;
@@ -1401,37 +1523,52 @@ function connectWebSocket() {
 // Interaction Overlay (Desbloqueio de Autoplay)
 let overlayShown = false;
 function requireUserInteraction(reason) {
+  if (isAudioUnlocked) return;
   if (overlayShown) return;
+  if (document.getElementById('interaction-overlay')) return;
   overlayShown = true;
   
   const overlay = document.createElement('div');
   overlay.id = 'interaction-overlay';
-  overlay.style = "position:absolute;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;";
+  overlay.style = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.88);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;cursor:pointer;backdrop-filter:blur(6px);padding:24px;box-sizing:border-box;text-align:center;";
   overlay.innerHTML = `
-    <h2 style="color:white;font-size:1.5rem;">${reason}</h2>
-    <p style="color:#aaa;font-size:1rem;">Navegadores exigem interação para permitir áudio automático.</p>
-    <button style="padding:15px 32px;font-size:1.25rem;background:#10b981;color:black;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">Iniciar Mídia</button>
+    <div style="background:#18181b;border:1px solid #27272a;border-radius:16px;padding:32px 28px;max-width:440px;width:100%;display:flex;flex-direction:column;align-items:center;gap:18px;box-shadow:0 20px 40px rgba(0,0,0,0.8);pointer-events:auto;">
+      <div style="width:56px;height:56px;border-radius:50%;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;color:#10b981;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+      </div>
+      <h2 style="color:white;font-size:1.35rem;font-weight:700;margin:0;line-height:1.3;">${reason || "Clique para Iniciar o Áudio"}</h2>
+      <p style="color:#a1a1aa;font-size:0.95rem;margin:0;line-height:1.5;">Navegadores exigem uma interação inicial para reproduzir som automaticamente.</p>
+      <button id="btn-unlock-media" style="margin-top:6px;padding:14px 32px;font-size:1.1rem;background:#10b981;color:#09090b;border:none;border-radius:10px;font-weight:700;cursor:pointer;width:100%;">Iniciar Mídia</button>
+      <span style="color:#71717a;font-size:0.8rem;">(Toque na tela ou aperte qualquer botão no controle remoto)</span>
+    </div>
   `;
   
-  overlay.querySelector('button').onclick = () => {
+  const dismissAndUnlock = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
     overlay.remove();
     overlayShown = false;
+    unlockAudioSubsystem();
     requestWakeLock();
     // Resumo de Áudio
     if (!aIsPaused) {
       if (currentRoomState.audioStreamUrl || audioItems.length > 0) {
-        bgmPlayer.play().catch(e => console.warn(e));
+        bgmPlayer.play().catch(e => console.warn("[Play after unlock error]:", e));
       }
     }
     // Resumo de Vídeo/YouTube
     const vItem = visualItems[vIndex];
     if (vItem && vItem.type === 'youtube' && ytPlayer && ytPlayer.playVideo) {
-      ytPlayer.playVideo();
+      try { ytPlayer.playVideo(); } catch (_e) {}
     } else if (vItem && vItem.type === 'video') {
       const vid = container.querySelector('video');
       if (vid) vid.play().catch(e => console.warn(e));
     }
   };
+
+  overlay.onclick = dismissAndUnlock;
+  overlay.ontouchstart = dismissAndUnlock;
+  const btn = overlay.querySelector('#btn-unlock-media');
+  if (btn) btn.onclick = dismissAndUnlock;
   document.body.appendChild(overlay);
 }
 

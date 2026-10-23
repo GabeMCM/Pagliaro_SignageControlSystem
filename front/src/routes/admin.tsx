@@ -69,19 +69,19 @@ function AdminLayout() {
   return (
     <div className="flex flex-col md:flex-row h-screen h-[100dvh] w-full bg-neutral-950 text-neutral-100 font-sans antialiased overflow-hidden">
       {/* Mobile Top Header */}
-      <div className="md:hidden flex items-center justify-between border-b border-neutral-800 bg-black px-4 py-3 flex-shrink-0 z-30">
+      <div className="md:hidden flex items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 py-2.5 flex-shrink-0 z-30">
         <div className="flex items-center gap-2 min-w-0">
-          <Radio className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+          <Radio className="h-4 w-4 text-neutral-300 flex-shrink-0" />
           <span className="text-xs uppercase tracking-[0.2em] text-neutral-300 font-bold truncate">
             {activeRoom ? activeRoom.name : "Signage Control"}
           </span>
           {activeRoom?.online && (
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+            <span className="h-2 w-2 rounded-full bg-emerald-400 flex-shrink-0" />
           )}
         </div>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="flex items-center gap-1.5 p-1.5 text-neutral-300 hover:text-white rounded-lg bg-neutral-900 border border-neutral-800 text-xs font-semibold"
+          className="flex items-center gap-1.5 p-1 text-neutral-300 hover:text-white rounded-[2px] bg-neutral-900 border border-neutral-800 text-xs font-semibold"
           aria-label="Menu de Salas"
         >
           {sidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
@@ -93,7 +93,7 @@ function AdminLayout() {
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 bg-black/75 backdrop-blur-xs z-40 md:hidden"
+          className="fixed inset-0 bg-black/80 backdrop-blur-xs z-40 md:hidden"
         />
       )}
 
@@ -105,12 +105,12 @@ function AdminLayout() {
         h-full md:h-screen md:h-[100dvh] transition-all duration-300
       `}
       >
-        <div className="flex flex-col border-b border-neutral-800 px-4 py-3.5">
+        <div className="flex flex-col border-b border-neutral-800 px-3 py-2.5">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <Radio className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+              <Radio className="h-4 w-4 text-neutral-300 flex-shrink-0" />
               {(!collapsed || sidebarOpen) && (
-                <span className="text-xs uppercase tracking-[0.25em] text-neutral-300 font-bold truncate">
+                <span className="text-xs uppercase tracking-[0.2em] text-neutral-300 font-bold truncate">
                   Signage
                 </span>
               )}
@@ -128,31 +128,27 @@ function AdminLayout() {
               className="md:hidden text-neutral-400 hover:text-white p-1"
               aria-label="Fechar menu"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" />
             </button>
           </div>
           {(!collapsed || sidebarOpen) && (
-            <div className="mt-2 text-[10px] text-neutral-500 flex flex-col gap-1.5">
+            <div className="mt-2 text-[10px] text-neutral-500 flex flex-col gap-1">
               <div className="flex items-center justify-between gap-1 flex-wrap">
                 <span className="text-neutral-400 font-medium">Link do Player (TVs):</span>
                 {systemInfo?.db && (
                   <span
-                    className={`text-[9px] px-1.5 py-0.2 rounded font-semibold cursor-help transition ${
-                      systemInfo.db.driver === "mongodb"
-                        ? "bg-emerald-950/60 text-emerald-400 border border-emerald-500/30"
-                        : "bg-neutral-900 text-neutral-400 border border-neutral-700 hover:border-amber-500/50 hover:text-amber-300"
-                    }`}
+                    className="text-[9px] px-1.5 py-0.2 rounded-[2px] font-semibold bg-neutral-900 text-neutral-400 border border-neutral-800 cursor-help"
                     title={
                       systemInfo.db.driver === "mongodb"
                         ? `Conectado com sucesso ao banco '${systemInfo.db.database}' no MongoDB Atlas.`
-                        : (systemInfo.db.error || "Armazenamento local em JSON. Configure a variável MONGODB_URI no painel do Render para conectar ao MongoDB Atlas.")
+                        : (systemInfo.db.error || "Armazenamento local em JSON.")
                     }
                   >
                     {systemInfo.db.driver === "mongodb" ? "MongoDB Atlas" : "JSON Local"}
                   </span>
                 )}
               </div>
-              <div className="flex items-center justify-between gap-1.5 bg-neutral-900/80 px-2 py-1.5 rounded-lg border border-neutral-800 min-w-0">
+              <div className="flex items-center justify-between gap-1.5 bg-neutral-900/80 px-2 py-1 rounded-[2px] border border-neutral-800 min-w-0">
                 <a
                   href={playerAccessUrl}
                   target="_blank"
@@ -160,14 +156,14 @@ function AdminLayout() {
                   className="truncate min-w-0 flex-1 hover:underline"
                   title="Abrir Kiosk Player em nova aba"
                 >
-                  <span className="text-emerald-400/90 font-semibold truncate block">
+                  <span className="text-neutral-300 font-mono text-[10px] truncate block">
                     {playerAccessUrl}
                   </span>
                 </a>
                 <button
                   type="button"
                   onClick={handleCopyLink}
-                  className="text-neutral-400 hover:text-white p-1 rounded hover:bg-neutral-800 transition flex-shrink-0"
+                  className="text-neutral-400 hover:text-white p-0.5 rounded-[2px] hover:bg-neutral-800 transition flex-shrink-0"
                   title={copiedLink ? "Link copiado!" : "Copiar link do Player"}
                 >
                   {copiedLink ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
@@ -178,44 +174,44 @@ function AdminLayout() {
         </div>
 
         {/* Link Global para Aparelhos / Telas Conectadas */}
-        <div className="px-2 pt-3 pb-2 border-b border-neutral-800/80">
+        <div className="px-2 pt-2 pb-1.5 border-b border-neutral-800/80">
           <Link
             to="/admin/devices"
             onClick={() => setSidebarOpen(false)}
-            className={`group flex items-center justify-between gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+            className={`group flex items-center justify-between gap-2 rounded-[2px] px-2.5 py-1.5 text-xs font-semibold transition ${
               router.state.location.pathname === "/admin/devices"
-                ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shadow-xs"
+                ? "bg-neutral-800 text-white border border-neutral-700 shadow-xs"
                 : "text-neutral-300 hover:bg-neutral-900 hover:text-white"
             } ${collapsed ? "justify-center px-0" : ""}`}
             title={collapsed ? `Aparelhos (${onlineDevicesCount} online)` : undefined}
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <Monitor className={`h-4 w-4 flex-shrink-0 ${router.state.location.pathname === "/admin/devices" ? "text-emerald-400" : "text-neutral-400 group-hover:text-emerald-400 transition"}`} />
+            <div className="flex items-center gap-2 min-w-0">
+              <Monitor className="h-3.5 w-3.5 flex-shrink-0 text-neutral-400 group-hover:text-white transition" />
               {!collapsed && <span>Aparelhos / Telas</span>}
             </div>
             {!collapsed && (
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-[2px] font-bold flex items-center gap-1 ${
                 onlineDevicesCount > 0
-                  ? "bg-emerald-950 text-emerald-400 border border-emerald-500/30"
+                  ? "bg-neutral-900 text-emerald-400 border border-neutral-800"
                   : "bg-neutral-900 text-neutral-500"
               }`}>
-                {onlineDevicesCount > 0 && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                {onlineDevicesCount > 0 && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
                 <span>{onlineDevicesCount}</span>
               </span>
             )}
           </Link>
         </div>
 
-        <div className={`px-5 pt-4 pb-2 text-[10px] uppercase tracking-[0.25em] text-neutral-500 flex items-center justify-between ${collapsed ? "hidden" : ""}`}>
-          <span>Rooms ({rooms.length})</span>
-          <span className="text-[9px] text-neutral-600">
+        <div className={`px-4 pt-3 pb-1.5 text-[10px] uppercase tracking-[0.2em] text-neutral-500 flex items-center justify-between ${collapsed ? "hidden" : ""}`}>
+          <span>Salas ({rooms.length})</span>
+          <span className="text-[9px] text-neutral-500">
             {rooms.filter(r => r.online).length} online
           </span>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2 space-y-1">
+        <nav className="flex-1 overflow-y-auto px-1.5 space-y-0.5">
           {isLoading && (
-            <div className="px-3 py-2 text-xs text-neutral-500">{collapsed ? "..." : "Loading…"}</div>
+            <div className="px-3 py-2 text-xs text-neutral-500">{collapsed ? "..." : "Carregando…"}</div>
           )}
           {rooms.map((r) => (
             <RoomItem key={r.slug} room={r} active={activeSlug === r.slug} onClick={() => setSidebarOpen(false)} collapsed={collapsed} />
@@ -227,7 +223,7 @@ function AdminLayout() {
           )}
         </nav>
 
-        <div className="border-t border-neutral-800 p-3">
+        <div className="border-t border-neutral-800 p-2.5">
           {creating && !collapsed ? (
             <CreateRoomForm 
               onSuccess={(newRoom) => {
@@ -246,9 +242,9 @@ function AdminLayout() {
                 setCreating(true);
               }}
               title={collapsed ? "Nova Sala" : undefined}
-              className="flex w-full items-center justify-center gap-2 rounded border border-dashed border-neutral-700 px-3 py-2 text-xs uppercase tracking-wider text-neutral-400 hover:border-emerald-500 hover:text-emerald-400 transition"
+              className="flex w-full items-center justify-center gap-1.5 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:text-white px-2.5 py-1.5 text-xs font-semibold text-neutral-300 transition"
             >
-              <Plus className="h-4 w-4 flex-shrink-0" />
+              <Plus className="h-3.5 w-3.5 flex-shrink-0" />
               {!collapsed && <span>Nova Sala</span>}
             </button>
           )}
@@ -275,19 +271,19 @@ function RoomItem({ room, active, onClick, collapsed }: { room: Room; active: bo
       params={{ slug: room.slug }}
       onClick={onClick}
       title={collapsed ? `${room.name} (${online ? `${clientsCount}/${maxClients} TVs online` : "offline"})` : undefined}
-      className={`group flex items-center gap-2.5 rounded px-3 py-2 text-sm transition overflow-hidden ${
+      className={`group flex items-center gap-2 rounded-[2px] px-2.5 py-1.5 text-xs transition overflow-hidden ${
         active
-          ? "bg-neutral-900 text-white shadow-sm"
+          ? "bg-neutral-900 text-white shadow-xs font-semibold"
           : "text-neutral-400 hover:bg-neutral-900/60 hover:text-white"
       } ${collapsed ? "justify-center px-0" : ""}`}
     >
       <div className="relative flex items-center justify-center">
         <Circle
-          className={`h-2.5 w-2.5 flex-shrink-0 transition-colors ${
+          className={`h-2 w-2 flex-shrink-0 transition-colors ${
             online
               ? isFull
-                ? "fill-amber-400 text-amber-400 animate-pulse"
-                : "fill-emerald-400 text-emerald-400 animate-pulse"
+                ? "fill-amber-400 text-amber-400"
+                : "fill-emerald-400 text-emerald-400"
               : "fill-neutral-700 text-neutral-700"
           }`}
         />
@@ -295,12 +291,12 @@ function RoomItem({ room, active, onClick, collapsed }: { room: Room; active: bo
       {!collapsed && (
         <div className="flex flex-1 items-center justify-between min-w-0">
           <div className="flex flex-col min-w-0">
-            <span className="truncate font-medium">{room.name}</span>
-            <span className="text-[10px] text-neutral-600 truncate">{room.slug}</span>
+            <span className="truncate font-medium text-white">{room.name}</span>
+            <span className="text-[10px] text-neutral-500 truncate font-mono">{room.slug}</span>
           </div>
           {online ? (
             <span
-              className={`text-[9px] px-1.5 py-0.5 rounded border flex-shrink-0 font-medium ${
+              className={`text-[9px] px-1 py-0.2 rounded-[2px] border flex-shrink-0 font-medium ${
                 isFull
                   ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
                   : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
@@ -309,7 +305,7 @@ function RoomItem({ room, active, onClick, collapsed }: { room: Room; active: bo
               {clientsCount}/{maxClients} TVs
             </span>
           ) : (
-            <span className="text-[9px] text-neutral-600 px-1 py-0.5 flex-shrink-0">
+            <span className="text-[9px] text-neutral-600 px-1 py-0.5 flex-shrink-0 font-mono">
               0/{maxClients}
             </span>
           )}
@@ -340,9 +336,9 @@ function CreateRoomForm({ onSuccess, onCancel }: { onSuccess: (newRoom?: Room) =
         e.preventDefault();
         createRoom.mutate(form);
       }}
-      className="space-y-2"
+      className="space-y-1.5"
     >
-      <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold mb-1">
+      <div className="text-[9px] uppercase tracking-wider text-neutral-400 font-semibold mb-1">
         Criar Sala / Display
       </div>
       <input
@@ -350,49 +346,49 @@ function CreateRoomForm({ onSuccess, onCancel }: { onSuccess: (newRoom?: Room) =
         value={form.name}
         onChange={(e) => setForm({ ...form, name: e.target.value })}
         required
-        className="w-full rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-xs outline-none focus:border-emerald-500 text-white"
+        className="w-full rounded-[2px] border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs outline-none focus:border-neutral-500 text-white"
       />
       <div className="relative">
         <input
           placeholder="URL do Site (opcional, ex: https://meusite.com)"
           value={form.defaultSiteUrl}
           onChange={(e) => setForm({ ...form, defaultSiteUrl: e.target.value })}
-          className="w-full rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-xs outline-none focus:border-emerald-500 text-white pl-6"
+          className="w-full rounded-[2px] border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs outline-none focus:border-neutral-500 text-white pl-6"
         />
-        <Globe className="h-3 w-3 text-neutral-500 absolute left-2 top-2.5" />
+        <Globe className="h-3 w-3 text-neutral-500 absolute left-2 top-2" />
       </div>
       <div className="relative">
         <input
           placeholder="URL de Rádio/Áudio (opcional, ex: Zeno.fm)"
           value={form.defaultAudioStreamUrl}
           onChange={(e) => setForm({ ...form, defaultAudioStreamUrl: e.target.value })}
-          className="w-full rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-xs outline-none focus:border-blue-500 text-white pl-6"
+          className="w-full rounded-[2px] border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs outline-none focus:border-neutral-500 text-white pl-6"
         />
-        <RadioIcon className="h-3 w-3 text-neutral-500 absolute left-2 top-2.5" />
+        <RadioIcon className="h-3 w-3 text-neutral-500 absolute left-2 top-2" />
       </div>
       <input
         placeholder="Descrição (opcional)"
         value={form.description}
         onChange={(e) => setForm({ ...form, description: e.target.value })}
-        className="w-full rounded border border-neutral-800 bg-neutral-900 px-2.5 py-1.5 text-xs outline-none focus:border-emerald-500 text-white"
+        className="w-full rounded-[2px] border border-neutral-800 bg-neutral-900 px-2 py-1 text-xs outline-none focus:border-neutral-500 text-white"
       />
       {createRoom.isError && (
         <div className="text-[10px] font-semibold text-red-400">
           {createRoom.error?.message || "Erro ao criar sala."}
         </div>
       )}
-      <div className="flex gap-2 pt-1">
+      <div className="flex gap-1.5 pt-1">
         <button
           type="submit"
           disabled={!form.name.trim() || createRoom.isPending}
-          className="flex-1 rounded bg-emerald-500 px-2 py-1.5 text-xs font-semibold text-black hover:bg-emerald-400 disabled:opacity-40 transition"
+          className="flex-1 rounded-[2px] bg-white px-2 py-1 text-xs font-bold text-black hover:bg-neutral-200 disabled:opacity-40 transition"
         >
           {createRoom.isPending ? "Criando..." : "Criar"}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded border border-neutral-800 px-2 py-1.5 text-xs text-neutral-400 hover:bg-neutral-900"
+          className="rounded-[2px] border border-neutral-800 px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-white"
         >
           Cancelar
         </button>

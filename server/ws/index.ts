@@ -75,6 +75,15 @@ wsRoute.get(
       onOpen(_event, ws) {
         wsManager.add(room, ws, { ip, userAgent, role: "admin" });
       },
+      onMessage(event, ws) {
+        try {
+          const data = JSON.parse(String(event.data));
+          if (data.type === "ping") {
+            ws.send(JSON.stringify({ type: "pong", time: Date.now() }));
+            return;
+          }
+        } catch (_e) {}
+      },
       onClose(_event, ws) {
         wsManager.remove(room, ws);
       },
@@ -101,7 +110,14 @@ wsRoute.get(
       onOpen(_event, ws) {
         wsManager.add(room, ws, { ip, userAgent, role, deviceId, path: `/player/index.html?room=${room}` });
       },
-      onMessage(event, _ws) {
+      onMessage(event, ws) {
+        try {
+          const data = JSON.parse(String(event.data));
+          if (data.type === "ping") {
+            ws.send(JSON.stringify({ type: "pong", time: Date.now() }));
+            return;
+          }
+        } catch (_e) {}
         console.log(`[WS][${role}] Mensagem da sala ${room}:`, event.data);
       },
       onClose(_event, ws) {

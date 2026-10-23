@@ -8,6 +8,7 @@ import {
   type DeviceInfo,
   type YoutubeTrackResult,
   type YoutubePlaylistResult,
+  type ScheduleTask,
   API_BASE,
 } from "@/lib/signage-api";
 import {
@@ -57,6 +58,11 @@ import {
   Loader2,
   CheckCircle2,
   Minus,
+  Calendar,
+  CalendarClock,
+  Zap,
+  AlertCircle,
+  Save,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/$slug")({
@@ -108,6 +114,50 @@ function formatConnectedTime(ts: number): string {
 }
 
 /**
+ * Formata data e hora do agendamento em português humano
+ */
+function formatScheduleDateTime(isoOrStr: string): string {
+  try {
+    const d = new Date(isoOrStr);
+    if (isNaN(d.getTime())) return isoOrStr;
+    const now = new Date();
+    const isToday =
+      d.getDate() === now.getDate() &&
+      d.getMonth() === now.getMonth() &&
+      d.getFullYear() === now.getFullYear();
+
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow =
+      d.getDate() === tomorrow.getDate() &&
+      d.getMonth() === tomorrow.getMonth() &&
+      d.getFullYear() === tomorrow.getFullYear();
+
+    const timeStr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    if (isToday) return `Hoje às ${timeStr}`;
+    if (isTomorrow) return `Amanhã às ${timeStr}`;
+
+    const dateStr = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    return `${dateStr} às ${timeStr}`;
+  } catch {
+    return isoOrStr;
+  }
+}
+
+/**
+ * Converte Date para string compatível com input datetime-local (YYYY-MM-DDTHH:mm)
+ */
+function toLocalDatetimeString(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+/**
  * Presets Rápidos de Volume de 0 a 100 em passos de 12,5%
  */
 const VOLUME_PRESETS = [
@@ -125,13 +175,14 @@ const VOLUME_PRESETS = [
 interface VolumeWheelPickerProps {
   value: number;
   onChange: (val: number) => void;
+  compact?: boolean;
 }
 
 /**
  * Seletor de Volume Estilo Roleta (UIDatePicker Wheel Picker)
  */
-function VolumeWheelPicker({ value, onChange }: VolumeWheelPickerProps) {
-  const ITEM_HEIGHT = 38;
+function VolumeWheelPicker({ value, onChange, compact = false }: VolumeWheelPickerProps) {
+  const ITEM_HEIGHT = compact ? 32 : 38;
   const numbers = useMemo(() => Array.from({ length: 101 }, (_, i) => i), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isUserInteractingRef = useRef(false);
@@ -147,7 +198,7 @@ function VolumeWheelPicker({ value, onChange }: VolumeWheelPickerProps) {
         behavior: "smooth",
       });
     }
-  }, [value]);
+  }, [value, ITEM_HEIGHT]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     isUserInteractingRef.current = true;
@@ -186,29 +237,30 @@ function VolumeWheelPicker({ value, onChange }: VolumeWheelPickerProps) {
   };
 
   return (
-    <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
-      <div className="flex items-center gap-2 justify-center w-full sm:w-auto">
+    <div className={`flex ${compact ? "flex-row items-center gap-2" : "flex-col sm:flex-row items-center gap-2.5"} w-full`}>
+      <div className="flex items-center gap-1.5 justify-center w-full sm:w-auto">
         <button
+          type="button"
           onClick={() => step(-1)}
           disabled={currentVal <= 0}
-          className="h-10 w-10 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0"
+          className={`${compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"} rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0`}
           title="Diminuir 1%"
         >
-          <Minus className="h-4 w-4" />
+          <Minus className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
         </button>
 
-        {/* Tambor Cilíndrico da Roleta (UIDatePicker Style) */}
-        <div className="relative h-[114px] w-28 sm:w-32 overflow-hidden rounded-2xl border border-neutral-800 bg-black/95 shadow-inner select-none flex-shrink-0">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-9 bg-gradient-to-b from-neutral-950 via-neutral-950/80 to-transparent z-20" />
-          <div className="pointer-events-none absolute inset-x-0 top-[38px] h-[38px] border-y border-blue-500/50 bg-blue-500/15 z-10 shadow-[0_0_12px_rgba(59,130,246,0.2)] flex items-center justify-end pr-2.5">
-            <span className="text-[10px] font-black text-blue-400 font-mono">%</span>
+        {/* Tambor Cilíndrico da Roleta (UIDatePicker Style com Rounded Quase Zero) */}
+        <div className={`relative ${compact ? "h-[96px] w-24 sm:w-28" : "h-[114px] w-28 sm:w-32"} overflow-hidden rounded-[2px] border border-neutral-800 bg-black shadow-inner select-none flex-shrink-0`}>
+          <div className={`pointer-events-none absolute inset-x-0 top-0 ${compact ? "h-7" : "h-9"} bg-gradient-to-b from-neutral-950 via-neutral-950/80 to-transparent z-20`} />
+          <div className={`pointer-events-none absolute inset-x-0 ${compact ? "top-[32px] h-[32px]" : "top-[38px] h-[38px]"} border-y border-neutral-600 bg-white/10 z-10 flex items-center justify-end pr-2`}>
+            <span className="text-[10px] font-bold text-neutral-300 font-mono">%</span>
           </div>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent z-20" />
+          <div className={`pointer-events-none absolute inset-x-0 bottom-0 ${compact ? "h-7" : "h-9"} bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent z-20`} />
 
           <div
             ref={scrollRef}
             onScroll={handleScroll}
-            className="h-full overflow-y-auto snap-y snap-mandatory scrollbar-none py-[38px]"
+            className={`h-full overflow-y-auto snap-y snap-mandatory scrollbar-none ${compact ? "py-[32px]" : "py-[38px]"}`}
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
             {numbers.map((num) => {
@@ -218,9 +270,9 @@ function VolumeWheelPicker({ value, onChange }: VolumeWheelPickerProps) {
                 <div
                   key={num}
                   onClick={() => handleSelect(num)}
-                  className={`h-[38px] flex items-center justify-center snap-center cursor-pointer font-mono transition-all duration-100 ${
+                  className={`${compact ? "h-[32px]" : "h-[38px]"} flex items-center justify-center snap-center cursor-pointer font-mono transition-all duration-100 ${
                     isSelected
-                      ? "text-lg font-black text-white scale-110"
+                      ? `${compact ? "text-base" : "text-lg"} font-black text-white scale-105`
                       : dist === 1
                       ? "text-xs font-semibold text-neutral-400 scale-95 opacity-55"
                       : "text-[11px] text-neutral-600 scale-90 opacity-25"
@@ -234,17 +286,19 @@ function VolumeWheelPicker({ value, onChange }: VolumeWheelPickerProps) {
         </div>
 
         <button
+          type="button"
           onClick={() => step(1)}
           disabled={currentVal >= 100}
-          className="h-10 w-10 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0"
+          className={`${compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"} rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0`}
           title="Aumentar 1%"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
         </button>
 
         <button
+          type="button"
           onClick={() => onChange(currentVal > 0 ? 0 : 100)}
-          className={`h-10 w-10 rounded-xl border flex items-center justify-center transition flex-shrink-0 ${
+          className={`${compact ? "h-8 w-8" : "h-9 w-9"} rounded-[2px] border flex items-center justify-center transition flex-shrink-0 ${
             currentVal === 0
               ? "bg-red-500/20 border-red-500/40 text-red-300"
               : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:text-white"
@@ -254,17 +308,19 @@ function VolumeWheelPicker({ value, onChange }: VolumeWheelPickerProps) {
           {currentVal === 0 ? (
             <VolumeX className="h-4 w-4 text-red-400" />
           ) : (
-            <Volume2 className="h-4 w-4 text-blue-400" />
+            <Volume2 className="h-4 w-4 text-neutral-300" />
           )}
         </button>
       </div>
 
-      <div className="flex items-center gap-2 justify-center sm:justify-start">
-        <span className="text-xs text-neutral-400 font-semibold">Volume:</span>
-        <span className="text-base font-black text-white font-mono bg-neutral-900 px-2.5 py-0.5 rounded-lg border border-neutral-800">
-          {currentVal}%
-        </span>
-      </div>
+      {!compact && (
+        <div className="flex items-center gap-1.5 justify-center sm:justify-start">
+          <span className="text-xs text-neutral-400 font-medium">Volume:</span>
+          <span className="text-sm font-bold text-white font-mono bg-neutral-900 px-2 py-0.5 rounded-[2px] border border-neutral-800">
+            {currentVal}%
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -274,24 +330,26 @@ function RoomOperator() {
   const qc = useQueryClient();
   const router = useRouter();
 
-  // Modo de operação: Básico (padrão, limpo) ou Avançado (todas as features)
-  const [viewMode, setViewMode] = useState<"basic" | "advanced">(() => {
+  // Abas Principais: Conteúdo / Áudio / Automação / Aparelhos
+  const [activeTab, setActiveTab] = useState<"content" | "audio" | "automation" | "devices">(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("signage_view_mode") as "basic" | "advanced") || "basic";
+      return (localStorage.getItem("signage_active_tab") as any) || "audio";
     }
-    return "basic";
+    return "audio";
   });
 
-  const handleSetViewMode = (mode: "basic" | "advanced") => {
-    setViewMode(mode);
+  const handleSelectTab = (tab: "content" | "audio" | "automation" | "devices") => {
+    setActiveTab(tab);
     if (typeof window !== "undefined") {
-      localStorage.setItem("signage_view_mode", mode);
+      localStorage.setItem("signage_active_tab", tab);
     }
   };
 
-  // Sub-abas do Modo Avançado
-  const [advancedTab, setAdvancedTab] = useState<"control" | "playlists" | "editor">("control");
-  const [editingPlaylistId, setEditingPlaylistId] = useState<string>("new");
+  // Estados para Salvar Fila de Músicas (substituindo a gestão antiga de playlists)
+  const [saveQueueModalOpen, setSaveQueueModalOpen] = useState(false);
+  const [saveQueueName, setSaveQueueName] = useState("");
+  const [saveQueueMode, setSaveQueueMode] = useState<"new" | "update">("new");
+  const [isSavingQueue, setIsSavingQueue] = useState(false);
 
   // Consultas de dados com intervalos mais suaves para poupar celulares antigos
   // O WebSocket já realiza invalidação em tempo real para mudanças instantâneas!
@@ -361,6 +419,64 @@ function RoomOperator() {
       qc.invalidateQueries({ queryKey: ["roomDevices", slug] });
       qc.invalidateQueries({ queryKey: ["rooms"] });
       qc.invalidateQueries({ queryKey: ["state", slug] });
+    },
+  });
+
+  // Consulta de agendamentos e automações da sala
+  const schedulesQ = useQuery({
+    queryKey: ["schedules", slug],
+    queryFn: () => signageApi.listSchedules(slug),
+    refetchInterval: 10000,
+  });
+
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<ScheduleTask | null>(null);
+  const [wizardModalOpen, setWizardModalOpen] = useState(false);
+  const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
+
+  const createScheduleMut = useMutation({
+    mutationFn: (data: Partial<ScheduleTask>) => signageApi.createSchedule(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedules", slug] });
+    },
+  });
+
+  const updateScheduleMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<ScheduleTask> }) =>
+      signageApi.updateSchedule(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedules", slug] });
+    },
+  });
+
+  const deleteScheduleMut = useMutation({
+    mutationFn: (id: string) => signageApi.deleteSchedule(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedules", slug] });
+    },
+  });
+
+  const toggleScheduleMut = useMutation({
+    mutationFn: (id: string) => signageApi.toggleSchedule(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedules", slug] });
+    },
+  });
+
+  const runScheduleMut = useMutation({
+    mutationFn: async (id: string) => {
+      setRunningScheduleId(id);
+      try {
+        const res = await signageApi.runScheduleNow(id);
+        return res;
+      } finally {
+        setRunningScheduleId(null);
+      }
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["state", slug] });
+      qc.invalidateQueries({ queryKey: ["schedules", slug] });
+      alert(res.message || "Ação executada na TV com sucesso!");
     },
   });
 
@@ -447,15 +563,56 @@ function RoomOperator() {
   useEffect(() => {
     const wsUrl = API_BASE.replace("http", "ws");
     const ws = new WebSocket(`${wsUrl}/ws/${slug}?role=admin`);
+    let pingTimer: any = null;
 
-    ws.onmessage = () => {
-      qc.invalidateQueries({ queryKey: ["state", slug] });
-      qc.invalidateQueries({ queryKey: ["rooms"] });
-      qc.invalidateQueries({ queryKey: ["playlists"] });
-      qc.invalidateQueries({ queryKey: ["roomDevices", slug] });
+    ws.onopen = () => {
+      pingTimer = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "ping" }));
+        }
+      }, 25000);
     };
 
-    return () => ws.close();
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "pong") return;
+        if (data.type === "control") {
+          // Atualiza diretamente o estado no cache local em 0ms sem disparar requisições HTTP
+          qc.setQueryData(["state", slug], (old: any) => {
+            if (!old) return old;
+            const updated = { ...old };
+            if (data.target === "audio") {
+              if (data.command === "play") updated.audioStatus = "playing";
+              else if (data.command === "pause") updated.audioStatus = "paused";
+              else if (data.command === "setVolume") updated.audioVolume = data.value;
+              else if (data.command === "setLoopMode") updated.audioLoopMode = data.value;
+              else if (data.command === "setShuffle") updated.audioShuffle = data.value;
+              else if (data.command === "setTrackIndex" || data.command === "trackChanged") updated.currentAudioIndex = data.value;
+            } else if (data.target === "room" && data.command === "setStandby") {
+              updated.standby = data.value;
+            }
+            return updated;
+          });
+          return;
+        } else if (data.type === "updateState" && data.state) {
+          // Atualiza o estado em cache com os dados já presentes no WebSocket sem ir ao banco
+          qc.setQueryData(["state", slug], data.state);
+          return;
+        } else if (data.type === "devicesUpdate" || data.type === "presence") {
+          qc.invalidateQueries({ queryKey: ["roomDevices", slug] });
+          return;
+        }
+      } catch (_e) {}
+
+      // Fallback suave
+      qc.invalidateQueries({ queryKey: ["state", slug] });
+    };
+
+    return () => {
+      if (pingTimer) clearInterval(pingTimer);
+      ws.close();
+    };
   }, [slug, qc]);
 
   // Ações de Site
@@ -877,13 +1034,68 @@ function RoomOperator() {
     }
   };
 
-  // Funções do Modo Avançado
-  const [selectedVisual, setSelectedVisual] = useState<string | null>(null);
-  const [selectedAudio, setSelectedAudio] = useState<string | null>(null);
+  // ==========================================
+  // Gestão da Fila e Salvar como Playlist
+  // ==========================================
+  const handleOpenSaveQueue = () => {
+    if (!activeAudio || !activeAudio.items || activeAudio.items.length === 0) {
+      alert("A fila está vazia. Adicione músicas antes de salvar.");
+      return;
+    }
+    const isCustom = activeAudio && !activeAudio.name.startsWith("Áudio -");
+    setSaveQueueName(activeAudio.name || `Playlist ${currentRoom?.name || slug}`);
+    setSaveQueueMode(isCustom ? "update" : "new");
+    setSaveQueueModalOpen(true);
+  };
 
-  const handleEditPlaylist = (id: string) => {
-    setEditingPlaylistId(id);
-    setAdvancedTab("editor");
+  const handleSaveQueue = async () => {
+    if (!saveQueueName.trim()) {
+      alert("Digite um nome para a playlist.");
+      return;
+    }
+    const items = activeAudio?.items || [];
+    setIsSavingQueue(true);
+    try {
+      if (saveQueueMode === "update" && activeAudio?.id) {
+        await signageApi.updatePlaylist(activeAudio.id, {
+          ...activeAudio,
+          name: saveQueueName.trim(),
+          items,
+          loopMode,
+          shuffle: shuffleActive,
+        });
+        qc.invalidateQueries({ queryKey: ["playlists"] });
+        alert(`Playlist "${saveQueueName.trim()}" atualizada com sucesso!`);
+      } else {
+        const res = await signageApi.createPlaylist({
+          name: saveQueueName.trim(),
+          type: "audio",
+          items,
+          loopMode,
+          shuffle: shuffleActive,
+        });
+        if (res.success && res.playlist) {
+          await signageApi.setState(slug, { audioPlaylist: res.playlist.id, audioStreamUrl: null });
+          qc.invalidateQueries({ queryKey: ["playlists"] });
+          qc.invalidateQueries({ queryKey: ["state", slug] });
+          alert(`Playlist "${saveQueueName.trim()}" salva com sucesso!`);
+        }
+      }
+      setSaveQueueModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar a playlist.");
+    } finally {
+      setIsSavingQueue(false);
+    }
+  };
+
+  const handleDeleteCurrentPlaylist = async () => {
+    if (!activeAudio?.id) return;
+    if (confirm(`Deseja realmente excluir a playlist salva "${activeAudio.name}"?`)) {
+      await signageApi.deletePlaylist(activeAudio.id);
+      qc.invalidateQueries({ queryKey: ["playlists"] });
+      qc.invalidateQueries({ queryKey: ["state", slug] });
+    }
   };
 
   // Contagem e limites de dispositivos
@@ -897,18 +1109,21 @@ function RoomOperator() {
       {/* ============================================================ */}
       {/* CABEÇALHO PRINCIPAL LIMPO E INTUITIVO                         */}
       {/* ============================================================ */}
-      <header className="border-b border-neutral-800/80 bg-neutral-950 px-3 py-3.5 sm:px-6 sm:py-4 space-y-3 w-full flex-shrink-0">
+      {/* ============================================================ */}
+      {/* CABEÇALHO PRINCIPAL LIMPO E INTUITIVO                         */}
+      {/* ============================================================ */}
+      <header className="border-b border-neutral-800 bg-neutral-950 px-3 py-2.5 sm:px-5 sm:py-3 space-y-2.5 w-full flex-shrink-0">
         {/* Linha 1: Título da Sala + Status + Ações Principais */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
                 Sala
               </span>
               {/* Badge de Status Simples e Direto */}
               {isRoomOnline ? (
                 <span
-                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold border truncate ${
+                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[2px] text-[11px] font-semibold border truncate ${
                     isRoomFull
                       ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
                       : "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"
@@ -925,19 +1140,19 @@ function RoomOperator() {
                   </span>
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-neutral-900 text-neutral-400 border border-neutral-800">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[2px] text-[11px] font-medium bg-neutral-900 text-neutral-400 border border-neutral-800">
                   <span className="h-2 w-2 rounded-full bg-neutral-600 flex-shrink-0" />
                   <span>Nenhuma TV</span>
                 </span>
               )}
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight truncate mt-0.5">
+            <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight truncate mt-0.5">
               {currentRoom?.name || slug}
             </h1>
           </div>
 
           {/* Botões de Controle Rápido da TV: 3 colunas iguais no mobile */}
-          <div className="grid grid-cols-3 gap-1.5 w-full sm:w-auto sm:flex sm:items-center sm:gap-2 pt-0.5 sm:pt-0">
+          <div className="grid grid-cols-3 gap-1.5 w-full sm:w-auto sm:flex sm:items-center sm:gap-2">
             {/* Standby / Suspender TV */}
             <button
               onClick={() => {
@@ -952,14 +1167,14 @@ function RoomOperator() {
                   setState.mutate({ standby: nextStandby });
                 }
               }}
-              className={`min-h-[40px] px-2 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center truncate ${
+              className={`min-h-[34px] px-2.5 py-1 rounded-[2px] text-xs font-bold transition flex items-center justify-center gap-1.5 text-center truncate ${
                 stateQ.data?.standby
                   ? "bg-amber-500 text-neutral-950 hover:bg-amber-400 font-extrabold"
-                  : "bg-neutral-900 border border-neutral-700/80 text-neutral-200 hover:border-amber-500 hover:text-amber-300"
+                  : "bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-amber-300 hover:border-amber-500/50"
               }`}
               title="Pausa tela e som sem desligar a TV da tomada"
             >
-              {stateQ.data?.standby ? <Sun className="h-4 w-4 flex-shrink-0" /> : <Moon className="h-4 w-4 flex-shrink-0" />}
+              {stateQ.data?.standby ? <Sun className="h-3.5 w-3.5 flex-shrink-0" /> : <Moon className="h-3.5 w-3.5 flex-shrink-0" />}
               <span className="truncate">{stateQ.data?.standby ? "Standby" : "Suspender"}</span>
             </button>
 
@@ -970,7 +1185,7 @@ function RoomOperator() {
                   signageApi.reloadRoom(slug);
                 }
               }}
-              className="min-h-[40px] px-2 sm:px-3 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 text-xs font-medium transition flex items-center justify-center gap-1.5 text-center truncate"
+              className="min-h-[34px] px-2.5 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 text-xs font-medium transition flex items-center justify-center gap-1.5 text-center truncate"
               title="Recarrega a TV conectada"
             >
               <RefreshCw className="h-3.5 w-3.5 flex-shrink-0" />
@@ -982,7 +1197,7 @@ function RoomOperator() {
               href={playerUrl}
               target="_blank"
               rel="noreferrer"
-              className="min-h-[40px] px-2 sm:px-3.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500 hover:text-black text-xs font-bold transition flex items-center justify-center gap-1.5 text-center truncate"
+              className="min-h-[34px] px-2.5 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-200 hover:text-white hover:border-neutral-700 text-xs font-medium transition flex items-center justify-center gap-1.5 text-center truncate"
               title="Abre o visualizador da TV nesta aba"
             >
               <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" />
@@ -991,96 +1206,123 @@ function RoomOperator() {
           </div>
         </div>
 
-        {/* Linha 2: Seletor de Modo Limpo com Explicação Humana */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1 border-t border-neutral-800/60">
-          <div className="grid grid-cols-2 bg-neutral-900 p-1 rounded-xl border border-neutral-800 gap-1 w-full sm:w-auto">
+        {/* Linha 2: Abas Principais da Sala: Conteúdo / Áudio / Automação / Aparelhos */}
+        <div className="flex items-center justify-between gap-2 pt-1 border-t border-neutral-800/60 overflow-x-auto">
+          <div className="grid grid-cols-4 bg-neutral-950 p-0.5 rounded-[2px] border border-neutral-800 gap-1 w-full sm:w-auto">
             <button
-              onClick={() => handleSetViewMode("basic")}
-              className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition truncate ${
-                viewMode === "basic"
-                  ? "bg-emerald-500 text-neutral-950 shadow-sm"
-                  : "text-neutral-400 hover:text-neutral-200"
+              onClick={() => handleSelectTab("content")}
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[2px] text-xs font-bold transition truncate ${
+                activeTab === "content"
+                  ? "bg-white text-black shadow-xs font-extrabold"
+                  : "text-neutral-400 hover:text-white"
               }`}
             >
-              <Sparkles className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">Modo Básico</span>
+              <Globe className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="truncate">Conteúdo</span>
             </button>
             <button
-              onClick={() => handleSetViewMode("advanced")}
-              className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition truncate ${
-                viewMode === "advanced"
-                  ? "bg-neutral-800 text-emerald-400 border border-neutral-700 shadow-sm"
-                  : "text-neutral-400 hover:text-neutral-200"
+              onClick={() => handleSelectTab("audio")}
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[2px] text-xs font-bold transition truncate ${
+                activeTab === "audio"
+                  ? "bg-white text-black shadow-xs font-extrabold"
+                  : "text-neutral-400 hover:text-white"
               }`}
             >
-              <Wrench className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">Modo Avançado</span>
+              <Music className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="truncate">Áudio</span>
+            </button>
+            <button
+              onClick={() => handleSelectTab("automation")}
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[2px] text-xs font-bold transition truncate ${
+                activeTab === "automation"
+                  ? "bg-white text-black shadow-xs font-extrabold"
+                  : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              <CalendarClock className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="truncate">Automação</span>
+            </button>
+            <button
+              onClick={() => handleSelectTab("devices")}
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[2px] text-xs font-bold transition truncate ${
+                activeTab === "devices"
+                  ? "bg-white text-black shadow-xs font-extrabold"
+                  : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              <Monitor className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="truncate">Aparelhos</span>
             </button>
           </div>
 
-          <p className="text-[11px] text-neutral-400 text-center sm:text-right hidden sm:block">
-            {viewMode === "basic"
-              ? "Focado no dia a dia: Site na tela e controle de som/músicas."
-              : "Todas as ferramentas: Playlists de fotos/vídeos e upload de mídias."}
-          </p>
+          <div className="hidden sm:flex items-center gap-2">
+            <button
+              onClick={handleDeleteRoom}
+              disabled={deleteRoomMut.isPending}
+              className="min-h-[28px] px-2 py-0.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-neutral-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 text-[11px] font-medium transition flex items-center gap-1"
+              title="Excluir esta sala"
+            >
+              <Trash2 className="h-3 w-3" />
+              <span>Excluir Sala</span>
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Banner de Standby Ativo */}
       {stateQ.data?.standby && (
-        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-200 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <Moon className="h-5 w-5 text-amber-400 flex-shrink-0 animate-pulse" />
-            <div className="text-xs sm:text-sm">
-              <strong>Modo Standby Ativo:</strong> A TV está exibindo relógio, data e previsão do tempo de Uberaba-MG (com som pausado).
+        <div className="bg-amber-500/10 border-b border-amber-500/30 px-3.5 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-amber-200 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Moon className="h-4 w-4 text-amber-400 flex-shrink-0" />
+            <div className="text-xs">
+              <strong>Modo Standby Ativo:</strong> A TV está exibindo relógio, data e clima de Uberaba-MG (som pausado).
             </div>
           </div>
           <button
             onClick={() => setState.mutate({ standby: false })}
-            className="w-full sm:w-auto min-h-[40px] px-4 py-2 rounded-lg bg-amber-500 text-neutral-950 font-bold text-xs hover:bg-amber-400 transition flex items-center justify-center gap-2 shadow"
+            className="w-full sm:w-auto min-h-[32px] px-3 py-1 rounded-[2px] bg-amber-500 text-neutral-950 font-bold text-xs hover:bg-amber-400 transition flex items-center justify-center gap-1.5"
           >
-            <Sun className="h-4 w-4" />
+            <Sun className="h-3.5 w-3.5" />
             <span>Retomar Exibição na TV</span>
           </button>
         </div>
       )}
 
-      {/* ============================================================ */}
-      {/* 1. MODO BÁSICO (Simples, organizado e rápido para celulares) */}
-      {/* ============================================================ */}
-      {viewMode === "basic" ? (
-        <main className="p-3 pb-28 sm:p-5 sm:pb-16 md:p-8 md:pb-20 space-y-4 sm:space-y-6 max-w-4xl mx-auto w-full min-w-0">
-          {/* CARD 1: O QUE ESTÁ NA TELA DA TV (SITE / LINK) */}
+      <main className="p-2.5 pb-24 sm:p-4 sm:pb-16 max-w-4xl mx-auto w-full min-w-0 space-y-3 sm:space-y-4">
+        {/* ============================================================ */}
+        {/* ABA 1: CONTEÚDO NA TELA DA TV (SITE / LINK)                   */}
+        {/* ============================================================ */}
+        {activeTab === "content" && (
           <section
-            className={`rounded-2xl border p-3.5 sm:p-6 transition-all ${
+            className={`rounded-[2px] border p-3 sm:p-4 transition-all ${
               isSiteActive
-                ? "border-emerald-500/50 bg-neutral-900/60 shadow-md"
+                ? "border-emerald-500/40 bg-neutral-900/50 shadow-sm"
                 : "border-neutral-800 bg-neutral-900/30"
-            } space-y-3.5 sm:space-y-4 overflow-hidden w-full`}
+            } space-y-3 overflow-hidden w-full`}
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-neutral-800">
-              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-neutral-800">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <div
-                  className={`p-2 sm:p-2.5 rounded-xl flex-shrink-0 ${
-                    isSiteActive ? "bg-emerald-500/20 text-emerald-400" : "bg-neutral-800 text-neutral-400"
+                  className={`p-1.5 rounded-[2px] flex-shrink-0 ${
+                    isSiteActive ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-neutral-900 text-neutral-400 border border-neutral-800"
                   }`}
                 >
-                  <Globe className="h-5 w-5" />
+                  <Globe className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-sm sm:text-lg font-bold text-white flex items-center gap-2 flex-wrap">
+                  <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 flex-wrap">
                     <span>Conteúdo na TV</span>
                     {isSiteActive ? (
-                      <span className="text-[10px] sm:text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                      <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.2 rounded-[2px] font-bold">
                         No Ar
                       </span>
                     ) : (
-                      <span className="text-[10px] sm:text-[11px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] bg-neutral-900 text-neutral-400 border border-neutral-800 px-2 py-0.2 rounded-[2px]">
                         Inativo
                       </span>
                     )}
                   </h2>
-                  <p className="text-xs text-neutral-400 mt-0.5 truncate">
+                  <p className="text-[11px] text-neutral-400 truncate">
                     Exiba cardápio, memorial ou página na TV.
                   </p>
                 </div>
@@ -1091,7 +1333,7 @@ function RoomOperator() {
                 <div className="grid grid-cols-3 gap-1.5 w-full sm:w-auto sm:flex sm:items-center">
                   <button
                     onClick={() => signageApi.reloadSite(slug)}
-                    className="min-h-[36px] px-2 py-1.5 rounded-lg border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-xs text-neutral-200 transition flex items-center justify-center gap-1 truncate text-center"
+                    className="min-h-[32px] px-2.5 py-1 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-xs text-neutral-200 transition flex items-center justify-center gap-1 truncate text-center"
                     title="Recarrega apenas o site na tela"
                   >
                     <RefreshCw className="h-3 w-3 flex-shrink-0" />
@@ -1101,7 +1343,7 @@ function RoomOperator() {
                     href={stateQ.data?.siteUrl || "#"}
                     target="_blank"
                     rel="noreferrer"
-                    className="min-h-[36px] px-2 py-1.5 rounded-lg border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-xs text-neutral-200 transition flex items-center justify-center gap-1 truncate text-center"
+                    className="min-h-[32px] px-2.5 py-1 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-xs text-neutral-200 transition flex items-center justify-center gap-1 truncate text-center"
                   >
                     <ExternalLink className="h-3 w-3 flex-shrink-0" />
                     <span className="truncate">Abrir</span>
@@ -1109,7 +1351,7 @@ function RoomOperator() {
                   <button
                     onClick={handleClearSite}
                     disabled={setState.isPending}
-                    className="min-h-[36px] px-2 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500 hover:text-white text-xs text-red-300 transition flex items-center justify-center gap-1 truncate text-center"
+                    className="min-h-[32px] px-2.5 py-1 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-red-500/10 hover:border-red-500/30 text-xs text-red-400 transition flex items-center justify-center gap-1 truncate text-center"
                   >
                     <X className="h-3 w-3 flex-shrink-0" />
                     <span className="truncate">Remover</span>
@@ -1120,168 +1362,124 @@ function RoomOperator() {
 
             {/* Se o site está ativo, mostra o link atual de forma limpa */}
             {isSiteActive && (
-              <div className="bg-emerald-950/20 border border-emerald-500/25 rounded-xl p-3 text-xs text-emerald-200 flex items-center justify-between gap-2 overflow-hidden w-full">
+              <div className="bg-neutral-950 border border-neutral-800 rounded-[2px] p-2 text-xs text-neutral-200 flex items-center justify-between gap-2 overflow-hidden w-full">
                 <div className="truncate flex items-center gap-2 min-w-0 flex-1">
-                  <span className="font-semibold text-emerald-400 flex-shrink-0">Link Atual:</span>
-                  <span className="truncate text-white min-w-0 flex-1">{stateQ.data?.siteUrl}</span>
+                  <span className="font-semibold text-neutral-400 flex-shrink-0 text-[11px]">Link Atual:</span>
+                  <span className="truncate text-white min-w-0 flex-1 font-mono text-[11px]">{stateQ.data?.siteUrl}</span>
                 </div>
               </div>
             )}
 
             {/* Campo para Colocar Novo Link */}
-            <div className="space-y-2 w-full">
+            <div className="space-y-1.5 w-full">
               <label className="text-xs font-semibold text-neutral-300 block">
                 {isSiteActive ? "Trocar por outro link:" : "Cole o link para exibir na TV:"}
               </label>
-              <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
+              <div className="flex flex-col sm:flex-row items-stretch gap-1.5 w-full">
                 <input
                   type="url"
                   placeholder="https://exemplo.com.br/homenagem"
                   value={siteInputUrl}
                   onChange={(e) => setSiteInputUrl(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleApplySite()}
-                  className="w-full flex-1 min-w-0 rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 py-3 text-base sm:text-sm text-white placeholder-neutral-500 outline-none focus:border-emerald-500 transition"
+                  className="w-full flex-1 min-w-0 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500 transition"
                 />
                 <button
                   onClick={handleApplySite}
                   disabled={!siteInputUrl.trim() || setState.isPending}
-                  className="w-full sm:w-auto min-h-[46px] px-5 py-3 rounded-xl bg-emerald-500 text-neutral-950 font-bold text-xs uppercase tracking-wider hover:bg-emerald-400 disabled:opacity-40 transition flex items-center justify-center gap-2 shadow flex-shrink-0"
+                  className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow flex-shrink-0"
                 >
-                  <Tv className="h-4 w-4" />
+                  <Tv className="h-3.5 w-3.5" />
                   <span>Exibir na TV</span>
                 </button>
               </div>
-              <p className="text-[11px] text-neutral-400 flex items-center gap-1.5">
-                <Info className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
+              <p className="text-[10px] text-neutral-500 flex items-center gap-1">
+                <Info className="h-3 w-3 text-neutral-500 flex-shrink-0" />
                 <span>O site abrirá imediatamente em tela cheia na TV conectada.</span>
               </p>
             </div>
           </section>
+        )}
 
-          {/* CARD 2: MÚSICA AMBIENTE & SOM DE FUNDO (YOUTUBE STREAMING ZERO STORAGE) */}
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-3.5 sm:p-6 space-y-4 sm:space-y-5">
-            <div className="flex flex-col gap-3 pb-3 border-b border-neutral-800">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                  <div className="p-2 sm:p-2.5 rounded-xl bg-blue-500/20 text-blue-400 flex-shrink-0">
-                    <Music className="h-5 w-5" />
+        {/* ============================================================ */}
+        {/* ABA 2: MÚSICA AMBIENTE & SOM DE FUNDO                        */}
+        {/* ============================================================ */}
+        {activeTab === "audio" && (
+          <section className="rounded-[2px] border border-neutral-800 bg-neutral-900/40 p-3 sm:p-4 space-y-3">
+            <div className="flex flex-col gap-2 pb-2.5 border-b border-neutral-800">
+              <div className="flex items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="p-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800 flex-shrink-0">
+                    <Music className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
-                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2 truncate">
+                    <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 truncate">
                       <span>Música Ambiente</span>
                       {isAudioPlaying ? (
-                        <span className="text-[10px] sm:text-[11px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full font-bold flex-shrink-0">
+                        <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.2 rounded-[2px] font-bold flex-shrink-0">
                           Tocando
                         </span>
                       ) : (
-                        <span className="text-[10px] sm:text-[11px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0">
-                          <Pause className="h-3 w-3" />
+                        <span className="text-[10px] bg-neutral-900 text-neutral-400 border border-neutral-800 px-2 py-0.2 rounded-[2px] flex items-center gap-1 flex-shrink-0">
+                          <Pause className="h-2.5 w-2.5" />
                           <span>Pausado</span>
                         </span>
                       )}
                     </h2>
-                    <p className="text-[11px] sm:text-xs text-neutral-400 mt-0.5 truncate">
-                      YouTube (Álbuns & Hinos sem anúncios), MP3 e Rádios Web.
+                    <p className="text-[11px] text-neutral-400 truncate">
+                      Tocando agora: <span className="text-white font-medium">{currentPlayingTrack || "Nenhuma faixa em reprodução"}</span>
                     </p>
                   </div>
                 </div>
               </div>
-
-              {/* Seletor de 4 Abas para Mobile: Buscar, Importar, Fila, Rádio */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 bg-neutral-950 border border-neutral-800 p-1 rounded-xl gap-1 w-full">
-                <button
-                  onClick={() => setBasicAudioTab("youtube")}
-                  className={`py-2 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
-                    basicAudioTab === "youtube"
-                      ? "bg-red-600 text-white shadow font-bold"
-                      : "text-neutral-400 hover:text-white"
-                  }`}
-                >
-                  <Search className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span className="truncate">Buscar YouTube</span>
-                </button>
-                <button
-                  onClick={() => setBasicAudioTab("playlist_import")}
-                  className={`py-2 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
-                    basicAudioTab === "playlist_import"
-                      ? "bg-purple-600 text-white shadow font-bold"
-                      : "text-neutral-400 hover:text-white"
-                  }`}
-                >
-                  <Disc className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span className="truncate">Importar Playlist</span>
-                </button>
-                <button
-                  onClick={() => setBasicAudioTab("playlist")}
-                  className={`py-2 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
-                    basicAudioTab === "playlist"
-                      ? "bg-blue-600 text-white shadow font-bold"
-                      : "text-neutral-400 hover:text-white"
-                  }`}
-                >
-                  <ListMusic className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span className="truncate">Fila ({activeAudio?.items?.length || 0})</span>
-                </button>
-                <button
-                  onClick={() => setBasicAudioTab("stream")}
-                  className={`py-2 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
-                    basicAudioTab === "stream"
-                      ? "bg-blue-600 text-white shadow font-bold"
-                      : "text-neutral-400 hover:text-white"
-                  }`}
-                >
-                  <RadioIcon className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span className="truncate">Web Rádio</span>
-                </button>
-              </div>
             </div>
 
-            {/* CONTROLE PRINCIPAL DE ÁUDIO: STATUS, BOTÕES GRANDES E VOLUME */}
-            <div className="bg-neutral-950/80 rounded-2xl border border-neutral-800 p-3.5 sm:p-4 space-y-4 w-full overflow-hidden">
+            {/* CONTROLE PRINCIPAL DE ÁUDIO: STATUS, BOTÕES E VOLUME (EM PRIMEIRO LUGAR) */}
+            <div className="bg-neutral-950 rounded-[2px] border border-neutral-800 p-3 space-y-3 w-full overflow-hidden">
               {/* Informação da música tocando agora */}
-              <div className="flex items-center justify-between gap-2.5 text-xs bg-neutral-900/60 px-3 py-2.5 rounded-xl border border-neutral-800/80 overflow-hidden w-full">
+              <div className="flex items-center justify-between gap-2 text-xs bg-neutral-900/80 px-2.5 py-2 rounded-[2px] border border-neutral-800/80 overflow-hidden w-full">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <div
-                    className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${
-                      isAudioPlaying ? "bg-blue-400 animate-pulse" : "bg-neutral-600"
+                    className={`h-2 w-2 rounded-full flex-shrink-0 ${
+                      isAudioPlaying ? "bg-emerald-400 animate-pulse" : "bg-neutral-600"
                     }`}
                   />
                   <div className="truncate min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center sm:gap-1.5">
-                    <span className="text-neutral-400 text-[11px] sm:text-xs flex-shrink-0">No som da TV:</span>
-                    <strong className="text-white font-semibold truncate text-xs sm:text-sm">
+                    <span className="text-neutral-500 text-[10px] sm:text-[11px] flex-shrink-0 uppercase font-semibold">No som da TV:</span>
+                    <strong className="text-white font-medium truncate text-xs sm:text-sm">
                       {currentPlayingTrack || "Nenhuma música selecionada"}
                     </strong>
                   </div>
                 </div>
               </div>
 
-              {/* Botões Grandes de Playback (Amigáveis para touch em celulares) */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full">
+              {/* Botões de Playback e Volume */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 w-full">
                 {/* Botões Prev / Play-Pause / Next */}
-                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 w-full sm:w-auto">
+                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-1.5 w-full sm:w-auto">
                   <button
                     onClick={() => signageApi.sendCommand(slug, "audio", "prev")}
                     disabled={isAudioStreamActive || !activeAudio || activeAudio.items.length === 0}
-                    className="min-h-[48px] w-12 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
+                    className="min-h-[40px] w-10 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
                     title="Música Anterior"
                   >
-                    <SkipBack className="h-5 w-5" />
+                    <SkipBack className="h-4 w-4" />
                   </button>
 
                   {isAudioPlaying ? (
                     <button
                       onClick={() => signageApi.sendCommand(slug, "audio", "pause")}
-                      className="min-h-[52px] px-4 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 flex items-center justify-center gap-2 font-bold text-sm transition"
+                      className="min-h-[40px] px-4 rounded-[2px] bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 flex items-center justify-center gap-1.5 font-bold text-xs uppercase tracking-wider transition"
                     >
-                      <Pause className="h-5 w-5 flex-shrink-0" />
+                      <Pause className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">Pausar</span>
                     </button>
                   ) : (
                     <button
                       onClick={() => signageApi.sendCommand(slug, "audio", "play")}
-                      className="min-h-[52px] px-4 rounded-xl bg-blue-600 text-white hover:bg-blue-500 flex items-center justify-center gap-2 font-bold text-sm shadow-md transition"
+                      className="min-h-[40px] px-4 rounded-[2px] bg-white text-black hover:bg-neutral-200 flex items-center justify-center gap-1.5 font-bold text-xs uppercase tracking-wider shadow-sm transition"
                     >
-                      <Play className="h-5 w-5 flex-shrink-0 ml-0.5" />
+                      <Play className="h-4 w-4 flex-shrink-0 ml-0.5" />
                       <span className="truncate">Tocar</span>
                     </button>
                   )}
@@ -1289,36 +1487,37 @@ function RoomOperator() {
                   <button
                     onClick={() => signageApi.sendCommand(slug, "audio", "next")}
                     disabled={isAudioStreamActive || !activeAudio || activeAudio.items.length === 0}
-                    className="min-h-[48px] w-12 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
+                    className="min-h-[40px] w-10 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
                     title="Próxima Música"
                   >
-                    <SkipForward className="h-5 w-5" />
+                    <SkipForward className="h-4 w-4" />
                   </button>
                 </div>
 
                 {/* Roleta de Volume (UIDatePicker Wheel Picker) e Presets de 12,5 em 12,5% */}
-                <div className="w-full sm:w-auto space-y-3 bg-neutral-900/50 p-3 rounded-2xl border border-neutral-800/80 overflow-hidden">
+                <div className="w-full sm:w-auto space-y-2 bg-neutral-900/60 p-2.5 rounded-[2px] border border-neutral-800 overflow-hidden">
                   <VolumeWheelPicker
+                    compact
                     value={currentAudioVolume}
                     onChange={(val) => signageApi.setAudioVolume(slug, val)}
                   />
 
                   {/* 9 Botões Rápidos de Volume (0% a 100% de 12,5 em 12,5%) */}
-                  <div className="space-y-1.5 pt-2 border-t border-neutral-800/80">
-                    <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider block">
+                  <div className="space-y-1 pt-1.5 border-t border-neutral-800">
+                    <span className="text-[9px] uppercase font-bold text-neutral-400 tracking-wider block">
                       Ajuste Rápido (passo de 12,5%):
                     </span>
-                    <div className="grid grid-cols-3 sm:grid-cols-9 gap-1.5 w-full">
+                    <div className="grid grid-cols-3 sm:grid-cols-9 gap-1 w-full">
                       {VOLUME_PRESETS.map((preset) => {
                         const isSelected = Math.abs(currentAudioVolume - preset.val) < 0.5;
                         return (
                           <button
                             key={preset.val}
                             onClick={() => signageApi.setAudioVolume(slug, preset.val)}
-                            className={`min-h-[36px] px-1 py-1 rounded-xl text-[11px] font-semibold transition text-center truncate shadow-sm flex items-center justify-center ${
+                            className={`min-h-[28px] px-1 py-0.5 rounded-[2px] text-[10px] font-semibold transition text-center truncate flex items-center justify-center ${
                               isSelected
-                                ? "bg-blue-600 text-white font-bold ring-2 ring-blue-400/50 shadow"
-                                : "bg-neutral-800/90 text-neutral-300 hover:text-white hover:bg-neutral-700 border border-neutral-700/50"
+                                ? "bg-white text-black font-bold border border-white shadow-xs"
+                                : "bg-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 border border-neutral-800"
                             }`}
                           >
                             {preset.label}
@@ -1331,129 +1530,149 @@ function RoomOperator() {
               </div>
             </div>
 
+            {/* Seletor de 4 Abas: Buscar, Importar, Fila, Rádio (MOVIDO PARA DEPOIS DO CONTROLE) */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 bg-neutral-950 border border-neutral-800 p-0.5 rounded-[2px] gap-1 w-full">
+              <button
+                onClick={() => setBasicAudioTab("youtube")}
+                className={`py-1.5 px-2 rounded-[2px] text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                  basicAudioTab === "youtube"
+                    ? "bg-neutral-800 text-white border border-neutral-700 shadow-sm font-bold"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Search className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Buscar YouTube</span>
+              </button>
+              <button
+                onClick={() => setBasicAudioTab("playlist_import")}
+                className={`py-1.5 px-2 rounded-[2px] text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                  basicAudioTab === "playlist_import"
+                    ? "bg-neutral-800 text-white border border-neutral-700 shadow-sm font-bold"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Disc className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Importar Playlist</span>
+              </button>
+              <button
+                onClick={() => setBasicAudioTab("playlist")}
+                className={`py-1.5 px-2 rounded-[2px] text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                  basicAudioTab === "playlist"
+                    ? "bg-neutral-800 text-white border border-neutral-700 shadow-sm font-bold"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                <ListMusic className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Fila ({activeAudio?.items?.length || 0})</span>
+              </button>
+              <button
+                onClick={() => setBasicAudioTab("stream")}
+                className={`py-1.5 px-2 rounded-[2px] text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                  basicAudioTab === "stream"
+                    ? "bg-neutral-800 text-white border border-neutral-700 shadow-sm font-bold"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                <RadioIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Web Rádio</span>
+              </button>
+            </div>
+
             {/* ============================================================ */}
             {/* SUB-ABA 1: PESQUISAR NO YOUTUBE                              */}
             {/* ============================================================ */}
             {basicAudioTab === "youtube" && (
-              <div className="space-y-3.5 w-full">
-                <div className="bg-neutral-950/70 p-3.5 sm:p-4 rounded-xl border border-neutral-800 space-y-3">
-                  <div className="space-y-1">
+              <div className="space-y-2.5 w-full">
+                <div className="bg-neutral-950/70 p-3 sm:p-3.5 rounded-[2px] border border-neutral-800 space-y-2.5">
+                  <div className="space-y-0.5">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Search className="h-4 w-4 text-red-500 flex-shrink-0" />
+                      <Search className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
                       <span>Buscar Músicas e Artistas no YouTube</span>
                     </span>
-                    <p className="text-[11px] text-neutral-400">
-                      Streaming de áudio direto e invisível em segundo plano na TV, sem anúncios e sem ocupar memória.
-                    </p>
                   </div>
 
                   {/* Barra de Busca */}
-                  <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
+                  <div className="flex flex-col sm:flex-row items-stretch gap-1.5 w-full">
                     <div className="relative flex-1">
                       <input
                         placeholder="Ex: Padre Marcelo Rossi, Harpa Cristã, Pe. Fábio de Melo..."
                         value={ytQuery}
                         onChange={(e) => setYtQuery(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleSearchYt()}
-                        className="w-full rounded-xl border border-neutral-700 bg-black px-3.5 py-2.5 text-base sm:text-xs text-white placeholder-neutral-500 outline-none focus:border-red-500"
+                        className="w-full rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
                       />
                     </div>
                     <button
                       onClick={() => handleSearchYt()}
                       disabled={!ytQuery.trim() || isSearchingYt}
-                      className="w-full sm:w-auto min-h-[42px] px-5 py-2.5 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-red-500 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow flex-shrink-0"
+                      className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm flex-shrink-0"
                     >
                       {isSearchingYt ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           <span>Buscando...</span>
                         </>
                       ) : (
                         <>
-                          <Search className="h-4 w-4" />
+                          <Search className="h-3.5 w-3.5" />
                           <span>Buscar</span>
                         </>
                       )}
                     </button>
                   </div>
-
-                  {/* Atalhos Rápidos de Toque (Chips) */}
-                  <div className="space-y-1.5 pt-1">
-                    <span className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold block">
-                      Sugestões Rápidas:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        "Hinos da Harpa Cristã",
-                        "Padre Marcelo Rossi",
-                        "Pe. Fábio de Melo",
-                        "Músicas Católicas Suaves",
-                        "Louvores Voz e Violão",
-                        "Instrumental Piano e Cordas",
-                      ].map((chip) => (
-                        <button
-                          key={chip}
-                          onClick={() => handleSearchYt(chip)}
-                          className="px-2.5 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-300 hover:text-white hover:border-neutral-700 transition"
-                        >
-                          {chip}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
 
                 {/* Mensagem de Erro na Busca */}
                 {ytSearchError && (
-                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/60 text-xs text-red-300 flex items-center gap-2">
-                    <Info className="h-4 w-4 flex-shrink-0" />
+                  <div className="p-2.5 rounded-[2px] bg-neutral-900 border border-red-500/40 text-xs text-red-300 flex items-center gap-2">
+                    <Info className="h-3.5 w-3.5 flex-shrink-0 text-red-400" />
                     <span>{ytSearchError}</span>
                   </div>
                 )}
 
                 {/* Lista de Resultados da Busca */}
                 {ytResults.length > 0 && (
-                  <div className="space-y-2 w-full">
+                  <div className="space-y-1.5 w-full">
                     <div className="flex items-center justify-between text-xs text-neutral-400 px-1">
-                      <span className="font-semibold text-neutral-300">
+                      <span className="font-semibold text-neutral-300 text-[11px]">
                         Resultados Encontrados ({ytResults.length})
                       </span>
-                      <span className="text-[11px] text-neutral-500 hidden sm:inline">
+                      <span className="text-[10px] text-neutral-500 hidden sm:inline">
                         Adicione à fila ou toque imediatamente na sala
                       </span>
                     </div>
 
-                    <div className="space-y-2 max-h-[440px] overflow-y-auto pr-0.5">
+                    <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-0.5">
                       {ytResults.map((item) => {
                         const isJustAdded = addedSuccessId === item.id;
 
                         return (
                           <div
                             key={item.id}
-                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 sm:p-3 rounded-xl border border-neutral-800 bg-neutral-950/50 hover:border-neutral-700 transition"
+                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 sm:p-2.5 rounded-[2px] border border-neutral-800 bg-neutral-950/60 hover:border-neutral-700 transition"
                           >
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
                               {/* Thumbnail com tempo */}
                               {item.thumbnailUrl && (
-                                <div className="relative w-16 h-11 sm:w-20 sm:h-12 rounded-lg overflow-hidden bg-neutral-900 flex-shrink-0">
+                                <div className="relative w-14 h-10 sm:w-16 sm:h-11 rounded-[2px] overflow-hidden bg-neutral-900 flex-shrink-0">
                                   <img
                                     src={item.thumbnailUrl}
                                     alt={item.title}
                                     className="w-full h-full object-cover"
                                     loading="lazy"
                                   />
-                                  <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[10px] text-white px-1 rounded font-mono">
+                                  <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[9px] text-white px-1 rounded-[1px] font-mono">
                                     {item.durationFormatted}
                                   </span>
                                 </div>
                               )}
 
                               <div className="min-w-0 flex-1">
-                                <h4 className="text-xs sm:text-sm font-semibold text-white line-clamp-2 leading-tight">
+                                <h4 className="text-xs sm:text-sm font-medium text-white line-clamp-2 leading-tight">
                                   {item.title}
                                 </h4>
                                 {item.author && (
-                                  <p className="text-[11px] text-neutral-400 mt-0.5 truncate">
+                                  <p className="text-[10px] text-neutral-400 mt-0.5 truncate">
                                     {item.author}
                                   </p>
                                 )}
@@ -1464,30 +1683,30 @@ function RoomOperator() {
                             <div className="flex items-center gap-1.5 self-end sm:self-center flex-shrink-0">
                               <button
                                 onClick={() => handleAddYtTrack(item, false)}
-                                className={`min-h-[38px] px-3 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                                className={`min-h-[32px] px-2.5 rounded-[2px] text-xs font-semibold transition flex items-center gap-1 ${
                                   isJustAdded
-                                    ? "bg-emerald-600 text-white font-bold"
-                                    : "bg-neutral-800 text-neutral-200 hover:bg-neutral-700 hover:text-white"
+                                    ? "bg-neutral-800 text-emerald-400 border border-emerald-500/40 font-bold"
+                                    : "bg-neutral-900 border border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white"
                                 }`}
                               >
                                 {isJustAdded ? (
                                   <>
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    <CheckCircle2 className="h-3 w-3" />
                                     <span>Adicionado!</span>
                                   </>
                                 ) : (
                                   <>
-                                    <Plus className="h-3.5 w-3.5" />
+                                    <Plus className="h-3 w-3" />
                                     <span>+ Fila</span>
                                   </>
                                 )}
                               </button>
                               <button
                                 onClick={() => handleAddYtTrack(item, true)}
-                                className="min-h-[38px] px-3 rounded-lg bg-blue-600 text-white hover:bg-blue-500 text-xs font-bold transition flex items-center gap-1.5 shadow"
+                                className="min-h-[32px] px-3 rounded-[2px] bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center gap-1 shadow-sm"
                                 title="Adiciona e inicia a reprodução agora na TV"
                               >
-                                <Play className="h-3.5 w-3.5 ml-0.5" />
+                                <Play className="h-3 w-3 ml-0.5" />
                                 <span>Tocar Agora</span>
                               </button>
                             </div>
@@ -1504,11 +1723,11 @@ function RoomOperator() {
             {/* SUB-ABA 2: IMPORTAR PLAYLIST / ÁLBUM DO YOUTUBE               */}
             {/* ============================================================ */}
             {basicAudioTab === "playlist_import" && (
-              <div className="space-y-4 w-full">
-                <div className="bg-neutral-950/70 p-3.5 sm:p-4 rounded-xl border border-neutral-800 space-y-3">
-                  <div className="space-y-1">
+              <div className="space-y-3 w-full">
+                <div className="bg-neutral-950/70 p-3 sm:p-3.5 rounded-[2px] border border-neutral-800 space-y-2.5">
+                  <div className="space-y-0.5">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Disc className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                      <Disc className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
                       <span>Importar Playlist ou Álbum Inteiro do YouTube</span>
                     </span>
                     <p className="text-[11px] text-neutral-400">
@@ -1516,84 +1735,84 @@ function RoomOperator() {
                     </p>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
+                  <div className="flex flex-col sm:flex-row items-stretch gap-1.5 w-full">
                     <input
                       placeholder="https://www.youtube.com/playlist?list=PLzWjmBOf3rY3hAXmvMI1..."
                       value={playlistInputUrl}
                       onChange={(e) => setPlaylistInputUrl(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleFetchPlaylistInfo()}
-                      className="w-full flex-1 rounded-xl border border-neutral-700 bg-black px-3.5 py-2.5 text-base sm:text-xs text-white placeholder-neutral-500 outline-none focus:border-purple-500 font-mono"
+                      className="w-full flex-1 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500 font-mono"
                     />
                     <button
                       onClick={handleFetchPlaylistInfo}
                       disabled={!playlistInputUrl.trim() || isLoadingPlaylist}
-                      className="w-full sm:w-auto min-h-[42px] px-5 py-2.5 rounded-xl bg-purple-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-purple-500 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow flex-shrink-0"
+                      className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm flex-shrink-0"
                     >
                       {isLoadingPlaylist ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           <span>Carregando...</span>
                         </>
                       ) : (
                         <>
-                          <Disc className="h-4 w-4" />
+                          <Disc className="h-3.5 w-3.5" />
                           <span>Carregar Playlist</span>
                         </>
                       )}
                     </button>
                   </div>
 
-                  <p className="text-[11px] text-neutral-500 flex items-center gap-1.5">
-                    <Info className="h-3.5 w-3.5 flex-shrink-0 text-neutral-400" />
+                  <p className="text-[10px] text-neutral-500 flex items-center gap-1">
+                    <Info className="h-3 w-3 flex-shrink-0 text-neutral-500" />
                     <span>Também funciona colando o link de um vídeo que faz parte de uma playlist (com &quot;&amp;list=...&quot;).</span>
                   </p>
                 </div>
 
                 {/* Feedback de Erro */}
                 {playlistError && (
-                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/60 text-xs text-red-300 flex items-center gap-2">
-                    <Info className="h-4 w-4 flex-shrink-0" />
+                  <div className="p-2.5 rounded-[2px] bg-neutral-900 border border-red-500/40 text-xs text-red-300 flex items-center gap-2">
+                    <Info className="h-3.5 w-3.5 flex-shrink-0 text-red-400" />
                     <span>{playlistError}</span>
                   </div>
                 )}
 
                 {/* Feedback de Sucesso */}
                 {importSuccessMsg && (
-                  <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-xs text-emerald-200 flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                  <div className="p-2.5 rounded-[2px] bg-neutral-900 border border-emerald-500/40 text-xs text-emerald-300 flex items-center gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 flex-shrink-0" />
                     <span className="font-semibold">{importSuccessMsg}</span>
                   </div>
                 )}
 
                 {/* Card de Pré-visualização da Playlist Encontrada */}
                 {loadedPlaylistPreview && (
-                  <div className="p-4 rounded-xl border border-purple-500/40 bg-purple-950/20 space-y-3.5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-500/20 pb-3">
+                  <div className="p-3 rounded-[2px] border border-neutral-700 bg-neutral-900/50 space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-neutral-800 pb-2">
                       <div>
-                        <span className="text-[10px] uppercase font-bold text-purple-400 tracking-wider">
+                        <span className="text-[9px] uppercase font-bold text-neutral-400 tracking-wider">
                           Playlist Reconhecida
                         </span>
-                        <h3 className="text-sm sm:text-base font-bold text-white mt-0.5">
+                        <h3 className="text-xs sm:text-sm font-bold text-white mt-0.5">
                           {loadedPlaylistPreview.title}
                         </h3>
-                        <p className="text-xs text-neutral-300 mt-0.5">
+                        <p className="text-[11px] text-neutral-400 mt-0.5">
                           {loadedPlaylistPreview.videoCount} músicas encontradas no YouTube
                         </p>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <span className="text-xs font-semibold text-neutral-300 block">
                         Como deseja importar para esta sala?
                       </span>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                         <button
                           onClick={() => handleImportPlaylistTracks("replace")}
                           disabled={isLoadingPlaylist}
-                          className="min-h-[44px] px-4 py-2.5 rounded-xl bg-purple-600 text-white font-bold text-xs hover:bg-purple-500 transition flex items-center justify-center gap-2 shadow"
+                          className="min-h-[36px] px-3 py-2 rounded-[2px] bg-white text-black font-bold text-xs hover:bg-neutral-200 transition flex items-center justify-center gap-1.5 shadow-sm"
                         >
-                          <Disc className="h-4 w-4" />
+                          <Disc className="h-3.5 w-3.5" />
                           <span>Importar Todas ({loadedPlaylistPreview.videoCount} faixas)</span>
                         </button>
 
@@ -1601,9 +1820,9 @@ function RoomOperator() {
                           <button
                             onClick={() => handleImportPlaylistTracks("append")}
                             disabled={isLoadingPlaylist}
-                            className="min-h-[44px] px-4 py-2.5 rounded-xl bg-neutral-900 border border-neutral-700 text-neutral-200 font-semibold text-xs hover:text-white hover:bg-neutral-800 transition flex items-center justify-center gap-2"
+                            className="min-h-[36px] px-3 py-2 rounded-[2px] bg-neutral-900 border border-neutral-700 text-neutral-200 font-semibold text-xs hover:text-white hover:bg-neutral-800 transition flex items-center justify-center gap-1.5"
                           >
-                            <Plus className="h-4 w-4" />
+                            <Plus className="h-3.5 w-3.5" />
                             <span>Acrescentar à Fila Atual</span>
                           </button>
                         )}
@@ -1613,7 +1832,7 @@ function RoomOperator() {
                         <button
                           onClick={() => handleImportPlaylistTracks("replace", 50)}
                           disabled={isLoadingPlaylist}
-                          className="w-full text-center text-[11px] text-neutral-400 hover:text-purple-300 pt-1"
+                          className="w-full text-center text-[10px] text-neutral-400 hover:text-white pt-1"
                         >
                           Importar apenas as primeiras 50 faixas mais tocadas
                         </button>
@@ -1628,18 +1847,18 @@ function RoomOperator() {
             {/* SUB-ABA 3: FILA DE MÚSICAS DA SALA                           */}
             {/* ============================================================ */}
             {basicAudioTab === "playlist" && (
-              <div className="space-y-4 w-full">
+              <div className="space-y-3 w-full">
                 {/* Seleção de Playlist & Modos de Repetição */}
-                <div className="bg-neutral-950/70 p-3.5 rounded-xl border border-neutral-800 space-y-3 w-full overflow-hidden">
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 w-full">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="bg-neutral-950/70 p-3 rounded-[2px] border border-neutral-800 space-y-2.5 w-full overflow-hidden">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 w-full">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
                       <span className="text-xs font-semibold text-neutral-400 flex-shrink-0">
                         Lista:
                       </span>
                       <select
                         value={activeAudio?.id || ""}
                         onChange={(e) => handleSelectAudioPlaylist(e.target.value)}
-                        className="flex-1 min-w-0 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs text-white outline-none focus:border-blue-500 truncate"
+                        className="flex-1 min-w-0 rounded-[2px] border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-xs text-white outline-none focus:border-neutral-500 truncate"
                       >
                         <option value="">-- Nenhuma Selecionada --</option>
                         {audioPlaylists.map((p) => (
@@ -1650,58 +1869,78 @@ function RoomOperator() {
                       </select>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 w-full sm:w-auto">
                       <button
                         onClick={handleCreateNewAudioPlaylist}
-                        className="min-h-[36px] px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-300 hover:bg-blue-500 hover:text-white text-xs font-semibold transition flex items-center justify-center gap-1 truncate text-center"
+                        className="min-h-[32px] px-2.5 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 text-xs font-semibold transition flex items-center justify-center gap-1 truncate text-center"
                       >
-                        <Plus className="h-3.5 w-3.5 flex-shrink-0" />
+                        <Plus className="h-3 w-3 flex-shrink-0" />
                         <span className="truncate">Nova Lista</span>
                       </button>
-                      {activeAudio && activeAudio.items.length > 0 && (
+                      {activeAudio && activeAudio.items && activeAudio.items.length > 0 && (
+                        <button
+                          onClick={handleOpenSaveQueue}
+                          className="min-h-[32px] px-3 py-1 rounded-[2px] bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center justify-center gap-1 truncate text-center shadow-xs"
+                          title="Salvar esta fila como uma playlist reutilizável"
+                        >
+                          <Save className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="truncate">Salvar Fila</span>
+                        </button>
+                      )}
+                      {activeAudio && activeAudio.items && activeAudio.items.length > 0 && (
                         <button
                           onClick={handleClearPlaylist}
-                          className="min-h-[36px] px-3 py-1.5 rounded-lg border border-neutral-800 text-neutral-400 hover:text-red-400 text-xs transition text-center truncate"
+                          className="min-h-[32px] px-2.5 py-1 rounded-[2px] border border-neutral-800 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs transition text-center truncate"
                           title="Esvazia todas as músicas desta lista"
                         >
                           Limpar Fila
+                        </button>
+                      )}
+                      {activeAudio && !activeAudio.name.startsWith("Áudio -") && (
+                        <button
+                          onClick={handleDeleteCurrentPlaylist}
+                          className="min-h-[32px] px-2.5 py-1 rounded-[2px] border border-neutral-800 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs transition flex items-center justify-center gap-1"
+                          title="Excluir playlist salva permanentemente"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="hidden sm:inline">Excluir</span>
                         </button>
                       )}
                     </div>
                   </div>
 
                   {/* Modos de Repetição e Ordem Aleatória */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-neutral-800/60 w-full">
-                    <div className="grid grid-cols-3 bg-neutral-900 rounded-lg p-0.5 border border-neutral-800 w-full sm:w-auto">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-1.5 pt-1.5 border-t border-neutral-800/80 w-full">
+                    <div className="grid grid-cols-3 bg-neutral-900 rounded-[2px] p-0.5 border border-neutral-800 w-full sm:w-auto">
                       <button
                         onClick={() => handleChangeLoopMode("all")}
-                        className={`min-h-[34px] px-2.5 py-1 rounded-md text-xs transition flex items-center justify-center gap-1 ${
+                        className={`min-h-[28px] px-2 py-0.5 rounded-[2px] text-xs transition flex items-center justify-center gap-1 ${
                           loopMode === "all"
-                            ? "bg-blue-600 text-white font-bold"
+                            ? "bg-white text-black font-bold shadow-xs"
                             : "text-neutral-400 hover:text-white"
                         }`}
                         title="Repetir todas em loop contínuo"
                       >
-                        <Repeat className="h-3.5 w-3.5 flex-shrink-0" />
+                        <Repeat className="h-3 w-3 flex-shrink-0" />
                         <span>Todas</span>
                       </button>
                       <button
                         onClick={() => handleChangeLoopMode("one")}
-                        className={`min-h-[34px] px-2.5 py-1 rounded-md text-xs transition flex items-center justify-center gap-1 ${
+                        className={`min-h-[28px] px-2 py-0.5 rounded-[2px] text-xs transition flex items-center justify-center gap-1 ${
                           loopMode === "one"
-                            ? "bg-blue-600 text-white font-bold"
+                            ? "bg-white text-black font-bold shadow-xs"
                             : "text-neutral-400 hover:text-white"
                         }`}
                         title="Repetir apenas esta faixa em loop"
                       >
-                        <Repeat1 className="h-3.5 w-3.5 flex-shrink-0" />
+                        <Repeat1 className="h-3 w-3 flex-shrink-0" />
                         <span>Uma</span>
                       </button>
                       <button
                         onClick={() => handleChangeLoopMode("none")}
-                        className={`min-h-[34px] px-2.5 py-1 rounded-md text-xs transition flex items-center justify-center ${
+                        className={`min-h-[28px] px-2 py-0.5 rounded-[2px] text-xs transition flex items-center justify-center ${
                           loopMode === "none"
-                            ? "bg-blue-600 text-white font-bold"
+                            ? "bg-white text-black font-bold shadow-xs"
                             : "text-neutral-400 hover:text-white"
                         }`}
                         title="Tocar a lista 1 vez e parar"
@@ -1712,74 +1951,74 @@ function RoomOperator() {
 
                     <button
                       onClick={handleToggleShuffle}
-                      className={`min-h-[34px] px-3 py-1 rounded-lg border text-xs transition flex items-center justify-center gap-1.5 w-full sm:w-auto ${
+                      className={`min-h-[28px] px-2.5 py-0.5 rounded-[2px] border text-xs transition flex items-center justify-center gap-1.5 w-full sm:w-auto ${
                         shuffleActive
-                          ? "bg-purple-600/30 border-purple-500/60 text-purple-200 font-bold"
+                          ? "bg-white text-black font-bold border-white"
                           : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
                       }`}
                       title="Ordem Aleatória (Shuffle)"
                     >
-                      <Shuffle className="h-3.5 w-3.5 flex-shrink-0" />
+                      <Shuffle className="h-3 w-3 flex-shrink-0" />
                       <span>Ordem Aleatória</span>
                     </button>
                   </div>
                 </div>
 
                 {/* Bloco de Adicionar Músicas por Link Único */}
-                <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-3.5 sm:p-4 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 w-full">
+                <div className="rounded-[2px] border border-neutral-800 bg-neutral-950/60 p-3 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 w-full">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Plus className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                      <Plus className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
                       <span>Adicionar Link à Fila (YouTube / MP3)</span>
                     </span>
                     <button
                       onClick={() => setShowMultiLinksModal(true)}
-                      className="text-xs text-blue-400 hover:underline flex items-center gap-1 font-semibold self-start sm:self-auto"
+                      className="text-xs text-neutral-300 hover:text-white hover:underline flex items-center gap-1 font-semibold self-start sm:self-auto"
                     >
-                      <Layers className="h-3.5 w-3.5 flex-shrink-0" />
+                      <Layers className="h-3 w-3 flex-shrink-0" />
                       <span>Colar Vários Links de Uma Vez</span>
                     </button>
                   </div>
 
-                  <div className="flex flex-col sm:grid sm:grid-cols-[1fr_180px_auto] gap-2 w-full">
+                  <div className="flex flex-col sm:grid sm:grid-cols-[1fr_180px_auto] gap-1.5 w-full">
                     <input
-                      placeholder="Cole link do YouTube ou arquivo de áudio..."
+                      placeholder="Cole link do YouTube ou áudio MP3..."
                       value={newTrackUrl}
                       onChange={(e) => setNewTrackUrl(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleAddTrack(newTrackUrl, newTrackTitle)}
-                      className="w-full min-w-0 rounded-xl border border-neutral-700 bg-black px-3.5 py-2.5 text-base sm:text-xs text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+                      className="w-full min-w-0 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
                     />
                     <input
                       placeholder="Nome da música (opcional)"
                       value={newTrackTitle}
                       onChange={(e) => setNewTrackTitle(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleAddTrack(newTrackUrl, newTrackTitle)}
-                      className="w-full min-w-0 rounded-xl border border-neutral-700 bg-black px-3.5 py-2.5 text-base sm:text-xs text-white placeholder-neutral-500 outline-none focus:border-blue-500"
+                      className="w-full min-w-0 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
                     />
                     <button
                       onClick={() => handleAddTrack(newTrackUrl, newTrackTitle)}
                       disabled={!newTrackUrl.trim()}
-                      className="w-full sm:w-auto min-h-[42px] px-5 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-blue-500 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow flex-shrink-0"
+                      className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1 shadow-sm flex-shrink-0"
                     >
-                      <Plus className="h-4 w-4" />
+                      <Plus className="h-3.5 w-3.5" />
                       <span>Adicionar</span>
                     </button>
                   </div>
                 </div>
 
                 {/* Lista de Faixas na Playlist */}
-                <div className="space-y-2 w-full overflow-hidden">
+                <div className="space-y-1.5 w-full overflow-hidden">
                   <div className="flex items-center justify-between text-xs text-neutral-400 px-1">
-                    <span className="font-semibold text-neutral-300">
+                    <span className="font-semibold text-neutral-300 text-[11px]">
                       Faixas na Playlist ({activeAudio?.items?.length || 0})
                     </span>
-                    <span className="text-[11px] text-neutral-500 hidden sm:inline">
+                    <span className="text-[10px] text-neutral-500 hidden sm:inline">
                       Toque em qualquer faixa para tocar na TV
                     </span>
                   </div>
 
                   {activeAudio && activeAudio.items && activeAudio.items.length > 0 ? (
-                    <div className="space-y-1.5 max-h-96 overflow-y-auto pr-0.5 w-full">
+                    <div className="space-y-1 max-h-96 overflow-y-auto pr-0.5 w-full">
                       {activeAudio.items.map((item, idx) => {
                         const isCurrentlyPlaying =
                           !isAudioStreamActive && isAudioPlaying && currentAudioIndex === idx;
@@ -1787,9 +2026,9 @@ function RoomOperator() {
                         return (
                           <div
                             key={idx}
-                            className={`flex items-center justify-between gap-2 p-2 sm:p-2.5 rounded-xl border transition overflow-hidden w-full ${
+                            className={`flex items-center justify-between gap-2 p-2 rounded-[2px] border transition overflow-hidden w-full ${
                               isCurrentlyPlaying
-                                ? "border-blue-500 bg-blue-950/30 shadow-md border-l-4"
+                                ? "border-neutral-600 bg-neutral-900/80 border-l-2 border-l-white shadow-xs"
                                 : "border-neutral-800 bg-neutral-950/40 hover:border-neutral-700"
                             }`}
                           >
@@ -1797,30 +2036,30 @@ function RoomOperator() {
                               {/* Botão de Tocar a Faixa */}
                               <button
                                 onClick={() => handlePlayTrack(idx)}
-                                className={`h-8 w-8 sm:h-9 sm:w-9 rounded-full flex items-center justify-center transition flex-shrink-0 ${
+                                className={`h-7 w-7 rounded-[2px] flex items-center justify-center transition flex-shrink-0 ${
                                   isCurrentlyPlaying
-                                    ? "bg-blue-500 text-white shadow-md animate-pulse"
-                                    : "bg-neutral-800 text-neutral-300 hover:bg-blue-600 hover:text-white"
+                                    ? "bg-white text-black shadow-xs font-bold"
+                                    : "bg-neutral-900 text-neutral-300 hover:bg-neutral-800 hover:text-white border border-neutral-800"
                                 }`}
                                 title="Tocar esta faixa agora"
                               >
                                 {isCurrentlyPlaying ? (
-                                  <Volume2 className="h-4 w-4" />
+                                  <Volume2 className="h-3.5 w-3.5" />
                                 ) : (
-                                  <Play className="h-3.5 w-3.5 ml-0.5" />
+                                  <Play className="h-3 w-3 ml-0.5" />
                                 )}
                               </button>
 
                               <div className="min-w-0 flex-1">
-                                <div className="text-xs sm:text-sm font-semibold text-white truncate flex items-center gap-1.5">
-                                  <span className="text-neutral-500 text-[10px] sm:text-[11px] flex-shrink-0">
+                                <div className="text-xs font-medium text-white truncate flex items-center gap-1.5">
+                                  <span className="text-neutral-500 text-[10px] flex-shrink-0 font-mono">
                                     #{idx + 1}
                                   </span>
                                   <span className="truncate">
                                     {item.title || extractTrackTitle(item.url)}
                                   </span>
                                 </div>
-                                <div className="text-[10px] sm:text-[11px] text-neutral-500 truncate mt-0.5" title={item.url}>
+                                <div className="text-[10px] text-neutral-500 truncate mt-0.5 font-mono" title={item.url}>
                                   {item.url}
                                 </div>
                               </div>
@@ -1831,25 +2070,25 @@ function RoomOperator() {
                               <button
                                 onClick={() => handleMoveTrack(idx, "up")}
                                 disabled={idx === 0}
-                                className="h-8 w-8 sm:h-9 sm:w-9 flex items-center justify-center rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-20 transition"
+                                className="h-7 w-7 flex items-center justify-center rounded-[2px] text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-20 transition"
                                 title="Mover para cima"
                               >
-                                <ChevronUp className="h-4 w-4" />
+                                <ChevronUp className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={() => handleMoveTrack(idx, "down")}
                                 disabled={idx === activeAudio.items.length - 1}
-                                className="h-8 w-8 sm:h-9 sm:w-9 flex items-center justify-center rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-20 transition"
+                                className="h-7 w-7 flex items-center justify-center rounded-[2px] text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-20 transition"
                                 title="Mover para baixo"
                               >
-                                <ChevronDown className="h-4 w-4" />
+                                <ChevronDown className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={() => handleRemoveTrack(idx)}
-                                className="h-8 w-8 sm:h-9 sm:w-9 flex items-center justify-center rounded-lg text-neutral-400 hover:text-red-400 hover:bg-red-500/10 transition"
+                                className="h-7 w-7 flex items-center justify-center rounded-[2px] text-neutral-400 hover:text-red-400 hover:bg-red-500/10 transition"
                                 title="Remover da lista"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-3.5 w-3.5" />
                               </button>
                             </div>
                           </div>
@@ -1857,19 +2096,19 @@ function RoomOperator() {
                       })}
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-dashed border-neutral-800 p-8 text-center text-xs text-neutral-400 space-y-2">
+                    <div className="rounded-[2px] border border-dashed border-neutral-800 p-6 text-center text-xs text-neutral-400 space-y-2">
                       <div>Nenhuma música na lista no momento.</div>
                       <div className="flex items-center justify-center gap-2 pt-1">
                         <button
                           onClick={() => setBasicAudioTab("youtube")}
-                          className="px-3 py-1.5 rounded-lg bg-red-600/20 text-red-300 border border-red-500/30 text-xs font-semibold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5"
+                          className="px-3 py-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-700 text-xs font-semibold hover:bg-neutral-800 hover:text-white transition flex items-center gap-1.5"
                         >
                           <Search className="h-3.5 w-3.5" />
                           <span>Buscar no YouTube</span>
                         </button>
                         <button
                           onClick={() => setBasicAudioTab("playlist_import")}
-                          className="px-3 py-1.5 rounded-lg bg-purple-600/20 text-purple-300 border border-purple-500/30 text-xs font-semibold hover:bg-purple-600 hover:text-white transition flex items-center gap-1.5"
+                          className="px-3 py-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-700 text-xs font-semibold hover:bg-neutral-800 hover:text-white transition flex items-center gap-1.5"
                         >
                           <Disc className="h-3.5 w-3.5" />
                           <span>Importar Playlist</span>
@@ -1885,17 +2124,17 @@ function RoomOperator() {
             {/* SUB-ABA 4: SINTONIZAR WEB RÁDIO                              */}
             {/* ============================================================ */}
             {basicAudioTab === "stream" && (
-              <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 space-y-3">
+              <div className="rounded-[2px] border border-neutral-800 bg-neutral-950/60 p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <RadioIcon
                       className={`h-4 w-4 ${
-                        isAudioStreamActive ? "text-blue-400 animate-pulse" : "text-neutral-500"
+                        isAudioStreamActive ? "text-emerald-400 animate-pulse" : "text-neutral-500"
                       }`}
                     />
                     <span className="text-xs font-bold text-white">Transmissão Direta / Web Rádio</span>
                     {isAudioStreamActive && (
-                      <span className="text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full font-bold">
+                      <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.2 rounded-[2px] font-bold">
                         Sintonizada
                       </span>
                     )}
@@ -1906,34 +2145,67 @@ function RoomOperator() {
                       onClick={handleClearAudioStream}
                       className="text-xs text-red-400 hover:underline flex items-center gap-1 font-semibold"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-3 w-3" />
                       <span>Desconectar Rádio</span>
                     </button>
                   )}
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch gap-1.5">
                   <input
                     placeholder="Link da rádio (ex: https://stream.zeno.fm/... ou link .mp3 contínuo)"
                     value={audioStreamInputUrl}
                     onChange={(e) => setAudioStreamInputUrl(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleApplyAudioStream()}
-                    className="flex-1 rounded-xl border border-neutral-700 bg-black px-3.5 py-3 text-base sm:text-xs text-white outline-none focus:border-blue-500"
+                    className="flex-1 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white outline-none focus:border-neutral-500"
                   />
                   <button
                     onClick={handleApplyAudioStream}
                     disabled={!audioStreamInputUrl.trim() || setState.isPending}
-                    className="min-h-[46px] px-5 py-3 rounded-xl bg-blue-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-blue-500 disabled:opacity-40 transition flex items-center justify-center gap-2 shadow"
+                    className="min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm"
                   >
-                    <RadioIcon className="h-4 w-4" />
+                    <RadioIcon className="h-3.5 w-3.5" />
                     <span>Sintonizar</span>
                   </button>
                 </div>
               </div>
             )}
           </section>
+        )}
 
-          {/* CARD 3: DISPOSITIVOS / TVS CONECTADAS */}
+        {/* ============================================================ */}
+        {/* ABA 3: AGENDAMENTOS E AUTOMAÇÕES DA SALA                     */}
+        {/* ============================================================ */}
+        {activeTab === "automation" && (
+          <RoomSchedulesCard
+            slug={slug}
+            schedules={schedulesQ.data}
+            isLoading={schedulesQ.isLoading}
+            audioPlaylists={audioPlaylists}
+            onOpenNewModal={() => {
+              setEditingSchedule(null);
+              setScheduleModalOpen(true);
+            }}
+            onOpenEditModal={(task) => {
+              setEditingSchedule(task);
+              setScheduleModalOpen(true);
+            }}
+            onOpenWizardModal={() => setWizardModalOpen(true)}
+            onToggle={(id) => toggleScheduleMut.mutate(id)}
+            onRunNow={(id) => runScheduleMut.mutate(id)}
+            onDelete={(id) => {
+              if (confirm("Deseja realmente remover este agendamento programado?")) {
+                deleteScheduleMut.mutate(id);
+              }
+            }}
+            isRunningId={runningScheduleId}
+          />
+        )}
+
+        {/* ============================================================ */}
+        {/* ABA 4: APARELHOS / TVS CONECTADAS                            */}
+        {/* ============================================================ */}
+        {activeTab === "devices" && (
           <RoomDevicesCard
             slug={slug}
             devices={devicesQ.data?.devices}
@@ -1943,333 +2215,129 @@ function RoomOperator() {
             isKicking={kickDeviceMut.isPending}
             playerUrl={playerUrl}
           />
-        </main>
-      ) : (
-        /* ============================================================ */
-        /* 2. MODO AVANÇADO (Completo: Imagens, Vídeos, Editor)         */
-        /* ============================================================ */
-        <div className="flex flex-col flex-1">
-          {/* Navegação por Abas do Modo Avançado */}
-          <nav className="border-b border-neutral-800 bg-neutral-950 px-3 sm:px-6 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full overflow-hidden">
-            <div className="grid grid-cols-3 gap-1 bg-neutral-900 p-1 rounded-xl border border-neutral-800 w-full sm:w-auto">
+        )}
+      </main>
+
+      {/* ============================================================ */}
+      {/* MODAL PARA SALVAR FILA DE MÚSICAS COMO PLAYLIST              */}
+      {/* ============================================================ */}
+      {saveQueueModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 sm:p-4">
+          <div className="w-full max-w-md rounded-[2px] border border-neutral-800 bg-neutral-950 p-4 sm:p-5 flex flex-col shadow-2xl space-y-3">
+            <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
+              <div className="flex items-center gap-2">
+                <Save className="h-4 w-4 text-neutral-300" />
+                <h3 className="text-sm font-bold text-white">Salvar Fila de Músicas</h3>
+              </div>
               <button
-                onClick={() => setAdvancedTab("control")}
-                className={`flex items-center justify-center gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition truncate text-center ${
-                  advancedTab === "control"
-                    ? "bg-emerald-500 text-black shadow-sm"
-                    : "text-neutral-400 hover:text-white"
-                }`}
+                onClick={() => setSaveQueueModalOpen(false)}
+                className="p-1 text-neutral-400 hover:text-white"
               >
-                <Gamepad2 className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">
-                  <span className="inline sm:hidden">Ao Vivo</span>
-                  <span className="hidden sm:inline">Ao Vivo & Controle</span>
-                </span>
-              </button>
-              <button
-                onClick={() => setAdvancedTab("playlists")}
-                className={`flex items-center justify-center gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition truncate text-center ${
-                  advancedTab === "playlists"
-                    ? "bg-emerald-500 text-black shadow-sm"
-                    : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                <ListVideo className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">
-                  <span className="inline sm:hidden">Playlists</span>
-                  <span className="hidden sm:inline">Playlists Salvas</span>
-                </span>
-              </button>
-              <button
-                onClick={() => setAdvancedTab("editor")}
-                className={`flex items-center justify-center gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition truncate text-center ${
-                  advancedTab === "editor"
-                    ? "bg-emerald-500 text-black shadow-sm"
-                    : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                <PenTool className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">
-                  <span className="inline sm:hidden">Editor</span>
-                  <span className="hidden sm:inline">Editor de Mídias</span>
-                </span>
+                <X className="h-4 w-4" />
               </button>
             </div>
 
-            <button
-              onClick={handleDeleteRoom}
-              disabled={deleteRoomMut.isPending}
-              className="self-end sm:self-auto min-h-[34px] px-3 py-1.5 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white text-xs font-medium transition flex items-center gap-1.5"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span>Excluir Sala</span>
-            </button>
-          </nav>
+            <div className="space-y-2 text-xs">
+              <label className="text-xs font-semibold text-neutral-300 block">
+                Nome da Playlist:
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: Homenagem Família Silva, Músicas Suaves..."
+                value={saveQueueName}
+                onChange={(e) => setSaveQueueName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveQueue()}
+                className="w-full rounded-[2px] border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
+                autoFocus
+              />
 
-          {/* CONTEÚDO DAS ABAS DO MODO AVANÇADO */}
-          <div className="flex-1 overflow-y-auto p-4 pb-28 sm:p-6 sm:pb-16 md:p-8 md:pb-20 max-w-5xl mx-auto w-full space-y-6">
-            {/* ABA 1: AO VIVO & CONTROLE */}
-            {advancedTab === "control" && (
-              <div className="space-y-5">
-                {/* Status Bar Ao Vivo */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 space-y-2">
-                    <div className="text-[11px] uppercase tracking-wider text-neutral-400 font-bold flex items-center gap-1.5">
-                      <Tv className="h-4 w-4 text-emerald-400" />
-                      <span>Display Visual na TV</span>
-                    </div>
-                    <div className="text-sm font-semibold text-white truncate">
-                      {isSiteActive ? (
-                        <span className="text-emerald-400 flex items-center gap-1.5 truncate">
-                          <Globe className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate">{stateQ.data?.siteUrl}</span>
-                        </span>
-                      ) : activeVisual?.name ? (
-                        `Playlist: ${activeVisual.name}`
-                      ) : (
-                        "Nenhuma playlist visual ativa"
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 pt-2 border-t border-neutral-800">
-                      <button
-                        onClick={() => signageApi.sendCommand(slug, "visual", "prev")}
-                        disabled={isSiteActive}
-                        className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs disabled:opacity-30"
-                      >
-                        <SkipBack className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() =>
-                          signageApi.sendCommand(
-                            slug,
-                            "visual",
-                            stateQ.data?.visualStatus === "paused" ? "play" : "pause"
-                          )
-                        }
-                        disabled={isSiteActive}
-                        className="px-4 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-black text-xs font-bold disabled:opacity-30 flex items-center gap-1"
-                      >
-                        {stateQ.data?.visualStatus === "paused" ? (
-                          <Play className="h-4 w-4" />
-                        ) : (
-                          <Pause className="h-4 w-4" />
-                        )}
-                        <span>{stateQ.data?.visualStatus === "paused" ? "Play" : "Pause"}</span>
-                      </button>
-                      <button
-                        onClick={() => signageApi.sendCommand(slug, "visual", "next")}
-                        disabled={isSiteActive}
-                        className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs disabled:opacity-30"
-                      >
-                        <SkipForward className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 space-y-2">
-                    <div className="text-[11px] uppercase tracking-wider text-neutral-400 font-bold flex items-center gap-1.5">
-                      <Music className="h-4 w-4 text-blue-400" />
-                      <span>Som de Fundo na TV</span>
-                    </div>
-                    <div className="text-sm font-semibold text-white truncate">
-                      {isAudioStreamActive ? (
-                        <span className="text-blue-400 flex items-center gap-1.5 truncate">
-                          <RadioIcon className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate">{stateQ.data?.audioStreamUrl}</span>
-                        </span>
-                      ) : activeAudio?.name ? (
-                        `Playlist: ${activeAudio.name}`
-                      ) : (
-                        "Sem áudio tocando"
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 pt-2 border-t border-neutral-800">
-                      <button
-                        onClick={() => signageApi.sendCommand(slug, "audio", "prev")}
-                        disabled={isAudioStreamActive}
-                        className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs disabled:opacity-30"
-                      >
-                        <SkipBack className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() =>
-                          signageApi.sendCommand(
-                            slug,
-                            "audio",
-                            isAudioPlaying ? "pause" : "play"
-                          )
-                        }
-                        className="px-4 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-600 hover:text-white text-xs font-bold flex items-center gap-1"
-                      >
-                        {isAudioPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                        <span>{isAudioPlaying ? "Pausar" : "Tocar"}</span>
-                      </button>
-                      <button
-                        onClick={() => signageApi.sendCommand(slug, "audio", "next")}
-                        disabled={isAudioStreamActive}
-                        className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs disabled:opacity-30"
-                      >
-                        <SkipForward className="h-4 w-4" />
-                      </button>
-                    </div>
+              {activeAudio && (
+                <div className="space-y-1 pt-1">
+                  <span className="text-[11px] font-semibold text-neutral-400 block">Modo de Salvamento:</span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSaveQueueMode("new")}
+                      className={`p-2 rounded-[2px] border text-left text-xs transition ${
+                        saveQueueMode === "new"
+                          ? "border-white bg-neutral-900 text-white font-bold"
+                          : "border-neutral-800 bg-neutral-950 text-neutral-400 hover:text-neutral-200"
+                      }`}
+                    >
+                      <div className="font-semibold">Nova Playlist</div>
+                      <div className="text-[10px] text-neutral-400 mt-0.5">Cria uma nova playlist independente</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSaveQueueMode("update")}
+                      className={`p-2 rounded-[2px] border text-left text-xs transition ${
+                        saveQueueMode === "update"
+                          ? "border-white bg-neutral-900 text-white font-bold"
+                          : "border-neutral-800 bg-neutral-950 text-neutral-400 hover:text-neutral-200"
+                      }`}
+                    >
+                      <div className="font-semibold">Atualizar Atual</div>
+                      <div className="text-[10px] text-neutral-400 mt-0.5">Sobrescreve a playlist atual</div>
+                    </button>
                   </div>
                 </div>
+              )}
 
-                {/* Card de Dispositivos */}
-                <RoomDevicesCard
-                  slug={slug}
-                  devices={devicesQ.data?.devices}
-                  count={devicesCount}
-                  max={maxDevices}
-                  onKick={(clientId, reason) => kickDeviceMut.mutate({ clientId, reason })}
-                  isKicking={kickDeviceMut.isPending}
-                  playerUrl={playerUrl}
-                />
-              </div>
-            )}
+              <p className="text-[11px] text-neutral-400 pt-1">
+                A playlist salva contém {activeAudio?.items?.length || 0} faixas e poderá ser reusada a qualquer momento nesta ou em outras salas e nos agendamentos automáticos.
+              </p>
+            </div>
 
-            {/* ABA 2: PLAYLISTS SALVAS */}
-            {advancedTab === "playlists" && (
-              <div className="space-y-6">
-                {/* Playlists Visuais */}
-                <div className="space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <h3 className="text-xs uppercase tracking-wider text-neutral-300 font-bold flex items-center gap-2">
-                      <Tv className="h-4 w-4 text-emerald-400" />
-                      <span>Playlists Visuais (Fotos / Vídeos)</span>
-                    </h3>
-                    <div className="flex gap-2">
-                      <button
-                        disabled={!selectedVisual || setState.isPending}
-                        onClick={() =>
-                          selectedVisual && setState.mutate({ playlist: selectedVisual, mode: "playlist" })
-                        }
-                        className="min-h-[36px] px-3.5 py-1.5 rounded-lg bg-emerald-500 text-neutral-950 text-xs font-bold hover:bg-emerald-400 disabled:opacity-30 transition"
-                      >
-                        Colocar no Ar
-                      </button>
-                      <button
-                        disabled={setState.isPending}
-                        onClick={() => setState.mutate({ playlist: null })}
-                        className="min-h-[36px] px-3.5 py-1.5 rounded-lg border border-neutral-700 hover:border-red-500 text-neutral-300 hover:text-red-400 text-xs transition"
-                      >
-                        Desativar
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {visualPlaylists.map((p) => (
-                      <PlaylistCard
-                        key={p.id}
-                        playlist={p}
-                        selected={selectedVisual === p.id}
-                        active={!isSiteActive && activeVisual?.id === p.id}
-                        onClick={() => setSelectedVisual(p.id)}
-                        onEdit={() => handleEditPlaylist(p.id)}
-                        onDelete={() => {
-                          if (confirm(`Deseja apagar a playlist "${p.name}"?`)) {
-                            deletePlaylistMut.mutate(p.id);
-                            if (selectedVisual === p.id) setSelectedVisual(null);
-                          }
-                        }}
-                      />
-                    ))}
-                    {visualPlaylists.length === 0 && (
-                      <div className="col-span-2 rounded-xl border border-dashed border-neutral-800 p-6 text-center text-xs text-neutral-500">
-                        Nenhuma playlist visual criada ainda. Use a aba "Editor de Mídias" para criar uma.
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Playlists de Áudio */}
-                <div className="space-y-3 pt-4 border-t border-neutral-800">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <h3 className="text-xs uppercase tracking-wider text-neutral-300 font-bold flex items-center gap-2">
-                      <Music className="h-4 w-4 text-blue-400" />
-                      <span>Playlists de Áudio</span>
-                    </h3>
-                    <div className="flex gap-2">
-                      <button
-                        disabled={!selectedAudio || setState.isPending}
-                        onClick={() =>
-                          selectedAudio &&
-                          setState.mutate({ audioPlaylist: selectedAudio, audioStreamUrl: null })
-                        }
-                        className="min-h-[36px] px-3.5 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 disabled:opacity-30 transition"
-                      >
-                        Tocar no Som
-                      </button>
-                      <button
-                        disabled={setState.isPending}
-                        onClick={() => setState.mutate({ audioPlaylist: null, audioStreamUrl: null })}
-                        className="min-h-[36px] px-3.5 py-1.5 rounded-lg border border-neutral-700 hover:border-red-500 text-neutral-300 hover:text-red-400 text-xs transition"
-                      >
-                        Mutar Som
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {audioPlaylists.map((p) => (
-                      <PlaylistCard
-                        key={p.id}
-                        playlist={p}
-                        selected={selectedAudio === p.id}
-                        active={!isAudioStreamActive && activeAudio?.id === p.id}
-                        onClick={() => setSelectedAudio(p.id)}
-                        onEdit={() => handleEditPlaylist(p.id)}
-                        onDelete={() => {
-                          if (confirm(`Deseja apagar a playlist "${p.name}"?`)) {
-                            deletePlaylistMut.mutate(p.id);
-                            if (selectedAudio === p.id) setSelectedAudio(null);
-                          }
-                        }}
-                      />
-                    ))}
-                    {audioPlaylists.length === 0 && (
-                      <div className="col-span-2 rounded-xl border border-dashed border-neutral-800 p-6 text-center text-xs text-neutral-500">
-                        Nenhuma playlist de áudio criada.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ABA 3: EDITOR DE MÍDIAS */}
-            {advancedTab === "editor" && (
-              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4 sm:p-6">
-                <ConfigPlaylistForm
-                  playlists={playlistsQ.data || []}
-                  selectedId={editingPlaylistId}
-                  onSelectId={setEditingPlaylistId}
-                />
-              </div>
-            )}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setSaveQueueModalOpen(false)}
+                className="min-h-[34px] px-3.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQueue}
+                disabled={!saveQueueName.trim() || isSavingQueue}
+                className="min-h-[34px] flex items-center gap-1.5 px-4 rounded-[2px] bg-white text-xs font-bold text-black hover:bg-neutral-200 disabled:opacity-40"
+              >
+                {isSavingQueue ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-3.5 w-3.5" />
+                    <span>Salvar Playlist</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* ============================================================ */}
+      {/* MODAL PARA COLAR MÚLTIPLOS LINKS DE UMA VEZ                   */}      {/* ============================================================ */}
       {/* MODAL PARA COLAR MÚLTIPLOS LINKS DE UMA VEZ                   */}
       {/* ============================================================ */}
       {showMultiLinksModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 sm:p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-neutral-800 bg-neutral-950 p-4 sm:p-6 flex flex-col shadow-2xl space-y-4 max-h-[90dvh]">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 sm:p-4">
+          <div className="w-full max-w-lg rounded-[2px] border border-neutral-800 bg-neutral-950 p-4 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[90dvh]">
+            <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
               <div className="flex items-center gap-2">
-                <Layers className="h-5 w-5 text-blue-400" />
+                <Layers className="h-4 w-4 text-neutral-300" />
                 <h3 className="text-sm font-bold text-white">
                   Colar Vários Links de Uma Vez
                 </h3>
               </div>
               <button
                 onClick={() => setShowMultiLinksModal(false)}
-                className="p-1.5 text-neutral-400 hover:text-white"
+                className="p-1 text-neutral-400 hover:text-white"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
 
@@ -2282,28 +2350,64 @@ function RoomOperator() {
               placeholder={`https://www.youtube.com/watch?v=xV7ZzeBR3oc\nhttps://www.youtube.com/watch?v=QXX-O1U2ufY\nhttps://meusite.com/audio.mp3`}
               value={multiLinksText}
               onChange={(e) => setMultiLinksText(e.target.value)}
-              className="w-full rounded-xl border border-neutral-700 bg-black p-3.5 text-base sm:text-xs text-white placeholder-neutral-600 outline-none focus:border-blue-500 font-mono"
+              className="w-full rounded-[2px] border border-neutral-700 bg-neutral-950 p-3 text-xs text-white placeholder-neutral-600 outline-none focus:border-neutral-500 font-mono"
             />
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
               <button
                 onClick={() => setShowMultiLinksModal(false)}
-                className="min-h-[40px] px-4 rounded-xl border border-neutral-700 text-xs text-neutral-300 hover:text-white"
+                className="min-h-[34px] px-3.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleAddMultipleTracks}
                 disabled={!multiLinksText.trim()}
-                className="min-h-[40px] flex items-center gap-1.5 px-4 rounded-xl bg-blue-600 text-xs font-bold text-white hover:bg-blue-500 disabled:opacity-40"
+                className="min-h-[34px] flex items-center gap-1.5 px-4 rounded-[2px] bg-white text-xs font-bold text-black hover:bg-neutral-200 disabled:opacity-40"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5" />
                 <span>Adicionar à Playlist</span>
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ============================================================ */}
+      {/* MODAL DE AGENDAMENTO INDIVIDUAL                              */}
+      {/* ============================================================ */}
+      <ScheduleModal
+        isOpen={scheduleModalOpen}
+        onClose={() => {
+          setScheduleModalOpen(false);
+          setEditingSchedule(null);
+        }}
+        slug={slug}
+        currentSiteUrl={stateQ.data?.siteUrl}
+        audioPlaylists={audioPlaylists}
+        initialData={editingSchedule}
+        onSave={(data) => {
+          if (editingSchedule?.id) {
+            updateScheduleMut.mutate({ id: editingSchedule.id, data });
+          } else {
+            createScheduleMut.mutate(data);
+          }
+        }}
+      />
+
+      {/* ============================================================ */}
+      {/* MODAL DE ROTEIRO AUTOMÁTICO DE VELÓRIO (3 ETAPAS)            */}
+      {/* ============================================================ */}
+      <CeremonyWizardModal
+        isOpen={wizardModalOpen}
+        onClose={() => setWizardModalOpen(false)}
+        slug={slug}
+        currentSiteUrl={stateQ.data?.siteUrl}
+        audioPlaylists={audioPlaylists}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ["schedules", slug] });
+        }}
+      />
     </div>
   );
 }
@@ -2333,44 +2437,44 @@ function RoomDevicesCard({
 
   return (
     <section
-      className={`rounded-2xl border transition-all ${
+      className={`rounded-[2px] border transition-all ${
         isFull
-          ? "border-amber-500/40 bg-neutral-900/40"
+          ? "border-amber-500/30 bg-neutral-900/40"
           : count > 0
-          ? "border-emerald-500/30 bg-neutral-900/30"
+          ? "border-neutral-800 bg-neutral-900/30"
           : "border-neutral-800 bg-neutral-900/20"
-      } p-4 sm:p-6 space-y-4`}
+      } p-3 sm:p-4 space-y-3`}
     >
       {/* Header do Card de Dispositivos */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-800">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-neutral-800">
+        <div className="flex items-center gap-2.5 min-w-0">
           <div
-            className={`p-2.5 rounded-xl flex-shrink-0 ${
+            className={`p-1.5 rounded-[2px] flex-shrink-0 ${
               isFull
                 ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                 : count > 0
-                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                : "bg-neutral-800 text-neutral-400"
+                ? "bg-neutral-900 text-neutral-200 border border-neutral-800"
+                : "bg-neutral-900 text-neutral-400 border border-neutral-800"
             }`}
           >
-            <Tv className="h-5 w-5" />
+            <Tv className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2 flex-wrap">
+            <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 flex-wrap">
               <span>TVs Conectadas</span>
               <span
-                className={`text-[11px] px-2 py-0.5 rounded-full font-bold border truncate ${
+                className={`text-[10px] px-1.5 py-0.2 rounded-[2px] font-mono font-bold border truncate ${
                   isFull
-                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                    ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
                     : count > 0
-                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
-                    : "bg-neutral-800 text-neutral-400 border-neutral-700"
+                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25"
+                    : "bg-neutral-900 text-neutral-400 border-neutral-800"
                 }`}
               >
                 {count}/{max} TVs {isFull && "• Cheia"}
               </span>
             </h2>
-            <p className="text-xs text-neutral-400 mt-0.5 truncate">
+            <p className="text-[11px] text-neutral-400 truncate">
               Limite de até {max} TVs simultâneas nesta sala.
             </p>
           </div>
@@ -2389,51 +2493,51 @@ function RoomDevicesCard({
               }
             }}
             disabled={isKicking}
-            className="w-full sm:w-auto min-h-[38px] flex items-center justify-center gap-1.5 rounded-xl bg-red-500/10 hover:bg-red-500 hover:text-white text-red-300 border border-red-500/30 px-3.5 py-1.5 text-xs font-semibold transition disabled:opacity-40"
+            className="w-full sm:w-auto min-h-[32px] flex items-center justify-center gap-1 rounded-[2px] bg-neutral-900 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40 text-neutral-400 border border-neutral-800 px-3 py-1 text-xs font-semibold transition disabled:opacity-40"
           >
-            <LogOut className="h-3.5 w-3.5 flex-shrink-0" />
+            <LogOut className="h-3 w-3 flex-shrink-0" />
             <span className="truncate">Desconectar Todas ({count})</span>
           </button>
         )}
       </div>
 
       {/* Grid de Telas Conectadas e Vagas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
         {/* Telas Conectadas */}
         {devices.map((device, idx) => (
           <div
             key={device.id}
-            className="flex flex-col justify-between p-4 rounded-xl border border-neutral-700/80 bg-neutral-950 shadow-sm space-y-3"
+            className="flex flex-col justify-between p-3 rounded-[2px] border border-neutral-800 bg-neutral-950 shadow-xs space-y-2.5"
           >
             <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex-shrink-0">
-                  <Monitor className="h-5 w-5" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800 flex-shrink-0">
+                  <Monitor className="h-4 w-4" />
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs sm:text-sm font-bold text-white truncate">
                     {device.deviceLabel}
                   </div>
-                  <div className="text-[11px] text-neutral-400 flex items-center gap-2 mt-0.5 flex-wrap">
+                  <div className="text-[10px] text-neutral-400 flex items-center gap-1.5 mt-0.5 flex-wrap">
                     <span className="text-emerald-400 font-semibold flex items-center gap-1">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                       Vaga #{idx + 1}
                     </span>
                     <span>•</span>
-                    <span className="text-neutral-400 font-mono text-[10px]">
+                    <span className="text-neutral-500 font-mono">
                       IP: {device.ip}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <span className="text-[10px] text-neutral-400 flex items-center gap-1 flex-shrink-0">
+              <span className="text-[10px] text-neutral-500 flex items-center gap-1 flex-shrink-0 font-mono">
                 <Clock className="h-3 w-3" />
                 {formatConnectedTime(device.connectedAt)}
               </span>
             </div>
 
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-800">
+            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-neutral-900">
               <span className="text-[10px] text-neutral-500">
                 Conectada
               </span>
@@ -2447,9 +2551,9 @@ function RoomDevicesCard({
                   }
                 }}
                 disabled={isKicking}
-                className="min-h-[34px] px-3 py-1.5 rounded-lg border border-neutral-700 bg-neutral-900 hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-300 text-neutral-300 text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-40"
+                className="min-h-[28px] px-2.5 py-0.5 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-300 text-neutral-300 text-xs font-semibold transition flex items-center gap-1 disabled:opacity-40"
               >
-                <LogOut className="h-3.5 w-3.5 flex-shrink-0" />
+                <LogOut className="h-3 w-3 flex-shrink-0" />
                 <span>Desconectar</span>
               </button>
             </div>
@@ -2462,10 +2566,10 @@ function RoomDevicesCard({
           return (
             <div
               key={`empty-slot-${slotNum}`}
-              className="flex flex-col items-center justify-center p-5 rounded-xl border border-dashed border-neutral-800 bg-neutral-950/40 text-center space-y-1.5 min-h-[110px]"
+              className="flex flex-col items-center justify-center p-3.5 rounded-[2px] border border-dashed border-neutral-800 bg-neutral-950/40 text-center space-y-1 min-h-[96px]"
             >
               <div className="flex items-center gap-1.5 text-xs text-neutral-300 font-semibold">
-                <Tv className="h-4 w-4 text-neutral-500" />
+                <Tv className="h-3.5 w-3.5 text-neutral-500" />
                 <span>Vaga #{slotNum} Disponível</span>
               </div>
               <p className="text-[11px] text-neutral-500 max-w-xs">
@@ -2475,7 +2579,7 @@ function RoomDevicesCard({
                 href={playerUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold pt-1"
+                className="inline-flex items-center gap-1 text-[11px] text-neutral-300 hover:text-white underline font-semibold pt-0.5"
               >
                 <ExternalLink className="h-3 w-3" />
                 <span>Conectar TV nesta vaga</span>
@@ -2485,8 +2589,8 @@ function RoomDevicesCard({
         })}
       </div>
 
-      <div className="text-[11px] text-neutral-400 pt-1 border-t border-neutral-800/40 flex items-center gap-1.5">
-        <Info className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
+      <div className="text-[10px] text-neutral-500 pt-1 border-t border-neutral-800/40 flex items-center gap-1.5">
+        <Info className="h-3 w-3 text-neutral-500 flex-shrink-0" />
         <span>Ao desconectar, a TV vai para o lobby e pode se reconectar quando desejar.</span>
       </div>
     </section>
@@ -2494,636 +2598,1053 @@ function RoomDevicesCard({
 }
 
 /**
- * Card de Playlist no Modo Avançado
+ * Interface de propriedades do Card de Agendamentos e Automações
  */
-function PlaylistCard({
-  playlist,
-  selected,
-  active,
-  onClick,
-  onEdit,
+interface RoomSchedulesCardProps {
+  slug: string;
+  schedules?: ScheduleTask[];
+  isLoading: boolean;
+  audioPlaylists: Playlist[];
+  onOpenNewModal: () => void;
+  onOpenEditModal: (task: ScheduleTask) => void;
+  onOpenWizardModal: () => void;
+  onToggle: (id: string) => void;
+  onRunNow: (id: string) => void;
+  onDelete: (id: string) => void;
+  isRunningId?: string | null;
+}
+
+/**
+ * Card de Automações & Agendamentos da Sala (Linha do Tempo de Velório / Cerimônia)
+ */
+function RoomSchedulesCard({
+  slug,
+  schedules = [],
+  isLoading,
+  audioPlaylists,
+  onOpenNewModal,
+  onOpenEditModal,
+  onOpenWizardModal,
+  onToggle,
+  onRunNow,
   onDelete,
-}: {
-  playlist: Playlist;
-  selected: boolean;
-  active: boolean;
-  onClick: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div
-      className={`group relative rounded-xl border text-left transition ${
-        selected
-          ? playlist.type === "visual"
-            ? "border-emerald-500 bg-emerald-500/10 shadow-md"
-            : "border-blue-500 bg-blue-500/10 shadow-md"
-          : "border-neutral-800 hover:border-neutral-700 bg-neutral-900/40"
-      }`}
-    >
-      <button onClick={onClick} className="w-full p-4 text-left">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-bold text-white truncate pr-2">{playlist.name}</div>
-          {active && (
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                playlist.type === "visual"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                  : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
-              }`}
-            >
-              No Ar
-            </span>
-          )}
-        </div>
-        <div className="mt-2 text-xs text-neutral-400 flex items-center gap-2">
-          {playlist.type === "visual" ? (
-            <Tv className="h-3.5 w-3.5 text-emerald-400" />
-          ) : (
-            <Music className="h-3.5 w-3.5 text-blue-400" />
-          )}
-          <span>
-            {playlist.items.length} {playlist.items.length === 1 ? "item" : "itens"} ·{" "}
-            {playlist.loop ? "Loop contínuo" : "Tocar 1x"}
-          </span>
-        </div>
-      </button>
+  isRunningId,
+}: RoomSchedulesCardProps) {
+  // Ordena os agendamentos cronologicamente (do mais próximo para o futuro)
+  const sortedSchedules = useMemo(() => {
+    return [...schedules].sort((a, b) => {
+      const timeA = new Date(a.scheduledAt).getTime() || 0;
+      const timeB = new Date(b.scheduledAt).getTime() || 0;
+      return timeA - timeB;
+    });
+  }, [schedules]);
 
-      {/* Ações do Card */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-1">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          className="rounded-lg p-2 text-neutral-400 hover:bg-neutral-800 hover:text-white transition"
-          title="Editar Playlist"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="rounded-lg p-2 text-neutral-400 hover:bg-red-500/20 hover:text-red-400 transition"
-          title="Apagar Playlist"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Editor Completo de Playlists do Modo Avançado
- */
-function ConfigPlaylistForm({
-  playlists,
-  selectedId,
-  onSelectId,
-}: {
-  playlists: Playlist[];
-  selectedId: string;
-  onSelectId: (id: string) => void;
-}) {
-  const qc = useQueryClient();
-
-  const [type, setType] = useState<"visual" | "audio">("visual");
-  const [name, setName] = useState("");
-  const [loop, setLoop] = useState(true);
-  const [globalDuration, setGlobalDuration] = useState(8);
-  const [items, setItems] = useState<PlaylistItem[]>([]);
-
-  const [dragOver, setDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [ytUrl, setYtUrl] = useState("");
-  const [webUrl, setWebUrl] = useState("");
-  const [audioUrl, setAudioUrl] = useState("");
-  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
-
-  const [showMediaModal, setShowMediaModal] = useState(false);
-
-  useEffect(() => {
-    if (selectedId === "new") {
-      setName("");
-      setLoop(true);
-      setItems([]);
-    } else {
-      const p = playlists.find((p) => p.id === selectedId);
-      if (p) {
-        setType(p.type || "visual");
-        setName(p.name);
-        setLoop(p.loop ?? true);
-        setItems(p.items || []);
-      }
-    }
-  }, [selectedId, playlists]);
-
-  const saveMut = useMutation({
-    mutationFn: () => {
-      const payload = { name: name.trim() || "Nova Playlist", type, items, loop };
-      if (selectedId === "new") {
-        return signageApi.createPlaylist(payload);
-      } else {
-        return signageApi.updatePlaylist(selectedId, payload);
-      }
-    },
-    onSuccess: (data: any) => {
-      qc.invalidateQueries({ queryKey: ["playlists"] });
-      const createdId = data?.playlist?.id || data?.id;
-      if (createdId) {
-        onSelectId(createdId);
-      }
-    },
-  });
-
-  const addFiles = async (files: FileList | File[]) => {
-    setUploading(true);
-    const arr: PlaylistItem[] = [];
-    for (const f of Array.from(files)) {
-      try {
-        if (type === "audio" && !f.type.startsWith("audio")) {
-          alert(`Arquivo ${f.name} não é um arquivo de áudio.`);
-          continue;
-        }
-        if (type === "visual" && f.type.startsWith("audio")) {
-          alert(`Arquivo ${f.name} é um áudio. Envie-o para uma playlist de áudio.`);
-          continue;
-        }
-
-        const { filename } = await signageApi.uploadMedia(f);
-        const url = `/media/uploads/${filename}`;
-
-        arr.push({
-          url,
-          type: type === "audio" ? "audio" : f.type.startsWith("video") ? "video" : "image",
-          duration: type === "visual" && !f.type.startsWith("video") ? globalDuration : undefined,
-          muted: false,
-          volume: 100,
-        });
-      } catch (err) {
-        console.error("Falha ao subir arquivo:", f.name, err);
-      }
-    }
-    if (arr.length > 0) setItems((prev) => [...prev, ...arr]);
-    setUploading(false);
-  };
-
-  const addYt = () => {
-    if (!ytUrl.trim() || type === "audio") return;
-    setItems((prev) => [...prev, { url: ytUrl.trim(), type: "youtube", muted: false, volume: 100 }]);
-    setYtUrl("");
-  };
-
-  const addWebItem = () => {
-    if (!webUrl.trim() || type === "audio") return;
-    let url = webUrl.trim();
-    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
-    setItems((prev) => [...prev, { url, type: "web", duration: globalDuration || 15 }]);
-    setWebUrl("");
-  };
-
-  const addAudioUrl = () => {
-    if (!audioUrl.trim() || type !== "audio") return;
-    const url = cleanAudioUrl(audioUrl);
-    setItems((prev) => [...prev, { url, type: "audio", volume: 100, title: extractTrackTitle(url) }]);
-    setAudioUrl("");
-  };
-
-  const updateItem = (index: number, changes: Partial<PlaylistItem>) => {
-    const newItems = [...items];
-    newItems[index] = { ...newItems[index], ...changes };
-    setItems(newItems);
-  };
-
-  const handleDropItem = (targetIdx: number) => {
-    if (draggedIdx === null || draggedIdx === targetIdx) return;
-    const newItems = [...items];
-    const [removed] = newItems.splice(draggedIdx, 1);
-    newItems.splice(targetIdx, 0, removed);
-    setItems(newItems);
-    setDraggedIdx(null);
-  };
+  const activeCount = schedules.filter((s) => s.enabled && !s.executed).length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
-        <div>
-          <h3 className="text-base font-bold text-white">Editor de Playlists</h3>
-          <p className="text-xs text-neutral-400">Monte sequências de telas ou áudio.</p>
+    <section className="rounded-[2px] border border-neutral-800 bg-neutral-900/40 p-3 sm:p-4 space-y-3">
+      {/* Header do Card */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-neutral-800">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="p-1.5 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 flex-shrink-0">
+            <CalendarClock className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 flex-wrap">
+              <span>Automação & Agendamentos</span>
+              {activeCount > 0 ? (
+                <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-1.5 py-0.2 rounded-[2px] font-mono font-bold">
+                  {activeCount} {activeCount === 1 ? "programado" : "programados"}
+                </span>
+              ) : (
+                <span className="text-[10px] bg-neutral-900 text-neutral-500 px-1.5 py-0.2 rounded-[2px] font-mono">
+                  Sem agendamentos
+                </span>
+              )}
+            </h2>
+            <p className="text-[11px] text-neutral-400 truncate">
+              Ligue a TV, abra memoriais e toque músicas em horários programados.
+            </p>
+          </div>
         </div>
-        {selectedId !== "new" && (
+
+        {/* Botões do Topo */}
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button
-            onClick={() => onSelectId("new")}
-            className="text-xs font-semibold text-emerald-400 hover:underline"
+            onClick={onOpenWizardModal}
+            className="flex-1 sm:flex-none min-h-[34px] px-3 py-1 rounded-[2px] bg-white hover:bg-neutral-200 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
+            title="Gera automaticamente as 3 etapas de um velório: Recepção, Despedida e Encerramento"
           >
-            + Criar Nova
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>Roteiro de Velório</span>
           </button>
-        )}
-      </div>
 
-      <select
-        value={selectedId}
-        onChange={(e) => onSelectId(e.target.value)}
-        className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500"
-      >
-        <option value="new">-- Criar Nova Playlist --</option>
-        {playlists.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name} ({p.type})
-          </option>
-        ))}
-      </select>
-
-      <div className="grid grid-cols-2 bg-neutral-950 rounded-xl p-1 border border-neutral-800 gap-1">
-        <button
-          type="button"
-          onClick={() => setType("visual")}
-          className={`py-2 text-xs font-bold rounded-lg transition ${
-            type === "visual" ? "bg-emerald-500 text-black shadow" : "text-neutral-400 hover:text-white"
-          }`}
-        >
-          Visual (Telas)
-        </button>
-        <button
-          type="button"
-          onClick={() => setType("audio")}
-          className={`py-2 text-xs font-bold rounded-lg transition ${
-            type === "audio" ? "bg-blue-600 text-white shadow" : "text-neutral-400 hover:text-white"
-          }`}
-        >
-          Áudio (Músicas)
-        </button>
-      </div>
-
-      <input
-        placeholder="Nome da Playlist"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        className="w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 py-2.5 text-base sm:text-xs text-white outline-none focus:border-emerald-500"
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-neutral-950 p-3 text-xs rounded-xl border border-neutral-800">
-        <label className="flex items-center gap-2 text-neutral-300 cursor-pointer font-medium">
-          <input
-            type="checkbox"
-            checked={loop}
-            onChange={(e) => setLoop(e.target.checked)}
-            className="accent-emerald-500 h-4 w-4"
-          />
-          Loop Contínuo
-        </label>
-
-        {type === "visual" && (
-          <label className="flex items-center gap-2 text-neutral-400">
-            <span>Tempo por foto:</span>
-            <input
-              type="number"
-              min={1}
-              value={globalDuration}
-              onChange={(e) => setGlobalDuration(Number(e.target.value))}
-              className="w-14 rounded-lg bg-neutral-900 border border-neutral-700 px-2 py-1 outline-none text-center text-white"
-            />
-            <span>s</span>
-          </label>
-        )}
-      </div>
-
-      {type === "visual" && (
-        <div className="space-y-2 w-full">
-          <div className="flex items-center gap-2 w-full">
-            <input
-              placeholder="Adicionar link do YouTube"
-              value={ytUrl}
-              onChange={(e) => setYtUrl(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addYt()}
-              className="flex-1 min-w-0 rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 py-2.5 text-base sm:text-xs text-white outline-none focus:border-emerald-500"
-            />
-            <button
-              type="button"
-              onClick={addYt}
-              className="min-h-[42px] px-3.5 rounded-xl bg-neutral-800 text-neutral-300 hover:bg-emerald-500 hover:text-black transition flex-shrink-0"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 w-full">
-            <input
-              placeholder="Página web à rotação (ex: https://weather.com)"
-              value={webUrl}
-              onChange={(e) => setWebUrl(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addWebItem()}
-              className="flex-1 min-w-0 rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 py-2.5 text-base sm:text-xs text-white outline-none focus:border-emerald-500"
-            />
-            <button
-              type="button"
-              onClick={addWebItem}
-              className="min-h-[42px] px-3.5 rounded-xl bg-neutral-800 text-neutral-300 hover:bg-emerald-500 hover:text-black transition flex-shrink-0"
-            >
-              <Globe className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {type === "audio" && (
-        <div className="flex items-center gap-2 w-full">
-          <input
-            placeholder="Link de áudio (YouTube, MP3 ou áudio online)"
-            value={audioUrl}
-            onChange={(e) => setAudioUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addAudioUrl()}
-            className="flex-1 min-w-0 rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 py-2.5 text-base sm:text-xs text-white outline-none focus:border-blue-500"
-          />
           <button
-            type="button"
-            onClick={addAudioUrl}
-            className="min-h-[42px] px-3.5 rounded-xl bg-neutral-800 text-neutral-300 hover:bg-blue-600 hover:text-white transition flex-shrink-0"
+            onClick={onOpenNewModal}
+            className="flex-1 sm:flex-none min-h-[34px] px-3 py-1 rounded-[2px] bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 font-semibold text-xs transition flex items-center justify-center gap-1.5"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
+            <span>Novo Horário</span>
           </button>
         </div>
-      )}
-
-      {/* Botão de Galeria de Mídia do Servidor */}
-      <button
-        type="button"
-        onClick={() => setShowMediaModal(true)}
-        className="w-full min-h-[42px] flex items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-500 transition"
-      >
-        <FolderOpen className="h-4 w-4 text-emerald-400" />
-        <span>Abrir Galeria do Servidor</span>
-      </button>
-
-      {/* Drop Zone */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
-        }}
-        className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-6 text-center text-xs transition ${
-          dragOver
-            ? type === "visual"
-              ? "border-emerald-500 bg-emerald-500/10 text-emerald-300"
-              : "border-blue-500 bg-blue-500/10 text-blue-300"
-            : "border-neutral-800 text-neutral-400"
-        }`}
-      >
-        <Upload className="mb-2 h-6 w-6" />
-        {uploading ? (
-          <span className="font-semibold">Enviando arquivo...</span>
-        ) : type === "visual" ? (
-          <span>Arraste Fotos ou Vídeos aqui</span>
-        ) : (
-          <span>Arraste Músicas (MP3/WAV) aqui</span>
-        )}
-        <label
-          className={`mt-2 cursor-pointer font-bold ${
-            type === "visual" ? "text-emerald-400 hover:underline" : "text-blue-400 hover:underline"
-          }`}
-        >
-          ou selecione do aparelho
-          <input
-            type="file"
-            multiple
-            accept={type === "visual" ? "video/*,image/*" : "audio/*"}
-            className="hidden"
-            onChange={(e) => e.target.files && addFiles(e.target.files)}
-          />
-        </label>
       </div>
 
-      {/* Fila de Itens da Playlist */}
-      <div className="space-y-2">
-        <div className="text-xs font-bold text-neutral-300 flex items-center justify-between">
-          <span>Itens na Fila ({items.length})</span>
+      {/* Lista de Agendamentos */}
+      {isLoading ? (
+        <div className="flex items-center justify-center p-6 text-neutral-400 text-xs gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-neutral-400" />
+          <span>Carregando programação da sala...</span>
         </div>
-
-        {items.length > 0 && (
-          <ul className="space-y-2 text-xs max-h-72 overflow-y-auto pr-1">
-            {items.map((it, i) => (
-              <li
-                key={i}
-                draggable
-                onDragStart={() => setDraggedIdx(i)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handleDropItem(i)}
-                className={`flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-950 p-2.5 transition ${
-                  draggedIdx === i ? "opacity-40" : ""
-                }`}
-              >
-                <div className="cursor-grab active:cursor-grabbing text-neutral-500 p-1">
-                  <GripVertical className="h-4 w-4" />
-                </div>
-
-                <div className="w-9 h-9 rounded-lg bg-black flex-shrink-0 flex items-center justify-center overflow-hidden border border-neutral-800">
-                  {it.type === "image" ? (
-                    <img src={it.url} alt="" className="w-full h-full object-cover" />
-                  ) : it.type === "youtube" ? (
-                    <span className="text-[10px] font-bold text-red-400">YT</span>
-                  ) : it.type === "video" ? (
-                    <Video className="h-4 w-4 text-blue-400" />
-                  ) : it.type === "web" ? (
-                    <Globe className="h-4 w-4 text-emerald-400" />
-                  ) : (
-                    <Music className="h-4 w-4 text-blue-500" />
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0 truncate">
-                  <span className="font-bold mr-1.5 text-[10px] uppercase text-neutral-400">
-                    {it.type}
-                  </span>
-                  <span className="text-white text-xs truncate" title={it.url}>
-                    {it.title || it.url.split("/").pop()}
-                  </span>
-                </div>
-
-                {it.type === "image" || it.type === "web" ? (
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <input
-                      type="number"
-                      min={1}
-                      value={it.duration ?? globalDuration}
-                      onChange={(e) => updateItem(i, { duration: Number(e.target.value) })}
-                      className="w-12 rounded bg-neutral-900 border border-neutral-800 px-1 py-1 text-center text-white text-xs"
-                    />
-                    <span className="text-neutral-500 text-[10px]">s</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    {!it.muted && (
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={it.volume ?? 100}
-                        onChange={(e) => updateItem(i, { volume: Number(e.target.value) })}
-                        className="w-12 accent-blue-500"
-                      />
-                    )}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setItems(items.filter((_, j) => j !== i))}
-                  className="text-neutral-500 hover:text-red-400 p-1.5 transition"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <button
-        disabled={!name.trim() || items.length === 0 || saveMut.isPending || uploading}
-        onClick={() => saveMut.mutate()}
-        className={`w-full min-h-[46px] rounded-xl px-4 py-3 text-xs font-bold uppercase tracking-wider text-neutral-950 transition disabled:opacity-30 ${
-          type === "visual" ? "bg-emerald-500 hover:bg-emerald-400" : "bg-blue-500 hover:bg-blue-400"
-        }`}
-      >
-        {saveMut.isPending ? "Salvando..." : selectedId === "new" ? "Criar Playlist" : "Salvar Alterações"}
-      </button>
-
-      {/* Modal da Galeria de Mídias */}
-      {showMediaModal && (
-        <MediaLibraryModal
-          type={type}
-          onSelect={(url) => {
-            setItems((prev) => [
-              ...prev,
-              {
-                url,
-                type: type === "audio" ? "audio" : /\.(mp4|webm|mov)$/i.test(url) ? "video" : "image",
-                duration: type === "visual" && !/\.(mp4|webm|mov)$/i.test(url) ? globalDuration : undefined,
-                muted: false,
-                volume: 100,
-                title: extractTrackTitle(url),
-              },
-            ]);
-          }}
-          onClose={() => setShowMediaModal(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-/**
- * Modal de Galeria de Mídias Existentes
- */
-function MediaLibraryModal({
-  type,
-  onSelect,
-  onClose,
-}: {
-  type: "visual" | "audio";
-  onSelect: (url: string) => void;
-  onClose: () => void;
-}) {
-  const qc = useQueryClient();
-  const mediaQ = useQuery({ queryKey: ["mediaFiles"], queryFn: signageApi.listMedia });
-
-  const deleteMediaMut = useMutation({
-    mutationFn: signageApi.deleteMedia,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["mediaFiles"] }),
-  });
-
-  const files = mediaQ.data || [];
-  const filtered = files.filter((f) => {
-    const isAudio = /\.(mp3|wav|ogg|aac|m4a)$/i.test(f);
-    return type === "audio" ? isAudio : !isAudio;
-  });
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 sm:p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-neutral-800 bg-neutral-950 p-4 sm:p-6 flex flex-col max-h-[90dvh] shadow-2xl">
-        <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
-          <div className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5 text-emerald-400" />
-            <h3 className="text-sm font-bold text-white">
-              Galeria do Servidor ({filtered.length})
-            </h3>
+      ) : sortedSchedules.length === 0 ? (
+        <div className="rounded-[2px] border border-dashed border-neutral-800 bg-neutral-950/40 p-4 sm:p-5 text-center space-y-2.5">
+          <div className="mx-auto h-9 w-9 rounded-[2px] bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-400">
+            <Calendar className="h-4 w-4" />
           </div>
-          <button onClick={onClose} className="p-1.5 text-neutral-400 hover:text-white">
-            <X className="h-5 w-5" />
+          <div className="space-y-0.5">
+            <h3 className="text-xs sm:text-sm font-bold text-white">Nenhum evento agendado para esta sala</h3>
+            <p className="text-[11px] text-neutral-400 max-w-md mx-auto">
+              Precisa deixar a TV programada para sair da suspensão às 19:30, tocar músicas de despedida às 08:00 e suspender às 08:15? Use nosso assistente guiado.
+            </p>
+          </div>
+          <button
+            onClick={onOpenWizardModal}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>Criar Roteiro Padrão de Velório</span>
           </button>
         </div>
-
-        <div className="flex-1 overflow-y-auto py-3 space-y-2">
-          {filtered.length === 0 && (
-            <div className="text-center py-8 text-neutral-500 text-xs">
-              Nenhuma mídia deste tipo encontrada no servidor.
-            </div>
-          )}
-          {filtered.map((filename) => {
-            const url = `/media/uploads/${filename}`;
-            const isImg = /\.(png|jpe?g|gif|webp)$/i.test(filename);
-            const isVid = /\.(mp4|webm|mov)$/i.test(filename);
+      ) : (
+        <div className="space-y-2">
+          {sortedSchedules.map((task) => {
+            const isExecuted = Boolean(task.executed);
+            const isPaused = !task.enabled;
+            const isRunning = isRunningId === task.id;
+            const audioPlaylistName =
+              task.actions.audioPlaylist
+                ? audioPlaylists.find((p) => p.id === task.actions.audioPlaylist)?.name || "Playlist de Áudio"
+                : null;
 
             return (
               <div
-                key={filename}
-                className="flex items-center justify-between gap-2.5 p-2.5 rounded-xl border border-neutral-800 bg-neutral-900/60 hover:border-neutral-700 transition"
+                key={task.id}
+                className={`p-2.5 sm:p-3 rounded-[2px] border transition-all ${
+                  isExecuted
+                    ? "border-neutral-800/60 bg-neutral-950/40 opacity-75"
+                    : isPaused
+                    ? "border-amber-500/25 bg-neutral-950/60"
+                    : "border-neutral-800 bg-neutral-950 shadow-xs hover:border-neutral-700"
+                } space-y-2`}
               >
-                <div className="w-10 h-10 rounded-lg bg-black flex-shrink-0 flex items-center justify-center overflow-hidden border border-neutral-800">
-                  {isImg ? (
-                    <img src={url} alt="" className="w-full h-full object-cover" />
-                  ) : isVid ? (
-                    <Video className="h-5 w-5 text-blue-400" />
-                  ) : (
-                    <Music className="h-5 w-5 text-blue-500" />
+                {/* Linha 1: Horário, Título e Badges */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Badge de Horário */}
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 font-mono text-xs font-bold text-white">
+                      <Clock className="h-3 w-3 text-neutral-400" />
+                      <span>{formatScheduleDateTime(task.scheduledAt)}</span>
+                    </div>
+
+                    {/* Status Badge */}
+                    {isExecuted ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] text-[10px] font-bold bg-neutral-800 text-neutral-400 border border-neutral-700">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                        <span>Concluído</span>
+                      </span>
+                    ) : isPaused ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/25">
+                        <Pause className="h-3 w-3" />
+                        <span>Pausado</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>Agendado</span>
+                      </span>
+                    )}
+
+                    <h3 className="text-xs font-bold text-white truncate ml-0.5">
+                      {task.title}
+                    </h3>
+                  </div>
+
+                  {/* Ações Rápidas: Testar, Pausar, Editar, Excluir */}
+                  <div className="flex items-center gap-1 self-end sm:self-auto flex-shrink-0">
+                    <button
+                      onClick={() => onRunNow(task.id)}
+                      disabled={isRunning}
+                      className="min-h-[28px] px-2 py-0.5 rounded-[2px] bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 text-[11px] font-semibold transition flex items-center gap-1 disabled:opacity-40"
+                      title="Dispara as ações deste agendamento na TV agora mesmo para teste"
+                    >
+                      {isRunning ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Zap className="h-3 w-3 text-amber-400" />
+                      )}
+                      <span>Testar</span>
+                    </button>
+
+                    <button
+                      onClick={() => onToggle(task.id)}
+                      className={`min-h-[28px] px-2 py-0.5 rounded-[2px] border text-[11px] font-semibold transition flex items-center gap-1 ${
+                        task.enabled
+                          ? "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
+                          : "bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25"
+                      }`}
+                      title={task.enabled ? "Pausar este agendamento" : "Ativar este agendamento"}
+                    >
+                      {task.enabled ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                      <span>{task.enabled ? "Pausar" : "Ativar"}</span>
+                    </button>
+
+                    <button
+                      onClick={() => onOpenEditModal(task)}
+                      className="min-h-[28px] h-7 w-7 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700 transition flex items-center justify-center"
+                      title="Editar agendamento"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+
+                    <button
+                      onClick={() => onDelete(task.id)}
+                      className="min-h-[28px] h-7 w-7 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition flex items-center justify-center"
+                      title="Excluir agendamento"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Linha 2: Tags / Ações que serão disparadas */}
+                <div className="flex items-center gap-1 flex-wrap text-[10px] pt-1 border-t border-neutral-900">
+                  {/* Standby / Suspensão */}
+                  {task.actions.standby === false && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium">
+                      <Sun className="h-3 w-3 text-amber-400" />
+                      <span>Liga TV (Sai do Standby)</span>
+                    </span>
                   )}
-                </div>
+                  {task.actions.standby === true && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-400 border border-neutral-800 font-medium">
+                      <Moon className="h-3 w-3 text-amber-400" />
+                      <span>Suspende TV (Standby)</span>
+                    </span>
+                  )}
 
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs text-white truncate font-medium">{filename}</div>
-                  <div className="text-[10px] text-neutral-500 truncate">{url}</div>
-                </div>
+                  {/* Site / Memorial */}
+                  {task.actions.siteUrl && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium max-w-xs truncate">
+                      <Globe className="h-3 w-3 flex-shrink-0 text-neutral-400" />
+                      <span className="truncate">{task.actions.siteUrl}</span>
+                    </span>
+                  )}
 
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <button
-                    onClick={() => onSelect(url)}
-                    className="min-h-[34px] flex items-center gap-1 rounded-lg bg-emerald-500/20 border border-emerald-500/30 px-3 py-1 text-xs text-emerald-300 hover:bg-emerald-500 hover:text-black font-semibold transition"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>Adicionar</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm(`Excluir permanentemente o arquivo "${filename}" do servidor?`)) {
-                        deleteMediaMut.mutate(filename);
-                      }
-                    }}
-                    className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg text-neutral-500 hover:text-red-400 hover:bg-red-500/10 transition"
-                    title="Excluir arquivo do servidor"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {/* Playlist de Áudio */}
+                  {audioPlaylistName && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium">
+                      <Music className="h-3 w-3 text-neutral-400" />
+                      <span>{audioPlaylistName}</span>
+                    </span>
+                  )}
+
+                  {/* Volume */}
+                  {task.actions.audioVolume !== undefined && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800 font-medium font-mono">
+                      <Volume2 className="h-3 w-3 text-neutral-400" />
+                      <span>Vol: {task.actions.audioVolume}%</span>
+                    </span>
+                  )}
+
+                  {/* Status de Áudio */}
+                  {task.actions.audioStatus === "playing" && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 font-medium">
+                      <Play className="h-3 w-3" />
+                      <span>Tocar Músicas</span>
+                    </span>
+                  )}
+                  {task.actions.audioStatus === "paused" && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-400 border border-neutral-800 font-medium">
+                      <Pause className="h-3 w-3" />
+                      <span>Pausar Som</span>
+                    </span>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+    </section>
+  );
+}
 
-        <div className="pt-3 border-t border-neutral-800 flex justify-end">
+/**
+ * Modal Assistente Guiado: Roteiro Automático de Velório em 3 Etapas
+ */
+function CeremonyWizardModal({
+  isOpen,
+  onClose,
+  slug,
+  currentSiteUrl,
+  audioPlaylists,
+  onSuccess,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  slug: string;
+  currentSiteUrl?: string | null;
+  audioPlaylists: Playlist[];
+  onSuccess: () => void;
+}) {
+  if (!isOpen) return null;
+
+  // Horário de Início: Hoje às 19:30 (ou amanhã se já passou das 20:00)
+  const defaultStartTime = useMemo(() => {
+    const d = new Date();
+    d.setHours(19, 30, 0, 0);
+    if (d.getTime() < Date.now() - 30 * 60 * 1000) {
+      d.setDate(d.getDate() + 1);
+    }
+    return toLocalDatetimeString(d);
+  }, []);
+
+  // Horário da Despedida: Próximo dia às 08:00
+  const defaultFarewellTime = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(8, 0, 0, 0);
+    return toLocalDatetimeString(d);
+  }, []);
+
+  // Horário do Encerramento: Próximo dia às 08:15
+  const defaultEndTime = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(8, 15, 0, 0);
+    return toLocalDatetimeString(d);
+  }, []);
+
+  const [startTime, setStartTime] = useState(defaultStartTime);
+  const [memorialUrl, setMemorialUrl] = useState(currentSiteUrl || "");
+  const [startPlaylist, setStartPlaylist] = useState(audioPlaylists[0]?.id || "");
+  const [startVolume, setStartVolume] = useState(37.5);
+
+  const [farewellTime, setFarewellTime] = useState(defaultFarewellTime);
+  const [farewellPlaylist, setFarewellPlaylist] = useState(audioPlaylists[0]?.id || "");
+  const [farewellVolume, setFarewellVolume] = useState(50);
+
+  const [endTime, setEndTime] = useState(defaultEndTime);
+  const [endPlaylist, setEndPlaylist] = useState("");
+  const [endVolume, setEndVolume] = useState(12.5);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      // 1. Recepção
+      await signageApi.createSchedule({
+        roomSlug: slug,
+        title: "Recepção & Abertura da Cerimônia",
+        scheduledAt: startTime,
+        enabled: true,
+        actions: {
+          standby: false, // Liga TV / sai do modo suspenso
+          siteUrl: memorialUrl.trim() || undefined,
+          mode: memorialUrl.trim() ? "site" : undefined,
+          audioPlaylist: startPlaylist || undefined,
+          audioStatus: startPlaylist ? "playing" : undefined,
+          audioVolume: Math.round(startVolume),
+        },
+      });
+
+      // 2. Despedida
+      await signageApi.createSchedule({
+        roomSlug: slug,
+        title: "Despedida da Família (Fechamento do Caixão)",
+        scheduledAt: farewellTime,
+        enabled: true,
+        actions: {
+          audioPlaylist: farewellPlaylist || undefined,
+          audioStatus: farewellPlaylist ? "playing" : undefined,
+          audioVolume: Math.round(farewellVolume),
+        },
+      });
+
+      // 3. Encerramento
+      await signageApi.createSchedule({
+        roomSlug: slug,
+        title: "Encerramento da Cerimônia (Standby)",
+        scheduledAt: endTime,
+        enabled: true,
+        actions: {
+          standby: true, // Volta para modo suspenso (relógio, clima, blackout suave)
+          audioPlaylist: endPlaylist || undefined,
+          audioStatus: endPlaylist ? "playing" : "paused",
+          audioVolume: Math.round(endVolume),
+        },
+      });
+
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      alert("Erro ao criar roteiro: " + (err.message || err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
+      <div className="w-full max-w-xl rounded-[2px] border border-neutral-800 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto">
+        <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-white">
+                Roteiro Automático de Velório
+              </h3>
+              <p className="text-[11px] text-neutral-400">
+                Gere em 1 clique as 3 etapas da cerimônia com volume livre e horário
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-white transition">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-2.5 text-xs">
+          {/* ETAPA 1: Recepção e Início */}
+          <div className="p-3 rounded-[2px] border border-neutral-800 bg-neutral-900/40 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
+                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-[2px] border border-neutral-700 font-bold">
+                  01
+                </span>
+                Recepção & Abertura da TV
+              </span>
+              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-2 py-0.5 rounded-[2px] font-mono font-semibold">
+                Sai do Standby
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+                  Data e Horário de Início:
+                </label>
+                <input
+                  type="datetime-local"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+                  Playlist da Recepção:
+                </label>
+                <select
+                  value={startPlaylist}
+                  onChange={(e) => setStartPlaylist(e.target.value)}
+                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+                >
+                  <option value="">Nenhuma música (Silêncio)</option>
+                  {audioPlaylists.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.items?.length || 0} faixas)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+                Link do Memorial / Homenagem (Foto/Vídeo):
+              </label>
+              <input
+                type="url"
+                placeholder="https://exemplo.com.br/homenagem"
+                value={memorialUrl}
+                onChange={(e) => setMemorialUrl(e.target.value)}
+                className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+              />
+            </div>
+
+            {/* Controle Livre de Volume (Wheel Picker) */}
+            <div className="space-y-1.5 pt-1 border-t border-neutral-800/80">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-neutral-300">
+                  Volume Livre da Recepção:
+                </span>
+                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-[2px] border border-neutral-800">
+                  {Math.round(startVolume)}%
+                </span>
+              </div>
+              <VolumeWheelPicker
+                value={startVolume}
+                onChange={setStartVolume}
+                compact
+              />
+              <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-1 font-mono">Atalhos:</span>
+                {[0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setStartVolume(v)}
+                    className={`px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-semibold border transition ${
+                      startVolume === v
+                        ? "bg-white text-black border-white font-bold"
+                        : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700"
+                    }`}
+                  >
+                    {v}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ETAPA 2: Despedida da Família */}
+          <div className="p-3 rounded-[2px] border border-neutral-800 bg-neutral-900/40 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
+                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-[2px] border border-neutral-700 font-bold">
+                  02
+                </span>
+                Despedida da Família (Fechamento)
+              </span>
+              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-2 py-0.5 rounded-[2px] font-mono font-semibold">
+                Músicas Especiais
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+                  Data e Horário da Despedida:
+                </label>
+                <input
+                  type="datetime-local"
+                  value={farewellTime}
+                  onChange={(e) => setFarewellTime(e.target.value)}
+                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+                  Playlist de Despedida:
+                </label>
+                <select
+                  value={farewellPlaylist}
+                  onChange={(e) => setFarewellPlaylist(e.target.value)}
+                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+                >
+                  <option value="">Manter playlist atual</option>
+                  {audioPlaylists.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.items?.length || 0} faixas)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Controle Livre de Volume (Wheel Picker) */}
+            <div className="space-y-1.5 pt-1 border-t border-neutral-800/80">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-neutral-300">
+                  Volume Livre da Despedida:
+                </span>
+                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-[2px] border border-neutral-800">
+                  {Math.round(farewellVolume)}%
+                </span>
+              </div>
+              <VolumeWheelPicker
+                value={farewellVolume}
+                onChange={setFarewellVolume}
+                compact
+              />
+              <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-1 font-mono">Atalhos:</span>
+                {[0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setFarewellVolume(v)}
+                    className={`px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-semibold border transition ${
+                      farewellVolume === v
+                        ? "bg-white text-black border-white font-bold"
+                        : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700"
+                    }`}
+                  >
+                    {v}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ETAPA 3: Encerramento e Modo Suspenso */}
+          <div className="p-3 rounded-[2px] border border-neutral-800 bg-neutral-900/40 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
+                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-[2px] border border-neutral-700 font-bold">
+                  03
+                </span>
+                Encerramento & Desocupação
+              </span>
+              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-2 py-0.5 rounded-[2px] font-mono font-semibold">
+                Retorna ao Standby
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+                  Data e Horário de Saída:
+                </label>
+                <input
+                  type="datetime-local"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+                  Som de Fundo após Saída:
+                </label>
+                <select
+                  value={endPlaylist}
+                  onChange={(e) => setEndPlaylist(e.target.value)}
+                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+                >
+                  <option value="">Pausar Som Completamente (Silêncio)</option>
+                  {audioPlaylists.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.items?.length || 0} faixas)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Controle Livre de Volume (Wheel Picker) */}
+            <div className="space-y-1.5 pt-1 border-t border-neutral-800/80">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-neutral-300">
+                  Volume Livre do Fundo (Standby):
+                </span>
+                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-[2px] border border-neutral-800">
+                  {Math.round(endVolume)}%
+                </span>
+              </div>
+              <VolumeWheelPicker
+                value={endVolume}
+                onChange={setEndVolume}
+                compact
+              />
+              <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-1 font-mono">Atalhos:</span>
+                {[0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setEndVolume(v)}
+                    className={`px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-semibold border transition ${
+                      endVolume === v
+                        ? "bg-white text-black border-white font-bold"
+                        : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700"
+                    }`}
+                  >
+                    {v}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-800">
           <button
+            type="button"
             onClick={onClose}
-            className="min-h-[40px] rounded-xl bg-neutral-800 px-5 py-2 text-xs text-white hover:bg-neutral-700 font-semibold"
+            className="min-h-[36px] px-3.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition"
           >
-            Concluir
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="min-h-[36px] flex items-center gap-2 px-4 rounded-[2px] bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow disabled:opacity-40"
+          >
+            {isSubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
+            <span>Criar Roteiro Automático</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Modal Individual para Criar ou Editar um Agendamento
+ */
+function ScheduleModal({
+  isOpen,
+  onClose,
+  slug,
+  currentSiteUrl,
+  audioPlaylists,
+  initialData,
+  onSave,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  slug: string;
+  currentSiteUrl?: string | null;
+  audioPlaylists: Playlist[];
+  initialData?: ScheduleTask | null;
+  onSave: (data: Partial<ScheduleTask>) => void;
+}) {
+  if (!isOpen) return null;
+
+  const isEditing = Boolean(initialData);
+
+  const [title, setTitle] = useState(initialData?.title || "");
+  const [scheduledAt, setScheduledAt] = useState(() => {
+    if (initialData?.scheduledAt) {
+      try {
+        const d = new Date(initialData.scheduledAt);
+        if (!isNaN(d.getTime())) return toLocalDatetimeString(d);
+      } catch {}
+      return initialData.scheduledAt;
+    }
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + 30);
+    return toLocalDatetimeString(d);
+  });
+
+  const [standbyAction, setStandbyAction] = useState<"wake" | "standby" | "none">(() => {
+    if (initialData?.actions.standby === false) return "wake";
+    if (initialData?.actions.standby === true) return "standby";
+    return "none";
+  });
+
+  const [siteUrl, setSiteUrl] = useState(initialData?.actions.siteUrl || "");
+  const [audioPlaylist, setAudioPlaylist] = useState(initialData?.actions.audioPlaylist || "");
+  const [audioVolume, setAudioVolume] = useState<number>(initialData?.actions.audioVolume ?? 50);
+  const [audioStatus, setAudioStatus] = useState<"playing" | "paused" | "none">(() => {
+    if (initialData?.actions.audioStatus === "playing") return "playing";
+    if (initialData?.actions.audioStatus === "paused") return "paused";
+    return "none";
+  });
+
+  const handleSave = () => {
+    if (!title.trim() || !scheduledAt) {
+      alert("Por favor, preencha o título e a data/hora do agendamento.");
+      return;
+    }
+
+    const actions: ScheduleTask["actions"] = {};
+
+    if (standbyAction === "wake") actions.standby = false;
+    else if (standbyAction === "standby") actions.standby = true;
+
+    if (siteUrl.trim()) {
+      actions.siteUrl = siteUrl.trim();
+      actions.mode = "site";
+    }
+
+    if (audioPlaylist) {
+      actions.audioPlaylist = audioPlaylist;
+    }
+
+    if (audioVolume !== undefined) {
+      actions.audioVolume = audioVolume;
+    }
+
+    if (audioStatus !== "none") {
+      actions.audioStatus = audioStatus;
+    }
+
+    onSave({
+      roomSlug: slug,
+      title: title.trim(),
+      scheduledAt,
+      enabled: true,
+      executed: false,
+      executedAt: null,
+      actions,
+    });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
+      <div className="w-full max-w-lg rounded-[2px] border border-neutral-800 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto">
+        <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800">
+              <CalendarClock className="h-4 w-4" />
+            </div>
+            <h3 className="text-sm sm:text-base font-bold text-white">
+              {isEditing ? "Editar Agendamento" : "Novo Agendamento na TV"}
+            </h3>
+          </div>
+          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-white transition">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-2.5 text-xs">
+          {/* Título com sugestões rápidas */}
+          <div>
+            <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+              Título da Ação:
+            </label>
+            <input
+              type="text"
+              placeholder="Ex: Abertura da Sala, Despedida da Família, Encerramento"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+            />
+            {/* Sugestões Rápidas */}
+            <div className="flex items-center gap-1 flex-wrap mt-1.5">
+              <span className="text-[10px] text-neutral-500 font-semibold mr-0.5">Sugestões:</span>
+              {[
+                "Recepção & Abertura",
+                "Despedida da Família",
+                "Homenagem Especial",
+                "Silêncio Noturno",
+                "Encerramento da Sala",
+              ].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setTitle(s)}
+                  className="px-2 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 text-[10px] text-neutral-400 hover:text-white hover:border-neutral-700 transition"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Data e Hora */}
+          <div>
+            <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+              Data e Horário de Execução:
+            </label>
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600"
+            />
+          </div>
+
+          {/* Tela da TV / Standby */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold text-neutral-300 block">
+              Ação na Tela da TV:
+            </label>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setStandbyAction("wake")}
+                className={`p-2 rounded-[2px] border text-center transition flex flex-col items-center gap-1 ${
+                  standbyAction === "wake"
+                    ? "bg-white text-black border-white font-bold"
+                    : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Sun className="h-3.5 w-3.5" />
+                <span className="text-[10px] leading-tight">Ligar TV / Sair Standby</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStandbyAction("standby")}
+                className={`p-2 rounded-[2px] border text-center transition flex flex-col items-center gap-1 ${
+                  standbyAction === "standby"
+                    ? "bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold"
+                    : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Moon className="h-3.5 w-3.5" />
+                <span className="text-[10px] leading-tight">Modo Standby (Suspenso)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStandbyAction("none")}
+                className={`p-2 rounded-[2px] border text-center transition flex flex-col items-center gap-1 ${
+                  standbyAction === "none"
+                    ? "bg-neutral-800 border-neutral-700 text-white font-bold"
+                    : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Tv className="h-3.5 w-3.5" />
+                <span className="text-[10px] leading-tight">Não Mudar Tela</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Link do Memorial */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-semibold text-neutral-300">
+                Link do Memorial / Site (Opcional):
+              </label>
+              {currentSiteUrl && (
+                <button
+                  type="button"
+                  onClick={() => setSiteUrl(currentSiteUrl)}
+                  className="text-[10px] text-neutral-400 hover:text-white underline"
+                >
+                  Usar link atual da sala
+                </button>
+              )}
+            </div>
+            <input
+              type="url"
+              placeholder="https://exemplo.com.br/homenagem"
+              value={siteUrl}
+              onChange={(e) => setSiteUrl(e.target.value)}
+              className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+            />
+          </div>
+
+          {/* Playlist de Áudio */}
+          <div>
+            <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+              Músicas / Playlist de Áudio:
+            </label>
+            <select
+              value={audioPlaylist}
+              onChange={(e) => setAudioPlaylist(e.target.value)}
+              className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+            >
+              <option value="">Manter playlist atual</option>
+              {audioPlaylists.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.items?.length || 0} faixas)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Volume de Áudio Livre (Wheel Picker) */}
+          <div className="space-y-1.5 pt-1 border-t border-neutral-800/80">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-neutral-300">
+                Volume Livre do Áudio:
+              </span>
+              <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-[2px] border border-neutral-800">
+                {audioVolume}%
+              </span>
+            </div>
+            <VolumeWheelPicker
+              value={audioVolume}
+              onChange={setAudioVolume}
+              compact
+            />
+            <div className="flex items-center gap-1 flex-wrap pt-0.5">
+              <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-1 font-mono">Atalhos:</span>
+              {VOLUME_PRESETS.map((p) => (
+                <button
+                  key={p.val}
+                  type="button"
+                  onClick={() => setAudioVolume(p.val)}
+                  className={`px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-semibold border transition ${
+                    audioVolume === p.val
+                      ? "bg-white text-black border-white font-bold"
+                      : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Ação de Som */}
+          <div>
+            <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+              Ação do Som:
+            </label>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setAudioStatus("playing")}
+                className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-1 ${
+                  audioStatus === "playing"
+                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-bold"
+                    : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Play className="h-3.5 w-3.5" />
+                <span>Tocar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAudioStatus("paused")}
+                className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-1 ${
+                  audioStatus === "paused"
+                    ? "bg-amber-500/20 border-amber-500/40 text-amber-300 font-bold"
+                    : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Pause className="h-3.5 w-3.5" />
+                <span>Pausar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAudioStatus("none")}
+                className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-1 ${
+                  audioStatus === "none"
+                    ? "bg-neutral-800 border-neutral-700 text-white font-bold"
+                    : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
+                }`}
+              >
+                <span>Não Mudar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-800">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[36px] px-3.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="min-h-[36px] flex items-center gap-2 px-4 rounded-[2px] bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
+          >
+            <Check className="h-4 w-4" />
+            <span>{isEditing ? "Salvar Alterações" : "Criar Agendamento"}</span>
           </button>
         </div>
       </div>

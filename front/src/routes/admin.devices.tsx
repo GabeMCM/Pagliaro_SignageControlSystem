@@ -258,29 +258,29 @@ function DevicesAdminPage() {
   });
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-neutral-950 overflow-y-auto pb-24 sm:pb-16 text-neutral-100">
+    <div className="flex-1 flex flex-col h-full bg-neutral-950 overflow-y-auto pb-20 sm:pb-14 text-neutral-100">
       {/* Header */}
-      <header className="border-b border-neutral-800 bg-neutral-900/60 px-4 sm:px-8 py-5 backdrop-blur-md sticky top-0 z-20 flex-shrink-0">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <header className="border-b border-neutral-800 bg-neutral-950 px-4 sm:px-6 py-3.5 sticky top-0 z-20 flex-shrink-0">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-emerald-400">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">
                 Gerenciamento de Telas
               </span>
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-neutral-900 text-neutral-300 border border-neutral-800">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.2 rounded-[2px] text-[10px] font-medium bg-neutral-900 text-neutral-300 border border-neutral-800">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 <span>{onlineCount} Online</span>
               </span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight mt-1">
+            <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight mt-0.5">
               Aparelhos Conectados
             </h1>
-            <p className="text-xs sm:text-sm text-neutral-400 mt-1 max-w-2xl leading-relaxed">
-              Monitore, identifique fisicamente em segundos e vincule salas remotamente para cada TV, celular ou computador conectado.
+            <p className="text-xs text-neutral-400 mt-0.5 max-w-2xl">
+              Monitore, identifique fisicamente e vincule salas remotamente para cada TV conectada.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {devices.some((d) => !d.online) && (
               <button
                 onClick={() => {
@@ -289,7 +289,7 @@ function DevicesAdminPage() {
                   }
                 }}
                 disabled={cleanOfflineDevices.isPending}
-                className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-red-400 hover:border-red-500/50 text-xs font-medium transition flex items-center gap-2"
+                className="min-h-[32px] px-2.5 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-red-400 hover:bg-red-500/10 text-xs font-medium transition flex items-center gap-1.5"
                 title="Limpar todos os aparelhos offline"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -298,7 +298,7 @@ function DevicesAdminPage() {
             )}
             <button
               onClick={() => qc.invalidateQueries({ queryKey: ["devices"] })}
-              className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 text-xs font-medium transition flex items-center gap-2"
+              className="min-h-[32px] px-2.5 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 text-xs font-medium transition flex items-center gap-1.5"
               title="Atualizar lista agora"
             >
               <RefreshCw className="h-3.5 w-3.5" />
@@ -308,67 +308,67 @@ function DevicesAdminPage() {
               href="/player/index.html"
               target="_blank"
               rel="noreferrer"
-              className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500 hover:text-black text-xs font-bold transition flex items-center gap-2"
+              className="min-h-[32px] px-3 py-1 rounded-[2px] bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
             >
-              <Tv className="h-4 w-4" />
-              <span>Abrir Novo Player</span>
-              <ExternalLink className="h-3.5 w-3.5" />
+              <Tv className="h-3.5 w-3.5" />
+              <span>Abrir Player</span>
+              <ExternalLink className="h-3 w-3" />
             </a>
           </div>
         </div>
       </header>
 
       {/* Conteúdo Principal */}
-      <div className="max-w-6xl mx-auto w-full px-4 sm:px-8 py-6 space-y-6">
+      <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 py-4 space-y-4">
         {/* Cards de Métricas */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="text-[11px] font-medium uppercase tracking-wider text-neutral-400">Total Cadastrados</div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-white mt-2">{totalCount}</div>
-            <div className="text-[11px] text-neutral-500 mt-1">Histórico completo</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className="bg-neutral-900/60 border border-neutral-800 rounded-[2px] p-3 flex flex-col justify-between">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Total Cadastrados</div>
+            <div className="text-xl sm:text-2xl font-bold text-white mt-1">{totalCount}</div>
+            <div className="text-[10px] text-neutral-500 mt-0.5">Histórico completo</div>
           </div>
 
-          <div className="bg-neutral-900/80 border border-emerald-500/20 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="text-[11px] font-medium uppercase tracking-wider text-emerald-400">Online Agora</div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400 mt-2 flex items-baseline gap-2">
+          <div className="bg-neutral-900/60 border border-neutral-800 rounded-[2px] p-3 flex flex-col justify-between">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-300">Online Agora</div>
+            <div className="text-xl sm:text-2xl font-bold text-white mt-1 flex items-baseline gap-2">
               <span>{onlineCount}</span>
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             </div>
-            <div className="text-[11px] text-neutral-500 mt-1">Comunicando em tempo real</div>
+            <div className="text-[10px] text-neutral-500 mt-0.5">Tempo real</div>
           </div>
 
-          <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="text-[11px] font-medium uppercase tracking-wider text-sky-400">Vinculados a Salas</div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-sky-300 mt-2">{boundCount}</div>
-            <div className="text-[11px] text-neutral-500 mt-1">Exibindo homenagens</div>
+          <div className="bg-neutral-900/60 border border-neutral-800 rounded-[2px] p-3 flex flex-col justify-between">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Vinculados a Salas</div>
+            <div className="text-xl sm:text-2xl font-bold text-white mt-1">{boundCount}</div>
+            <div className="text-[10px] text-neutral-500 mt-0.5">Exibindo homenagens</div>
           </div>
 
-          <div className="bg-neutral-900/80 border border-neutral-800/80 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="text-[11px] font-medium uppercase tracking-wider text-amber-400">No Lobby / Raiz</div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-amber-300 mt-2">{unboundCount}</div>
-            <div className="text-[11px] text-neutral-500 mt-1">Aguardando vinculação</div>
+          <div className="bg-neutral-900/60 border border-neutral-800 rounded-[2px] p-3 flex flex-col justify-between">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">No Lobby / Raiz</div>
+            <div className="text-xl sm:text-2xl font-bold text-white mt-1">{unboundCount}</div>
+            <div className="text-[10px] text-neutral-500 mt-0.5">Aguardando vinculação</div>
           </div>
         </div>
 
         {/* Barra de Filtros e Busca */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-neutral-900/40 p-3 rounded-xl border border-neutral-800">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-neutral-900/40 p-2.5 rounded-[2px] border border-neutral-800">
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Buscar por nome, ID, sala ou IP..."
-              className="w-full pl-9 pr-4 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 transition"
+              className="w-full pl-8 pr-3 py-1.5 bg-neutral-950 border border-neutral-800 rounded-[2px] text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-500 transition"
             />
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+          <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
             <button
               onClick={() => setFilterMode("all")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`px-2.5 py-1 rounded-[2px] text-xs font-semibold transition ${
                 filterMode === "all"
-                  ? "bg-emerald-500 text-black"
+                  ? "bg-white text-black shadow-xs font-bold"
                   : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
               }`}
             >
@@ -376,9 +376,9 @@ function DevicesAdminPage() {
             </button>
             <button
               onClick={() => setFilterMode("online")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-[2px] text-xs font-semibold transition flex items-center gap-1.5 ${
                 filterMode === "online"
-                  ? "bg-emerald-500 text-black"
+                  ? "bg-white text-black shadow-xs font-bold"
                   : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
               }`}
             >
@@ -387,9 +387,9 @@ function DevicesAdminPage() {
             </button>
             <button
               onClick={() => setFilterMode("unbound")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`px-2.5 py-1 rounded-[2px] text-xs font-semibold transition ${
                 filterMode === "unbound"
-                  ? "bg-amber-500 text-black"
+                  ? "bg-white text-black shadow-xs font-bold"
                   : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
               }`}
             >
@@ -397,9 +397,9 @@ function DevicesAdminPage() {
             </button>
             <button
               onClick={() => setFilterMode("offline")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`px-2.5 py-1 rounded-[2px] text-xs font-semibold transition ${
                 filterMode === "offline"
-                  ? "bg-neutral-700 text-white"
+                  ? "bg-white text-black shadow-xs font-bold"
                   : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
               }`}
             >
@@ -410,35 +410,35 @@ function DevicesAdminPage() {
 
         {/* Modal de Renomear Aparelho */}
         {editingDevice && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
-            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in fade-in">
-              <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider mb-2">
-                <Pencil className="h-4 w-4" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-4">
+            <div className="bg-neutral-950 border border-neutral-800 rounded-[2px] p-5 max-w-md w-full shadow-2xl space-y-3">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-300 uppercase tracking-wider">
+                <Pencil className="h-3.5 w-3.5" />
                 <span>Renomear Aparelho</span>
               </div>
-              <h3 className="text-lg font-bold text-white">Editar Nome do Dispositivo</h3>
-              <p className="text-xs text-neutral-400 mt-1">
+              <h3 className="text-sm font-bold text-white">Editar Nome do Dispositivo</h3>
+              <p className="text-xs text-neutral-400">
                 Dê um nome intuitivo para facilitar a localização física na funerária (ex: "TV Parede - Sala 01", "TV Entrada Recepção").
               </p>
 
-              <div className="mt-4">
-                <label className="text-xs font-semibold text-neutral-300 block mb-1.5">Nome do Aparelho</label>
+              <div>
+                <label className="text-xs font-semibold text-neutral-300 block mb-1">Nome do Aparelho</label>
                 <input
                   type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   placeholder="Ex: TV Principal - Sala 01"
-                  className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-1.5 bg-neutral-900 border border-neutral-800 rounded-[2px] text-xs text-white focus:outline-none focus:border-neutral-500"
                   autoFocus
                 />
-                <span className="text-[11px] text-neutral-500 mt-1 block">ID persistente: {editingDevice.id}</span>
+                <span className="text-[10px] text-neutral-500 mt-1 block font-mono">ID: {editingDevice.id}</span>
               </div>
 
-              <div className="mt-6 flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-2 border-t border-neutral-800">
                 <button
                   type="button"
                   onClick={() => setEditingDevice(null)}
-                  className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium transition"
+                  className="px-3.5 py-1.5 rounded-[2px] bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-medium border border-neutral-800 transition"
                 >
                   Cancelar
                 </button>
@@ -448,7 +448,7 @@ function DevicesAdminPage() {
                     updateDevice.mutate({ id: editingDevice.id, updates: { name: editName } });
                   }}
                   disabled={updateDevice.isPending}
-                  className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition flex items-center gap-2"
+                  className="px-4 py-1.5 rounded-[2px] bg-white hover:bg-neutral-200 text-black text-xs font-bold transition flex items-center gap-1.5"
                 >
                   {updateDevice.isPending ? "Salvando..." : "Salvar Nome"}
                 </button>
@@ -460,49 +460,49 @@ function DevicesAdminPage() {
         {/* Feedback Banner flutuante */}
         {feedbackMsg && (
           <div
-            className={`p-3 rounded-xl border text-xs font-medium flex items-center gap-2.5 transition animate-in fade-in ${
+            className={`p-2.5 rounded-[2px] border text-xs font-medium flex items-center gap-2 transition ${
               feedbackMsg.type === "success"
-                ? "bg-emerald-950/60 border-emerald-500/40 text-emerald-200"
-                : "bg-red-950/60 border-red-500/40 text-red-200"
+                ? "bg-neutral-900 border-emerald-500/40 text-emerald-300"
+                : "bg-neutral-900 border-red-500/40 text-red-300"
             }`}
           >
-            <Sparkles className="h-4 w-4 flex-shrink-0" />
+            <Sparkles className="h-3.5 w-3.5 flex-shrink-0" />
             <span>{feedbackMsg.text}</span>
           </div>
         )}
 
         {/* Lista de Aparelhos */}
         {devicesQ.isLoading ? (
-          <div className="p-12 text-center text-sm text-neutral-500">Carregando aparelhos conectados...</div>
+          <div className="p-8 text-center text-xs text-neutral-500">Carregando aparelhos conectados...</div>
         ) : filteredDevices.length === 0 ? (
-          <div className="p-12 text-center border border-dashed border-neutral-800 rounded-2xl bg-neutral-900/30">
-            <Monitor className="h-10 w-10 text-neutral-600 mx-auto mb-3" />
-            <h3 className="text-sm font-bold text-neutral-300">Nenhum aparelho encontrado</h3>
-            <p className="text-xs text-neutral-500 mt-1 max-w-md mx-auto">
+          <div className="p-8 text-center border border-dashed border-neutral-800 rounded-[2px] bg-neutral-900/30">
+            <Monitor className="h-8 w-8 text-neutral-600 mx-auto mb-2" />
+            <h3 className="text-xs font-bold text-neutral-300">Nenhum aparelho encontrado</h3>
+            <p className="text-[11px] text-neutral-500 mt-0.5 max-w-md mx-auto">
               Assim que uma TV, computador ou celular abrir o link do player ou a raiz do sistema, ele aparecerá automaticamente nesta tela.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {filteredDevices.map((device) => {
               const isIdentifying = identifyingId === device.id;
               return (
                 <div
                   key={device.id}
-                  className={`border rounded-2xl p-5 transition flex flex-col justify-between gap-4 ${
+                  className={`border rounded-[2px] p-3.5 transition flex flex-col justify-between gap-3 ${
                     device.online
-                      ? "bg-neutral-900/90 border-neutral-800 hover:border-neutral-700 shadow-md"
-                      : "bg-neutral-950/60 border-neutral-900/80 opacity-75"
+                      ? "bg-neutral-900/60 border-neutral-800 hover:border-neutral-700 shadow-xs"
+                      : "bg-neutral-950 border-neutral-900 opacity-70"
                   }`}
                 >
                   {/* Cabeçalho do Aparelho */}
                   <div>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         {getDeviceIcon(device.detectedLabel)}
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h2 className="text-base font-bold text-white truncate max-w-[220px] sm:max-w-[300px]">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h2 className="text-sm font-bold text-white truncate max-w-[200px] sm:max-w-[280px]">
                               {device.name}
                             </h2>
                             <button
@@ -510,13 +510,13 @@ function DevicesAdminPage() {
                                 setEditingDevice(device);
                                 setEditName(device.name);
                               }}
-                              className="text-neutral-500 hover:text-neutral-300 transition p-1"
+                              className="text-neutral-500 hover:text-white transition p-0.5"
                               title="Renomear aparelho"
                             >
                               <Pencil className="h-3 w-3" />
                             </button>
                           </div>
-                          <div className="text-[11px] text-neutral-400 mt-0.5 truncate">
+                          <div className="text-[10px] text-neutral-400 mt-0.5 truncate">
                             {device.detectedLabel}
                           </div>
                         </div>
@@ -524,15 +524,15 @@ function DevicesAdminPage() {
 
                       {/* Badge de Status Online */}
                       <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold flex-shrink-0 ${
+                        className={`inline-flex items-center gap-1.5 px-2 py-0.2 rounded-[2px] text-[10px] font-semibold flex-shrink-0 ${
                           device.online
-                            ? "bg-emerald-950/80 text-emerald-300 border border-emerald-500/30"
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25"
                             : "bg-neutral-900 text-neutral-500 border border-neutral-800"
                         }`}
                       >
                         <span
-                          className={`h-2 w-2 rounded-full ${
-                            device.online ? "bg-emerald-400 animate-pulse" : "bg-neutral-600"
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            device.online ? "bg-emerald-400" : "bg-neutral-600"
                           }`}
                         />
                         <span>{device.online ? "Online" : "Offline"}</span>
@@ -540,11 +540,11 @@ function DevicesAdminPage() {
                     </div>
 
                     {/* Metadados: ID, IP, Sala, Local */}
-                    <div className="mt-4 grid grid-cols-2 gap-2 text-[11px] bg-neutral-950/70 p-3 rounded-xl border border-neutral-800/80">
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] bg-neutral-950 p-2.5 rounded-[2px] border border-neutral-800">
                       <div>
-                        <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Identificador (ID)</span>
+                        <span className="text-neutral-500 block text-[9px] uppercase font-semibold">Identificador (ID)</span>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="font-mono text-emerald-400 font-semibold truncate">{device.id}</span>
+                          <span className="font-mono text-white font-medium truncate">{device.id}</span>
                           <button
                             onClick={() => handleCopyId(device.id)}
                             className="text-neutral-500 hover:text-white p-0.5 transition"
@@ -560,7 +560,7 @@ function DevicesAdminPage() {
                       </div>
 
                       <div>
-                        <span className="text-neutral-500 block text-[10px] uppercase font-semibold">IP na Rede</span>
+                        <span className="text-neutral-500 block text-[9px] uppercase font-semibold">IP na Rede</span>
                         <div className="flex items-center gap-1.5 mt-0.5 font-mono text-neutral-300">
                           <Wifi className="h-3 w-3 text-neutral-500" />
                           <span>{device.ip || "localhost"}</span>
@@ -568,7 +568,7 @@ function DevicesAdminPage() {
                       </div>
 
                       <div>
-                        <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Local Atual da Tela</span>
+                        <span className="text-neutral-500 block text-[9px] uppercase font-semibold">Local Atual da Tela</span>
                         <span className="text-neutral-300 truncate block mt-0.5">
                           {device.currentPath === "/"
                             ? "Na Raiz do Site (/)"
@@ -579,7 +579,7 @@ function DevicesAdminPage() {
                       </div>
 
                       <div>
-                        <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Última Atividade</span>
+                        <span className="text-neutral-500 block text-[9px] uppercase font-semibold">Última Atividade</span>
                         <div className="flex items-center gap-1 mt-0.5 text-neutral-400">
                           <Clock className="h-3 w-3 text-neutral-600" />
                           <span>{timeAgo(device.lastSeenAt)}</span>
@@ -589,19 +589,19 @@ function DevicesAdminPage() {
                   </div>
 
                   {/* Seletor de Vinculação de Sala e Botões de Ação */}
-                  <div className="space-y-3 pt-1 border-t border-neutral-800/80">
+                  <div className="space-y-2 pt-1 border-t border-neutral-800">
                     {/* Seletor de Sala */}
                     <div>
-                      <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
-                          <Link2 className="h-3.5 w-3.5 text-emerald-400" />
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="font-semibold text-neutral-300 flex items-center gap-1 text-[11px]">
+                          <Link2 className="h-3 w-3 text-neutral-400" />
                           <span>Sala Vinculada:</span>
                         </span>
                         {device.assignedRoomSlug && (
                           <Link
                             to="/admin/$slug"
                             params={{ slug: device.assignedRoomSlug }}
-                            className="text-[11px] text-emerald-400 hover:underline flex items-center gap-1"
+                            className="text-[10px] text-neutral-300 hover:text-white hover:underline flex items-center gap-1 font-mono"
                           >
                             <span>Abrir no Painel</span>
                             <ExternalLink className="h-2.5 w-2.5" />
@@ -618,7 +618,7 @@ function DevicesAdminPage() {
                             updates: { assignedRoomSlug: val },
                           });
                         }}
-                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 transition cursor-pointer"
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-[2px] px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-neutral-500 transition cursor-pointer"
                       >
                         <option value="">Nenhuma sala vinculada (Lobby / Livre)</option>
                         {rooms.map((room) => {
@@ -634,21 +634,21 @@ function DevicesAdminPage() {
                     </div>
 
                     {/* Botões de Ação Rápida */}
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-1.5">
                       {/* Botão Identificar */}
                       <button
                         onClick={() => identifyDevice.mutate(device.id)}
                         disabled={!device.online || isIdentifying}
-                        className={`min-h-[38px] px-2 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm text-center truncate ${
+                        className={`min-h-[32px] px-2 py-1 rounded-[2px] text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs text-center truncate ${
                           isIdentifying
-                            ? "bg-emerald-500 text-black font-extrabold animate-pulse"
+                            ? "bg-amber-400 text-black font-extrabold animate-pulse"
                             : device.online
-                            ? "bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500 hover:text-black"
+                            ? "bg-white text-black hover:bg-neutral-200"
                             : "bg-neutral-900 border border-neutral-800 text-neutral-600 cursor-not-allowed"
                         }`}
                         title="Faz a tela deste aparelho piscar com a identificação para você localizá-lo fisicamente"
                       >
-                        <Radio className="h-3.5 w-3.5 flex-shrink-0" />
+                        <Radio className="h-3 w-3 flex-shrink-0" />
                         <span className="truncate">{isIdentifying ? "Sinalizando..." : "Identificar"}</span>
                       </button>
 
@@ -656,14 +656,14 @@ function DevicesAdminPage() {
                       <button
                         onClick={() => reloadDevice.mutate(device.id)}
                         disabled={!device.online}
-                        className={`min-h-[38px] px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 text-center truncate ${
+                        className={`min-h-[32px] px-2 py-1 rounded-[2px] text-xs font-medium transition flex items-center justify-center gap-1 text-center truncate ${
                           device.online
-                            ? "bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700"
+                            ? "bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800"
                             : "bg-neutral-900 border border-neutral-800 text-neutral-600 cursor-not-allowed"
                         }`}
                         title="Recarrega a página da TV remotamente"
                       >
-                        <RefreshCw className="h-3.5 w-3.5 flex-shrink-0" />
+                        <RefreshCw className="h-3 w-3 flex-shrink-0" />
                         <span className="truncate">Recarregar</span>
                       </button>
 
@@ -674,10 +674,10 @@ function DevicesAdminPage() {
                             deleteDevice.mutate(device.id);
                           }
                         }}
-                        className="min-h-[38px] px-2 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-red-400 hover:border-red-900/50 text-xs font-medium transition flex items-center justify-center gap-1.5 text-center truncate"
+                        className="min-h-[32px] px-2 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs font-medium transition flex items-center justify-center gap-1 text-center truncate"
                         title="Remove o registro deste aparelho do sistema"
                       >
-                        <Trash2 className="h-3.5 w-3.5 flex-shrink-0" />
+                        <Trash2 className="h-3 w-3 flex-shrink-0" />
                         <span className="truncate">Excluir</span>
                       </button>
                     </div>

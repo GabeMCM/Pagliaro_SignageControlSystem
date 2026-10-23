@@ -15,24 +15,24 @@ function AdminHome() {
   });
 
   return (
-    <div className="flex h-full flex-col items-center justify-center p-4 pb-24 md:p-8 md:pb-12 text-neutral-100 font-sans antialiased overflow-y-auto">
-      <div className="w-full max-w-md space-y-6 text-center">
+    <div className="flex h-full flex-col items-center justify-center p-4 pb-20 md:p-8 md:pb-12 text-neutral-100 font-sans antialiased overflow-y-auto">
+      <div className="w-full max-w-md space-y-4 text-center">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.4em] text-emerald-400">
+          <div className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 font-semibold">
             Painel Signage
           </div>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">
+          <h1 className="mt-1.5 text-xl font-bold tracking-tight text-white">
             Selecione uma Sala
           </h1>
-          <p className="mt-1 text-xs text-neutral-400">
+          <p className="mt-0.5 text-xs text-neutral-400">
             Escolha uma sala para gerenciar o site exibido e as músicas de fundo.
           </p>
         </div>
 
         {isLoading ? (
-          <div className="p-8 text-xs text-neutral-500">Carregando salas...</div>
+          <div className="p-6 text-xs text-neutral-500">Carregando salas...</div>
         ) : rooms.length > 0 ? (
-          <div className="space-y-2.5 text-left">
+          <div className="space-y-2 text-left">
             {rooms.map((room) => {
               const online = Boolean(room.online);
               const clientsCount = room.clientsCount ?? 0;
@@ -43,23 +43,23 @@ function AdminHome() {
                   key={room.slug}
                   to="/admin/$slug"
                   params={{ slug: room.slug }}
-                  className="group flex items-center justify-between p-4 rounded-xl border border-neutral-800 bg-neutral-900/50 hover:border-emerald-500/60 hover:bg-neutral-900 transition shadow-sm"
+                  className="group flex items-center justify-between p-3 rounded-[2px] border border-neutral-800 bg-neutral-900/40 hover:border-neutral-600 hover:bg-neutral-900/80 transition shadow-xs"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="p-2.5 rounded-lg bg-neutral-800 group-hover:bg-emerald-500/10 text-neutral-400 group-hover:text-emerald-400 transition">
-                      <Tv className="h-5 w-5" />
+                    <div className="p-2 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 group-hover:border-neutral-600 transition">
+                      <Tv className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-bold text-white group-hover:text-emerald-400 transition truncate">
+                      <div className="text-xs sm:text-sm font-bold text-white group-hover:text-white transition truncate">
                         {room.name}
                       </div>
-                      <div className="text-[11px] text-neutral-500 truncate flex items-center gap-1.5 mt-0.5">
+                      <div className="text-[11px] text-neutral-400 truncate flex items-center gap-1.5 mt-0.5">
                         <Circle
                           className={`h-2 w-2 flex-shrink-0 ${
                             online
                               ? isFull
-                                ? "fill-amber-400 text-amber-400 animate-pulse"
-                                : "fill-emerald-400 text-emerald-400 animate-pulse"
+                                ? "fill-amber-400 text-amber-400"
+                                : "fill-emerald-400 text-emerald-400"
                               : "fill-neutral-600 text-neutral-600"
                           }`}
                         />
@@ -78,7 +78,7 @@ function AdminHome() {
             })}
           </div>
         ) : (
-          <div className="p-8 rounded-xl border border-dashed border-neutral-800 text-xs text-neutral-500">
+          <div className="p-6 rounded-[2px] border border-dashed border-neutral-800 text-xs text-neutral-500">
             Nenhuma sala cadastrada. Use o menu lateral para criar sua primeira sala.
           </div>
         )}
