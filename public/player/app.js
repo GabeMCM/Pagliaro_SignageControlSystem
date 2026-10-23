@@ -323,12 +323,22 @@ function setMasterVolume(vol) {
 function normalizeAudioUrl(url) {
   if (!url) return url;
   let clean = url.trim();
-  // Dropbox: converte link de visualização ?dl=0 para ?raw=1
-  if (clean.includes("dropbox.com")) {
-    clean = clean.replace(/[?&]dl=[01]/g, "");
-    clean += (clean.includes("?") ? "&raw=1" : "?raw=1");
-    return clean;
+
+  // Se já for uma URL do proxy interno do backend, retorna direto
+  if (clean.includes("/api/youtube/stream/")) {
+    return clean.startsWith("http") ? clean : `${API_BASE}${clean}`;
   }
+
+  // YouTube: converte link completo ou identificador em stream direto do backend
+  if (clean.startsWith("youtube:")) {
+    const id = clean.replace("youtube:", "").trim();
+    if (id) return `${API_BASE}/api/youtube/stream/${id}`;
+  }
+  const ytId = extractYtId(clean);
+  if (ytId) {
+    return `${API_BASE}/api/youtube/stream/${ytId}`;
+  }
+
   // Google Drive: converte link de compartilhamento para streaming direto
   const gdriveMatch = clean.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (gdriveMatch) {
@@ -711,7 +721,7 @@ setInterval(() => {
     return;
   }
 
-  // Detecta se a posição do áudio congelou no mesmo ponto (buffering infinito de rede/Dropbox)
+  // Detecta se a posição do áudio congelou no mesmo ponto (buffering infinito de rede)
   const currentPos = bgmPlayer.currentTime;
   if (currentPos > 0 && Math.abs(currentPos - lastObservedAudioTime) < 0.15) {
     audioStallSecs += 3;
@@ -724,7 +734,7 @@ setInterval(() => {
         bgmPlayer.src = normalizeAudioUrl(currentRoomState.audioStreamUrl);
         bgmPlayer.play().catch(e => console.warn(e));
       } else {
-        // Playlist Dropbox: avança suavemente para a próxima faixa sem parar o sistema
+        // Playlist de Áudio: avança suavemente para a próxima faixa sem parar o sistema
         handleAudioEnded();
       }
     }

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../services/db.ts";
 import { wsManager, detectDeviceType } from "../ws/manager.ts";
+import { youtubeService } from "../services/youtube.ts";
 
 export const api = new Hono();
 
@@ -746,4 +747,111 @@ api.delete("/devices/:id", async (c) => {
   wsManager.broadcastDevicesUpdate();
   return c.json({ success: true, message: "Aparelho removido com sucesso." });
 });
+
+// ========================
+// YOUTUBE & STREAMING AUDIO (Zero Storage & Ad-Free)
+// ========================
+
+// 1. Pesquisa rápida no YouTube (títulos, artistas, hinos)
+api.get("/youtube/search", async (c) => {
+  const q = c.req.query("q") || "";
+  const limit = Math.min(30, Math.max(1, Number(c.req.query("limit")) || 15));
+  if (!q.trim()) {
+    return c.json({ success: true, results: [] });
+  }
+  try {
+    const results = await youtubeService.search(q, limit);
+    return c.json({ success: true, results });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message || "Erro ao pesquisar no YouTube" }, 500);
+  }
+});
+
+// 2. Extrai faixas de uma Playlist do YouTube
+api.get("/youtube/playlist", async (c) => {
+  const url = c.req.query("url") || c.req.query("id") || "";
+  if (!url.trim()) {
+    return c.json({ success: false, error: "URL ou ID da playlist é obrigatório." }, 400);
+  }
+  try {
+    const playlist = await youtubeService.getPlaylist(url);
+    return c.json({ success: true, playlist });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message || "Erro ao carregar playlist do YouTube." }, 400);
+  }
+});
+
+// 3. Extrai informações de um único vídeo
+api.get("/youtube/video", async (c) => {
+  const url = c.req.query("url") || c.req.query("id") || "";
+  if (!url.trim()) {
+    return c.json({ success: false, error: "URL ou ID do vídeo é obrigatório." }, 400);
+  }
+  try {
+    const video = await youtubeService.getVideo(url);
+    return c.json({ success: true, video });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message || "Erro ao carregar vídeo do YouTube." }, 400);
+  }
+});
+
+// 4. Proxy de Streaming Direto de Áudio (AAC/MP4 sem anúncios e com Zero Storage)
+api.get("/youtube/stream/:videoId", async (c) => {
+  const rawId = c.req.param("videoId");
+  const videoId = youtubeService.extractVideoId(rawId);
+  if (!videoId) {
+    return c.text("ID de vídeo do YouTube inválido.", 400);
+  }
+
+  const range = c.req.header("range");
+  const userAgent = c.req.header("user-agent") || "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
+
+  const fetchStream = async (bypassCache = false) => {
+    const { url, mimeType } = await youtubeService.getAudioStreamUrl(videoId, bypassCache);
+    const headers: Record<string, string> = {
+      "User-Agent": userAgent,
+    };
+    if (range) {
+      headers["Range"] = range;
+    }
+    const res = await fetch(url, { headers });
+    return { res, mimeType };
+  };
+
+  try {
+    let { res, mimeType } = await fetchStream(false);
+
+    // Se a URL upstream do Google expirou (403/410), invalida cache e refaz uma vez
+    if ((res.status === 403 || res.status === 410) && !res.ok) {
+      youtubeService.invalidateCache(videoId);
+      const retry = await fetchStream(true);
+      res = retry.res;
+      mimeType = retry.mimeType;
+    }
+
+    if (!res.ok && res.status !== 206) {
+      return c.text(`Erro ao buscar áudio do YouTube (${res.status})`, res.status as any);
+    }
+
+    const responseHeaders = new Headers();
+    responseHeaders.set("Content-Type", res.headers.get("content-type") || mimeType || "audio/mp4");
+    responseHeaders.set("Accept-Ranges", "bytes");
+    responseHeaders.set("Cache-Control", "public, max-age=3600");
+
+    const contentRange = res.headers.get("content-range");
+    if (contentRange) responseHeaders.set("Content-Range", contentRange);
+
+    const contentLength = res.headers.get("content-length");
+    if (contentLength) responseHeaders.set("Content-Length", contentLength);
+
+    return new Response(res.body, {
+      status: res.status,
+      headers: responseHeaders,
+    });
+  } catch (err: any) {
+    console.error(`[Stream Error] Vídeo ${videoId}:`, err);
+    return c.text(err.message || "Erro no proxy de áudio", 500);
+  }
+});
+
 

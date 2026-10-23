@@ -10,6 +10,7 @@
     "hono": "jsr:@hono/hono@^4.4.0",
     "@std/fs": "jsr:@std/fs@^0.229.0",
     "@std/path": "jsr:@std/path@^0.225.0",
-    "mongodb": "npm:mongodb@^6.12.0"
+    "mongodb": "npm:mongodb@^6.12.0",
+    "@distube/ytdl-core": "npm:@distube/ytdl-core@^5.0.0"
   }
 }

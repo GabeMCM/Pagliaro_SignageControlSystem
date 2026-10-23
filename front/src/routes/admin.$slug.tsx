@@ -1,7 +1,15 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, useEffect } from "react";
-import { signageApi, type Playlist, type PlaylistItem, type DeviceInfo, API_BASE } from "@/lib/signage-api";
+import { useMemo, useState, useEffect, useRef } from "react";
+import {
+  signageApi,
+  type Playlist,
+  type PlaylistItem,
+  type DeviceInfo,
+  type YoutubeTrackResult,
+  type YoutubePlaylistResult,
+  API_BASE,
+} from "@/lib/signage-api";
 import {
   Play,
   Pause,
@@ -44,6 +52,11 @@ import {
   Check,
   Radio,
   Info,
+  Search,
+  Disc,
+  Loader2,
+  CheckCircle2,
+  Minus,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin/$slug")({
@@ -51,22 +64,17 @@ export const Route = createFileRoute("/admin/$slug")({
 });
 
 /**
- * Normaliza e limpa links do Dropbox (?dl=0 -> ?raw=1) e Google Drive
+ * Normaliza e limpa links de áudio e Google Drive
  */
 function cleanAudioUrl(rawUrl: string): string {
   let url = rawUrl.trim();
   if (!url) return url;
-  if (!/^https?:\/\//i.test(url)) {
+  if (!/^https?:\/\//i.test(url) && !url.startsWith("youtube:")) {
     url = "https://" + url;
   }
-  if (url.includes("dropbox.com")) {
-    url = url.replace(/[?&]dl=[01]/g, "");
-    url += url.includes("?") ? "&raw=1" : "?raw=1";
-  } else {
-    const gdriveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
-    if (gdriveMatch) {
-      url = `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`;
-    }
+  const gdriveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (gdriveMatch) {
+    url = `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`;
   }
   return url;
 }
@@ -97,6 +105,168 @@ function formatConnectedTime(ts: number): string {
   if (diffMin < 60) return `há ${diffMin} min`;
   const diffHour = Math.floor(diffMin / 60);
   return `há ${diffHour}h ${diffMin % 60}m`;
+}
+
+/**
+ * Presets Rápidos de Volume de 0 a 100 em passos de 12,5%
+ */
+const VOLUME_PRESETS = [
+  { label: "0%", val: 0 },
+  { label: "12,5%", val: 12.5 },
+  { label: "25%", val: 25 },
+  { label: "37,5%", val: 37.5 },
+  { label: "50%", val: 50 },
+  { label: "62,5%", val: 62.5 },
+  { label: "75%", val: 75 },
+  { label: "87,5%", val: 87.5 },
+  { label: "100%", val: 100 },
+];
+
+interface VolumeWheelPickerProps {
+  value: number;
+  onChange: (val: number) => void;
+}
+
+/**
+ * Seletor de Volume Estilo Roleta (UIDatePicker Wheel Picker)
+ */
+function VolumeWheelPicker({ value, onChange }: VolumeWheelPickerProps) {
+  const ITEM_HEIGHT = 38;
+  const numbers = useMemo(() => Array.from({ length: 101 }, (_, i) => i), []);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isUserInteractingRef = useRef(false);
+  const debounceTimerRef = useRef<any>(null);
+  const [currentVal, setCurrentVal] = useState<number>(Math.round(value));
+
+  useEffect(() => {
+    const rounded = Math.round(value);
+    setCurrentVal(rounded);
+    if (!isUserInteractingRef.current && scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: rounded * ITEM_HEIGHT,
+        behavior: "smooth",
+      });
+    }
+  }, [value]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    isUserInteractingRef.current = true;
+    const top = e.currentTarget.scrollTop;
+    const idx = Math.max(0, Math.min(100, Math.round(top / ITEM_HEIGHT)));
+    setCurrentVal(idx);
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      isUserInteractingRef.current = false;
+      onChange(idx);
+      if (scrollRef.current) {
+        scrollRef.current.scrollTo({
+          top: idx * ITEM_HEIGHT,
+          behavior: "smooth",
+        });
+      }
+    }, 120);
+  };
+
+  const handleSelect = (num: number) => {
+    isUserInteractingRef.current = false;
+    setCurrentVal(num);
+    onChange(num);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: num * ITEM_HEIGHT,
+        behavior: "smooth",
+      });
+    }
+  };
+
+  const step = (delta: number) => {
+    const next = Math.max(0, Math.min(100, currentVal + delta));
+    handleSelect(next);
+  };
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+      <div className="flex items-center gap-2 justify-center w-full sm:w-auto">
+        <button
+          onClick={() => step(-1)}
+          disabled={currentVal <= 0}
+          className="h-10 w-10 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0"
+          title="Diminuir 1%"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+
+        {/* Tambor Cilíndrico da Roleta (UIDatePicker Style) */}
+        <div className="relative h-[114px] w-28 sm:w-32 overflow-hidden rounded-2xl border border-neutral-800 bg-black/95 shadow-inner select-none flex-shrink-0">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-9 bg-gradient-to-b from-neutral-950 via-neutral-950/80 to-transparent z-20" />
+          <div className="pointer-events-none absolute inset-x-0 top-[38px] h-[38px] border-y border-blue-500/50 bg-blue-500/15 z-10 shadow-[0_0_12px_rgba(59,130,246,0.2)] flex items-center justify-end pr-2.5">
+            <span className="text-[10px] font-black text-blue-400 font-mono">%</span>
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent z-20" />
+
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="h-full overflow-y-auto snap-y snap-mandatory scrollbar-none py-[38px]"
+            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+          >
+            {numbers.map((num) => {
+              const isSelected = currentVal === num;
+              const dist = Math.abs(currentVal - num);
+              return (
+                <div
+                  key={num}
+                  onClick={() => handleSelect(num)}
+                  className={`h-[38px] flex items-center justify-center snap-center cursor-pointer font-mono transition-all duration-100 ${
+                    isSelected
+                      ? "text-lg font-black text-white scale-110"
+                      : dist === 1
+                      ? "text-xs font-semibold text-neutral-400 scale-95 opacity-55"
+                      : "text-[11px] text-neutral-600 scale-90 opacity-25"
+                  }`}
+                >
+                  {num}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <button
+          onClick={() => step(1)}
+          disabled={currentVal >= 100}
+          className="h-10 w-10 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0"
+          title="Aumentar 1%"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+
+        <button
+          onClick={() => onChange(currentVal > 0 ? 0 : 100)}
+          className={`h-10 w-10 rounded-xl border flex items-center justify-center transition flex-shrink-0 ${
+            currentVal === 0
+              ? "bg-red-500/20 border-red-500/40 text-red-300"
+              : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:text-white"
+          }`}
+          title={currentVal === 0 ? "Desmutar" : "Mudo"}
+        >
+          {currentVal === 0 ? (
+            <VolumeX className="h-4 w-4 text-red-400" />
+          ) : (
+            <Volume2 className="h-4 w-4 text-blue-400" />
+          )}
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2 justify-center sm:justify-start">
+        <span className="text-xs text-neutral-400 font-semibold">Volume:</span>
+        <span className="text-base font-black text-white font-mono bg-neutral-900 px-2.5 py-0.5 rounded-lg border border-neutral-800">
+          {currentVal}%
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function RoomOperator() {
@@ -205,14 +375,28 @@ function RoomOperator() {
   const [siteInputUrl, setSiteInputUrl] = useState("");
   const [audioStreamInputUrl, setAudioStreamInputUrl] = useState("");
 
-  // Sub-modo de áudio no Modo Básico: playlist ou rádio único
-  const [basicAudioTab, setBasicAudioTab] = useState<"playlist" | "stream">("playlist");
+  // Sub-modo de áudio no Modo Básico: busca youtube, importar playlist, fila da sala ou web rádio
+  const [basicAudioTab, setBasicAudioTab] = useState<"youtube" | "playlist_import" | "playlist" | "stream">("youtube");
 
   // Inputs para adicionar faixa à playlist no Modo Básico
   const [newTrackUrl, setNewTrackUrl] = useState("");
   const [newTrackTitle, setNewTrackTitle] = useState("");
   const [multiLinksText, setMultiLinksText] = useState("");
   const [showMultiLinksModal, setShowMultiLinksModal] = useState(false);
+
+  // Estados para Busca Direta no YouTube
+  const [ytQuery, setYtQuery] = useState("");
+  const [ytResults, setYtResults] = useState<YoutubeTrackResult[]>([]);
+  const [isSearchingYt, setIsSearchingYt] = useState(false);
+  const [ytSearchError, setYtSearchError] = useState<string | null>(null);
+  const [addedSuccessId, setAddedSuccessId] = useState<string | null>(null);
+
+  // Estados para Importação de Playlist / Álbum do YouTube
+  const [playlistInputUrl, setPlaylistInputUrl] = useState("");
+  const [loadedPlaylistPreview, setLoadedPlaylistPreview] = useState<YoutubePlaylistResult | null>(null);
+  const [isLoadingPlaylist, setIsLoadingPlaylist] = useState(false);
+  const [playlistError, setPlaylistError] = useState<string | null>(null);
+  const [importSuccessMsg, setImportSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (stateQ.data?.siteUrl) {
@@ -301,16 +485,215 @@ function RoomOperator() {
     setState.mutate({ audioStreamUrl: null });
   };
 
+  // ==========================================
+  // Ações de YouTube (Busca & Importação de Playlist)
+  // ==========================================
+  const handleSearchYt = async (termToSearch?: string) => {
+    const q = (termToSearch !== undefined ? termToSearch : ytQuery).trim();
+    if (!q) return;
+    if (termToSearch !== undefined) {
+      setYtQuery(termToSearch);
+    }
+    setIsSearchingYt(true);
+    setYtSearchError(null);
+    try {
+      const res = await signageApi.searchYoutube(q, 15);
+      setYtResults(res.results || []);
+      if ((res.results || []).length === 0) {
+        setYtSearchError("Nenhum resultado encontrado para esta busca.");
+      }
+    } catch (err: any) {
+      setYtSearchError(err.message || "Erro ao buscar no YouTube.");
+    } finally {
+      setIsSearchingYt(false);
+    }
+  };
+
+  const handleAddYtTrack = async (track: YoutubeTrackResult, playImmediately = false) => {
+    const newItem: PlaylistItem = {
+      url: track.url,
+      title: track.title,
+      type: "audio",
+      duration: track.durationSeconds,
+      muted: false,
+      volume: 100,
+    };
+
+    let targetPlaylistId = activeAudio?.id;
+    let targetItems = [...(activeAudio?.items || [])];
+
+    if (activeAudio) {
+      targetItems.push(newItem);
+      await signageApi.updatePlaylist(activeAudio.id, {
+        ...activeAudio,
+        items: targetItems,
+      });
+      if (stateQ.data?.audioStreamUrl) {
+        await signageApi.setState(slug, { audioStreamUrl: null, audioStatus: "playing" });
+      }
+    } else {
+      const playlistName = `Áudio - ${currentRoom?.name || slug}`;
+      const res = await signageApi.createPlaylist({
+        name: playlistName,
+        type: "audio",
+        items: [newItem],
+        loop: true,
+        loopMode: "all",
+        shuffle: false,
+      });
+      targetPlaylistId = res.playlist?.id;
+      if (targetPlaylistId) {
+        await signageApi.setState(slug, {
+          audioPlaylist: targetPlaylistId,
+          audioStreamUrl: null,
+          audioStatus: "playing",
+        });
+      }
+    }
+
+    setAddedSuccessId(track.id);
+    setTimeout(() => setAddedSuccessId(null), 2500);
+
+    if (playImmediately) {
+      const newIdx = targetItems.length - 1;
+      signageApi.setTrackIndex(slug, newIdx);
+      await signageApi.setState(slug, { audioStatus: "playing" });
+    }
+
+    qc.invalidateQueries({ queryKey: ["playlists"] });
+    qc.invalidateQueries({ queryKey: ["state", slug] });
+  };
+
+  const handleFetchPlaylistInfo = async () => {
+    if (!playlistInputUrl.trim()) return;
+    setIsLoadingPlaylist(true);
+    setPlaylistError(null);
+    setLoadedPlaylistPreview(null);
+    setImportSuccessMsg(null);
+    try {
+      const res = await signageApi.getYoutubePlaylist(playlistInputUrl.trim());
+      if (res.playlist && res.playlist.videos.length > 0) {
+        setLoadedPlaylistPreview(res.playlist);
+      } else {
+        setPlaylistError("A playlist do YouTube não possui vídeos disponíveis ou é privada.");
+      }
+    } catch (err: any) {
+      setPlaylistError(err.message || "Erro ao carregar playlist do YouTube. Verifique o link.");
+    } finally {
+      setIsLoadingPlaylist(false);
+    }
+  };
+
+  const handleImportPlaylistTracks = async (mode: "replace" | "append" | "new", limit?: number) => {
+    if (!loadedPlaylistPreview || loadedPlaylistPreview.videos.length === 0) return;
+    setIsLoadingPlaylist(true);
+    setPlaylistError(null);
+
+    const sourceVideos = limit
+      ? loadedPlaylistPreview.videos.slice(0, limit)
+      : loadedPlaylistPreview.videos;
+
+    const newItems: PlaylistItem[] = sourceVideos.map((v) => ({
+      url: v.url,
+      title: v.title,
+      type: "audio",
+      duration: v.durationSeconds,
+      muted: false,
+      volume: 100,
+    }));
+
+    try {
+      if (mode === "new" || !activeAudio) {
+        const res = await signageApi.createPlaylist({
+          name: loadedPlaylistPreview.title || `Playlist YouTube - ${currentRoom?.name || slug}`,
+          type: "audio",
+          items: newItems,
+          loop: true,
+          loopMode: "all",
+          shuffle: false,
+        });
+        if (res.playlist?.id) {
+          await signageApi.setState(slug, {
+            audioPlaylist: res.playlist.id,
+            audioStreamUrl: null,
+            audioStatus: "playing",
+            currentAudioIndex: 0,
+          });
+        }
+      } else if (mode === "append") {
+        const combined = [...(activeAudio.items || []), ...newItems];
+        await signageApi.updatePlaylist(activeAudio.id, {
+          ...activeAudio,
+          items: combined,
+        });
+        if (stateQ.data?.audioStreamUrl) {
+          await signageApi.setState(slug, { audioStreamUrl: null, audioStatus: "playing" });
+        }
+      } else if (mode === "replace") {
+        await signageApi.updatePlaylist(activeAudio.id, {
+          ...activeAudio,
+          name: loadedPlaylistPreview.title || activeAudio.name,
+          items: newItems,
+        });
+        await signageApi.setState(slug, {
+          audioStreamUrl: null,
+          audioStatus: "playing",
+          currentAudioIndex: 0,
+        });
+      }
+
+      setImportSuccessMsg(`${newItems.length} faixas importadas com sucesso para a sala!`);
+      setPlaylistInputUrl("");
+      setLoadedPlaylistPreview(null);
+      setTimeout(() => {
+        setBasicAudioTab("playlist");
+        setImportSuccessMsg(null);
+      }, 1500);
+
+      qc.invalidateQueries({ queryKey: ["playlists"] });
+      qc.invalidateQueries({ queryKey: ["state", slug] });
+    } catch (err: any) {
+      setPlaylistError(err.message || "Erro ao salvar faixas importadas.");
+    } finally {
+      setIsLoadingPlaylist(false);
+    }
+  };
+
   // Ações de Músicas / Playlist
   const handleAddTrack = async (rawUrl: string, customTitle?: string) => {
     if (!rawUrl.trim()) return;
     const cleaned = cleanAudioUrl(rawUrl);
-    const title = extractTrackTitle(cleaned, customTitle);
+
+    // Se detectou playlist do YouTube, encaminha direto para a aba de importação
+    if (cleaned.includes("list=")) {
+      setPlaylistInputUrl(cleaned);
+      setBasicAudioTab("playlist_import");
+      return;
+    }
+
+    let title = customTitle?.trim() || "";
+    let duration: number | undefined;
+
+    // Se for link do YouTube e não foi passado título manual, obtém dados oficiais
+    if (!title && (cleaned.includes("youtube.com") || cleaned.includes("youtu.be"))) {
+      try {
+        const vidRes = await signageApi.getYoutubeVideo(cleaned);
+        if (vidRes.video?.title) {
+          title = vidRes.video.title;
+          duration = vidRes.video.durationSeconds;
+        }
+      } catch (_e) {}
+    }
+
+    if (!title) {
+      title = extractTrackTitle(cleaned, customTitle);
+    }
 
     const newItem: PlaylistItem = {
       url: cleaned,
       title,
       type: "audio",
+      duration,
       muted: false,
       volume: 100,
     };
@@ -775,51 +1158,75 @@ function RoomOperator() {
             </div>
           </section>
 
-          {/* CARD 2: MÚSICA AMBIENTE & SOM DE FUNDO */}
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4 sm:p-6 space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-neutral-800">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-blue-500/20 text-blue-400">
-                  <Music className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                    <span>Música Ambiente</span>
-                    {isAudioPlaying ? (
-                      <span className="text-[11px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full font-bold">
-                        Tocando
-                      </span>
-                    ) : (
-                      <span className="text-[11px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <Pause className="h-3 w-3" />
-                        <span>Pausado</span>
-                      </span>
-                    )}
-                  </h2>
-                  <p className="text-xs text-neutral-400 mt-0.5">
-                    Toque músicas contínuas pelo Dropbox ou sintonize rádios web.
-                  </p>
+          {/* CARD 2: MÚSICA AMBIENTE & SOM DE FUNDO (YOUTUBE STREAMING ZERO STORAGE) */}
+          <section className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-3.5 sm:p-6 space-y-4 sm:space-y-5">
+            <div className="flex flex-col gap-3 pb-3 border-b border-neutral-800">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                  <div className="p-2 sm:p-2.5 rounded-xl bg-blue-500/20 text-blue-400 flex-shrink-0">
+                    <Music className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2 truncate">
+                      <span>Música Ambiente</span>
+                      {isAudioPlaying ? (
+                        <span className="text-[10px] sm:text-[11px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full font-bold flex-shrink-0">
+                          Tocando
+                        </span>
+                      ) : (
+                        <span className="text-[10px] sm:text-[11px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full flex items-center gap-1 flex-shrink-0">
+                          <Pause className="h-3 w-3" />
+                          <span>Pausado</span>
+                        </span>
+                      )}
+                    </h2>
+                    <p className="text-[11px] sm:text-xs text-neutral-400 mt-0.5 truncate">
+                      YouTube (Álbuns & Hinos sem anúncios), MP3 e Rádios Web.
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Seletor entre Playlist Dropbox e Web Rádio */}
-              <div className="grid grid-cols-2 bg-neutral-950 border border-neutral-800 p-1 rounded-xl gap-1 w-full sm:w-auto">
+              {/* Seletor de 4 Abas para Mobile: Buscar, Importar, Fila, Rádio */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 bg-neutral-950 border border-neutral-800 p-1 rounded-xl gap-1 w-full">
+                <button
+                  onClick={() => setBasicAudioTab("youtube")}
+                  className={`py-2 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                    basicAudioTab === "youtube"
+                      ? "bg-red-600 text-white shadow font-bold"
+                      : "text-neutral-400 hover:text-white"
+                  }`}
+                >
+                  <Search className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span className="truncate">Buscar YouTube</span>
+                </button>
+                <button
+                  onClick={() => setBasicAudioTab("playlist_import")}
+                  className={`py-2 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                    basicAudioTab === "playlist_import"
+                      ? "bg-purple-600 text-white shadow font-bold"
+                      : "text-neutral-400 hover:text-white"
+                  }`}
+                >
+                  <Disc className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span className="truncate">Importar Playlist</span>
+                </button>
                 <button
                   onClick={() => setBasicAudioTab("playlist")}
-                  className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 truncate ${
+                  className={`py-2 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
                     basicAudioTab === "playlist"
-                      ? "bg-blue-600 text-white shadow-sm font-bold"
+                      ? "bg-blue-600 text-white shadow font-bold"
                       : "text-neutral-400 hover:text-white"
                   }`}
                 >
                   <ListMusic className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span className="truncate">Músicas (Dropbox)</span>
+                  <span className="truncate">Fila ({activeAudio?.items?.length || 0})</span>
                 </button>
                 <button
                   onClick={() => setBasicAudioTab("stream")}
-                  className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 truncate ${
+                  className={`py-2 px-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
                     basicAudioTab === "stream"
-                      ? "bg-blue-600 text-white shadow-sm font-bold"
+                      ? "bg-blue-600 text-white shadow font-bold"
                       : "text-neutral-400 hover:text-white"
                   }`}
                 >
@@ -842,7 +1249,7 @@ function RoomOperator() {
                   <div className="truncate min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center sm:gap-1.5">
                     <span className="text-neutral-400 text-[11px] sm:text-xs flex-shrink-0">No som da TV:</span>
                     <strong className="text-white font-semibold truncate text-xs sm:text-sm">
-                      {currentPlayingTrack || "Nenhuma faixa selecionada"}
+                      {currentPlayingTrack || "Nenhuma música selecionada"}
                     </strong>
                   </div>
                 </div>
@@ -855,7 +1262,7 @@ function RoomOperator() {
                   <button
                     onClick={() => signageApi.sendCommand(slug, "audio", "prev")}
                     disabled={isAudioStreamActive || !activeAudio || activeAudio.items.length === 0}
-                    className="min-h-[46px] w-12 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
+                    className="min-h-[48px] w-12 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
                     title="Música Anterior"
                   >
                     <SkipBack className="h-5 w-5" />
@@ -882,68 +1289,345 @@ function RoomOperator() {
                   <button
                     onClick={() => signageApi.sendCommand(slug, "audio", "next")}
                     disabled={isAudioStreamActive || !activeAudio || activeAudio.items.length === 0}
-                    className="min-h-[46px] w-12 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
+                    className="min-h-[48px] w-12 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
                     title="Próxima Música"
                   >
                     <SkipForward className="h-5 w-5" />
                   </button>
                 </div>
 
-                {/* Slider de Volume e Presets de Toque Rápido */}
-                <div className="w-full sm:w-auto space-y-2 bg-neutral-900/50 p-2.5 rounded-xl border border-neutral-800/80 overflow-hidden">
-                  <div className="flex items-center justify-between gap-2 w-full">
-                    <button
-                      onClick={() => signageApi.setAudioVolume(slug, currentAudioVolume > 0 ? 0 : 100)}
-                      className="p-1 text-neutral-400 hover:text-white flex-shrink-0"
-                      title={currentAudioVolume === 0 ? "Desmutar" : "Mudo"}
-                    >
-                      {currentAudioVolume === 0 ? (
-                        <VolumeX className="h-5 w-5 text-red-400" />
-                      ) : (
-                        <Volume2 className="h-5 w-5 text-blue-400" />
-                      )}
-                    </button>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={currentAudioVolume}
-                      onChange={(e) => signageApi.setAudioVolume(slug, Number(e.target.value))}
-                      className="flex-1 min-w-0 accent-blue-500 cursor-pointer h-2"
-                    />
-                    <span className="text-xs font-bold text-white w-9 text-right flex-shrink-0">
-                      {currentAudioVolume}%
-                    </span>
-                  </div>
+                {/* Roleta de Volume (UIDatePicker Wheel Picker) e Presets de 12,5 em 12,5% */}
+                <div className="w-full sm:w-auto space-y-3 bg-neutral-900/50 p-3 rounded-2xl border border-neutral-800/80 overflow-hidden">
+                  <VolumeWheelPicker
+                    value={currentAudioVolume}
+                    onChange={(val) => signageApi.setAudioVolume(slug, val)}
+                  />
 
-                  {/* 5 Botões Rápidos de Volume (Touch amigável) */}
-                  <div className="grid grid-cols-5 gap-1 pt-1 border-t border-neutral-800 w-full">
-                    {[
-                      { label: "Mudo", val: 0 },
-                      { label: "25%", val: 25 },
-                      { label: "50%", val: 50 },
-                      { label: "75%", val: 75 },
-                      { label: "100%", val: 100 },
-                    ].map((preset) => (
-                      <button
-                        key={preset.val}
-                        onClick={() => signageApi.setAudioVolume(slug, preset.val)}
-                        className={`min-h-[34px] px-0.5 sm:px-1 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition text-center truncate ${
-                          currentAudioVolume === preset.val
-                            ? "bg-blue-600 text-white font-bold"
-                            : "bg-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-700"
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
+                  {/* 9 Botões Rápidos de Volume (0% a 100% de 12,5 em 12,5%) */}
+                  <div className="space-y-1.5 pt-2 border-t border-neutral-800/80">
+                    <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider block">
+                      Ajuste Rápido (passo de 12,5%):
+                    </span>
+                    <div className="grid grid-cols-3 sm:grid-cols-9 gap-1.5 w-full">
+                      {VOLUME_PRESETS.map((preset) => {
+                        const isSelected = Math.abs(currentAudioVolume - preset.val) < 0.5;
+                        return (
+                          <button
+                            key={preset.val}
+                            onClick={() => signageApi.setAudioVolume(slug, preset.val)}
+                            className={`min-h-[36px] px-1 py-1 rounded-xl text-[11px] font-semibold transition text-center truncate shadow-sm flex items-center justify-center ${
+                              isSelected
+                                ? "bg-blue-600 text-white font-bold ring-2 ring-blue-400/50 shadow"
+                                : "bg-neutral-800/90 text-neutral-300 hover:text-white hover:bg-neutral-700 border border-neutral-700/50"
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* SUB-MODO: PLAYLIST DROPBOX */}
-            {basicAudioTab === "playlist" ? (
+            {/* ============================================================ */}
+            {/* SUB-ABA 1: PESQUISAR NO YOUTUBE                              */}
+            {/* ============================================================ */}
+            {basicAudioTab === "youtube" && (
+              <div className="space-y-3.5 w-full">
+                <div className="bg-neutral-950/70 p-3.5 sm:p-4 rounded-xl border border-neutral-800 space-y-3">
+                  <div className="space-y-1">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Search className="h-4 w-4 text-red-500 flex-shrink-0" />
+                      <span>Buscar Músicas e Artistas no YouTube</span>
+                    </span>
+                    <p className="text-[11px] text-neutral-400">
+                      Streaming de áudio direto e invisível em segundo plano na TV, sem anúncios e sem ocupar memória.
+                    </p>
+                  </div>
+
+                  {/* Barra de Busca */}
+                  <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
+                    <div className="relative flex-1">
+                      <input
+                        placeholder="Ex: Padre Marcelo Rossi, Harpa Cristã, Pe. Fábio de Melo..."
+                        value={ytQuery}
+                        onChange={(e) => setYtQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleSearchYt()}
+                        className="w-full rounded-xl border border-neutral-700 bg-black px-3.5 py-2.5 text-base sm:text-xs text-white placeholder-neutral-500 outline-none focus:border-red-500"
+                      />
+                    </div>
+                    <button
+                      onClick={() => handleSearchYt()}
+                      disabled={!ytQuery.trim() || isSearchingYt}
+                      className="w-full sm:w-auto min-h-[42px] px-5 py-2.5 rounded-xl bg-red-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-red-500 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow flex-shrink-0"
+                    >
+                      {isSearchingYt ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Buscando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Search className="h-4 w-4" />
+                          <span>Buscar</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Atalhos Rápidos de Toque (Chips) */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold block">
+                      Sugestões Rápidas:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        "Hinos da Harpa Cristã",
+                        "Padre Marcelo Rossi",
+                        "Pe. Fábio de Melo",
+                        "Músicas Católicas Suaves",
+                        "Louvores Voz e Violão",
+                        "Instrumental Piano e Cordas",
+                      ].map((chip) => (
+                        <button
+                          key={chip}
+                          onClick={() => handleSearchYt(chip)}
+                          className="px-2.5 py-1 rounded-lg bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-300 hover:text-white hover:border-neutral-700 transition"
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mensagem de Erro na Busca */}
+                {ytSearchError && (
+                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/60 text-xs text-red-300 flex items-center gap-2">
+                    <Info className="h-4 w-4 flex-shrink-0" />
+                    <span>{ytSearchError}</span>
+                  </div>
+                )}
+
+                {/* Lista de Resultados da Busca */}
+                {ytResults.length > 0 && (
+                  <div className="space-y-2 w-full">
+                    <div className="flex items-center justify-between text-xs text-neutral-400 px-1">
+                      <span className="font-semibold text-neutral-300">
+                        Resultados Encontrados ({ytResults.length})
+                      </span>
+                      <span className="text-[11px] text-neutral-500 hidden sm:inline">
+                        Adicione à fila ou toque imediatamente na sala
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 max-h-[440px] overflow-y-auto pr-0.5">
+                      {ytResults.map((item) => {
+                        const isJustAdded = addedSuccessId === item.id;
+
+                        return (
+                          <div
+                            key={item.id}
+                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 sm:p-3 rounded-xl border border-neutral-800 bg-neutral-950/50 hover:border-neutral-700 transition"
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              {/* Thumbnail com tempo */}
+                              {item.thumbnailUrl && (
+                                <div className="relative w-16 h-11 sm:w-20 sm:h-12 rounded-lg overflow-hidden bg-neutral-900 flex-shrink-0">
+                                  <img
+                                    src={item.thumbnailUrl}
+                                    alt={item.title}
+                                    className="w-full h-full object-cover"
+                                    loading="lazy"
+                                  />
+                                  <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[10px] text-white px-1 rounded font-mono">
+                                    {item.durationFormatted}
+                                  </span>
+                                </div>
+                              )}
+
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-xs sm:text-sm font-semibold text-white line-clamp-2 leading-tight">
+                                  {item.title}
+                                </h4>
+                                {item.author && (
+                                  <p className="text-[11px] text-neutral-400 mt-0.5 truncate">
+                                    {item.author}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Botões de Ação */}
+                            <div className="flex items-center gap-1.5 self-end sm:self-center flex-shrink-0">
+                              <button
+                                onClick={() => handleAddYtTrack(item, false)}
+                                className={`min-h-[38px] px-3 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                                  isJustAdded
+                                    ? "bg-emerald-600 text-white font-bold"
+                                    : "bg-neutral-800 text-neutral-200 hover:bg-neutral-700 hover:text-white"
+                                }`}
+                              >
+                                {isJustAdded ? (
+                                  <>
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    <span>Adicionado!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Plus className="h-3.5 w-3.5" />
+                                    <span>+ Fila</span>
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleAddYtTrack(item, true)}
+                                className="min-h-[38px] px-3 rounded-lg bg-blue-600 text-white hover:bg-blue-500 text-xs font-bold transition flex items-center gap-1.5 shadow"
+                                title="Adiciona e inicia a reprodução agora na TV"
+                              >
+                                <Play className="h-3.5 w-3.5 ml-0.5" />
+                                <span>Tocar Agora</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ============================================================ */}
+            {/* SUB-ABA 2: IMPORTAR PLAYLIST / ÁLBUM DO YOUTUBE               */}
+            {/* ============================================================ */}
+            {basicAudioTab === "playlist_import" && (
+              <div className="space-y-4 w-full">
+                <div className="bg-neutral-950/70 p-3.5 sm:p-4 rounded-xl border border-neutral-800 space-y-3">
+                  <div className="space-y-1">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Disc className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                      <span>Importar Playlist ou Álbum Inteiro do YouTube</span>
+                    </span>
+                    <p className="text-[11px] text-neutral-400">
+                      Cole o link de uma playlist pública (ex: Harpa Cristã, álbuns completos ou seleções). Todas as faixas são importadas em segundos.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
+                    <input
+                      placeholder="https://www.youtube.com/playlist?list=PLzWjmBOf3rY3hAXmvMI1..."
+                      value={playlistInputUrl}
+                      onChange={(e) => setPlaylistInputUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleFetchPlaylistInfo()}
+                      className="w-full flex-1 rounded-xl border border-neutral-700 bg-black px-3.5 py-2.5 text-base sm:text-xs text-white placeholder-neutral-500 outline-none focus:border-purple-500 font-mono"
+                    />
+                    <button
+                      onClick={handleFetchPlaylistInfo}
+                      disabled={!playlistInputUrl.trim() || isLoadingPlaylist}
+                      className="w-full sm:w-auto min-h-[42px] px-5 py-2.5 rounded-xl bg-purple-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-purple-500 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow flex-shrink-0"
+                    >
+                      {isLoadingPlaylist ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Carregando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Disc className="h-4 w-4" />
+                          <span>Carregar Playlist</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] text-neutral-500 flex items-center gap-1.5">
+                    <Info className="h-3.5 w-3.5 flex-shrink-0 text-neutral-400" />
+                    <span>Também funciona colando o link de um vídeo que faz parte de uma playlist (com &quot;&amp;list=...&quot;).</span>
+                  </p>
+                </div>
+
+                {/* Feedback de Erro */}
+                {playlistError && (
+                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/60 text-xs text-red-300 flex items-center gap-2">
+                    <Info className="h-4 w-4 flex-shrink-0" />
+                    <span>{playlistError}</span>
+                  </div>
+                )}
+
+                {/* Feedback de Sucesso */}
+                {importSuccessMsg && (
+                  <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-xs text-emerald-200 flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                    <span className="font-semibold">{importSuccessMsg}</span>
+                  </div>
+                )}
+
+                {/* Card de Pré-visualização da Playlist Encontrada */}
+                {loadedPlaylistPreview && (
+                  <div className="p-4 rounded-xl border border-purple-500/40 bg-purple-950/20 space-y-3.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-500/20 pb-3">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-purple-400 tracking-wider">
+                          Playlist Reconhecida
+                        </span>
+                        <h3 className="text-sm sm:text-base font-bold text-white mt-0.5">
+                          {loadedPlaylistPreview.title}
+                        </h3>
+                        <p className="text-xs text-neutral-300 mt-0.5">
+                          {loadedPlaylistPreview.videoCount} músicas encontradas no YouTube
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="text-xs font-semibold text-neutral-300 block">
+                        Como deseja importar para esta sala?
+                      </span>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleImportPlaylistTracks("replace")}
+                          disabled={isLoadingPlaylist}
+                          className="min-h-[44px] px-4 py-2.5 rounded-xl bg-purple-600 text-white font-bold text-xs hover:bg-purple-500 transition flex items-center justify-center gap-2 shadow"
+                        >
+                          <Disc className="h-4 w-4" />
+                          <span>Importar Todas ({loadedPlaylistPreview.videoCount} faixas)</span>
+                        </button>
+
+                        {activeAudio && (
+                          <button
+                            onClick={() => handleImportPlaylistTracks("append")}
+                            disabled={isLoadingPlaylist}
+                            className="min-h-[44px] px-4 py-2.5 rounded-xl bg-neutral-900 border border-neutral-700 text-neutral-200 font-semibold text-xs hover:text-white hover:bg-neutral-800 transition flex items-center justify-center gap-2"
+                          >
+                            <Plus className="h-4 w-4" />
+                            <span>Acrescentar à Fila Atual</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {loadedPlaylistPreview.videoCount > 50 && (
+                        <button
+                          onClick={() => handleImportPlaylistTracks("replace", 50)}
+                          disabled={isLoadingPlaylist}
+                          className="w-full text-center text-[11px] text-neutral-400 hover:text-purple-300 pt-1"
+                        >
+                          Importar apenas as primeiras 50 faixas mais tocadas
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ============================================================ */}
+            {/* SUB-ABA 3: FILA DE MÚSICAS DA SALA                           */}
+            {/* ============================================================ */}
+            {basicAudioTab === "playlist" && (
               <div className="space-y-4 w-full">
                 {/* Seleção de Playlist & Modos de Repetição */}
                 <div className="bg-neutral-950/70 p-3.5 rounded-xl border border-neutral-800 space-y-3 w-full overflow-hidden">
@@ -1041,12 +1725,12 @@ function RoomOperator() {
                   </div>
                 </div>
 
-                {/* Bloco de Adicionar Músicas por Link */}
-                <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 space-y-3">
+                {/* Bloco de Adicionar Músicas por Link Único */}
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-3.5 sm:p-4 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 w-full">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
                       <Plus className="h-4 w-4 text-blue-400 flex-shrink-0" />
-                      <span>Adicionar Músicas à Lista</span>
+                      <span>Adicionar Link à Fila (YouTube / MP3)</span>
                     </span>
                     <button
                       onClick={() => setShowMultiLinksModal(true)}
@@ -1059,7 +1743,7 @@ function RoomOperator() {
 
                   <div className="flex flex-col sm:grid sm:grid-cols-[1fr_180px_auto] gap-2 w-full">
                     <input
-                      placeholder="Cole o link do Dropbox (ex: dropbox.com/s/...)"
+                      placeholder="Cole link do YouTube ou arquivo de áudio..."
                       value={newTrackUrl}
                       onChange={(e) => setNewTrackUrl(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleAddTrack(newTrackUrl, newTrackTitle)}
@@ -1081,14 +1765,9 @@ function RoomOperator() {
                       <span>Adicionar</span>
                     </button>
                   </div>
-
-                  <p className="text-[11px] text-neutral-400 flex items-center gap-1.5">
-                    <Info className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
-                    <span>Links comuns do Dropbox são convertidos automaticamente para streaming direto sem pausas.</span>
-                  </p>
                 </div>
 
-                {/* Lista de Faixas */}
+                {/* Lista de Faixas na Playlist */}
                 <div className="space-y-2 w-full overflow-hidden">
                   <div className="flex items-center justify-between text-xs text-neutral-400 px-1">
                     <span className="font-semibold text-neutral-300">
@@ -1178,17 +1857,34 @@ function RoomOperator() {
                       })}
                     </div>
                   ) : (
-                    <div className="rounded-xl border border-dashed border-neutral-800 p-8 text-center text-xs text-neutral-400 space-y-1">
+                    <div className="rounded-xl border border-dashed border-neutral-800 p-8 text-center text-xs text-neutral-400 space-y-2">
                       <div>Nenhuma música na lista no momento.</div>
-                      <div className="text-neutral-500 text-[11px]">
-                        Cole o link do Dropbox no campo acima para adicionar faixas.
+                      <div className="flex items-center justify-center gap-2 pt-1">
+                        <button
+                          onClick={() => setBasicAudioTab("youtube")}
+                          className="px-3 py-1.5 rounded-lg bg-red-600/20 text-red-300 border border-red-500/30 text-xs font-semibold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5"
+                        >
+                          <Search className="h-3.5 w-3.5" />
+                          <span>Buscar no YouTube</span>
+                        </button>
+                        <button
+                          onClick={() => setBasicAudioTab("playlist_import")}
+                          className="px-3 py-1.5 rounded-lg bg-purple-600/20 text-purple-300 border border-purple-500/30 text-xs font-semibold hover:bg-purple-600 hover:text-white transition flex items-center gap-1.5"
+                        >
+                          <Disc className="h-3.5 w-3.5" />
+                          <span>Importar Playlist</span>
+                        </button>
                       </div>
                     </div>
                   )}
                 </div>
               </div>
-            ) : (
-              /* SUB-MODO: SINTONIZAR WEB RÁDIO */
+            )}
+
+            {/* ============================================================ */}
+            {/* SUB-ABA 4: SINTONIZAR WEB RÁDIO                              */}
+            {/* ============================================================ */}
+            {basicAudioTab === "stream" && (
               <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1557,7 +2253,7 @@ function RoomOperator() {
       )}
 
       {/* ============================================================ */}
-      {/* MODAL PARA COLAR MÚLTIPLOS LINKS DE UMA VEZ (DROPBOX)         */}
+      {/* MODAL PARA COLAR MÚLTIPLOS LINKS DE UMA VEZ                   */}
       {/* ============================================================ */}
       {showMultiLinksModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 sm:p-4">
@@ -1578,12 +2274,12 @@ function RoomOperator() {
             </div>
 
             <p className="text-xs text-neutral-400">
-              Cole sua lista de links do Dropbox ou links de áudio (um por linha). O sistema converte automaticamente cada link e adiciona à sua lista.
+              Cole sua lista de links do YouTube ou arquivos de áudio MP3 (um por linha). O sistema adiciona diretamente à fila da sala.
             </p>
 
             <textarea
               rows={8}
-              placeholder={`https://www.dropbox.com/scl/fi/xyz1/musica1.mp3?dl=0\nhttps://www.dropbox.com/scl/fi/xyz2/musica2.mp3?dl=0\nhttps://meusite.com/audio.mp3`}
+              placeholder={`https://www.youtube.com/watch?v=xV7ZzeBR3oc\nhttps://www.youtube.com/watch?v=QXX-O1U2ufY\nhttps://meusite.com/audio.mp3`}
               value={multiLinksText}
               onChange={(e) => setMultiLinksText(e.target.value)}
               className="w-full rounded-xl border border-neutral-700 bg-black p-3.5 text-base sm:text-xs text-white placeholder-neutral-600 outline-none focus:border-blue-500 font-mono"
@@ -2136,7 +2832,7 @@ function ConfigPlaylistForm({
       {type === "audio" && (
         <div className="flex items-center gap-2 w-full">
           <input
-            placeholder="Link de áudio (Dropbox ou MP3 online)"
+            placeholder="Link de áudio (YouTube, MP3 ou áudio online)"
             value={audioUrl}
             onChange={(e) => setAudioUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addAudioUrl()}

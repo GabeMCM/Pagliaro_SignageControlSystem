@@ -5,22 +5,8 @@
     "type": "audio",
     "items": [
       {
-        "url": "https://www.dropbox.com/scl/fi/s3om6kk3nc9vlhr3lrm6u/Harpa-Crist-570-A-ltima-Hora-Levi-com-letra.mp3?rlkey=usvuu2zsh5yvkg1768o5lrs9z&st=36tn2m4a&raw=1",
-        "title": "Harpa-Crist-570-A-ltima-Hora-Levi-com-letra",
-        "type": "audio",
-        "muted": false,
-        "volume": 100
-      },
-      {
-        "url": "https://www.dropbox.com/scl/fi/s3om6kk3nc9vlhr3lrm6u/Harpa-Crist-570-A-ltima-Hora-Levi-com-letra.mp3?rlkey=usvuu2zsh5yvkg1768o5lrs9z&st=36tn2m4a&raw=1",
-        "title": "Harpa-Crist-570-A-ltima-Hora-Levi-com-letra",
-        "type": "audio",
-        "muted": false,
-        "volume": 100
-      },
-      {
-        "url": "https://www.dropbox.com/scl/fi/s3om6kk3nc9vlhr3lrm6u/Harpa-Crist-570-A-ltima-Hora-Levi-com-letra.mp3?rlkey=usvuu2zsh5yvkg1768o5lrs9z&st=36tn2m4a&raw=1",
-        "title": "Harpa-Crist-570-A-ltima-Hora-Levi-com-letra",
+        "url": "https://www.youtube.com/watch?v=QXX-O1U2ufY",
+        "title": "Harpa Cristã 001 - Chuvas De Graça",
         "type": "audio",
         "muted": false,
         "volume": 100
@@ -34,28 +20,10 @@
     "type": "audio",
     "items": [
       {
-        "url": "https://www.dropbox.com/scl/fi/apzuazyjqt2313l5x6m8q/Padre-Marcelo-Rossi-Anjos-De-Deus-Video-Ao-Vivo.mp3?rlkey=kkr3cpl7e1jadk1i80t8y2zx6&st=j14drv06&raw=1",
+        "url": "https://www.youtube.com/watch?v=xV7ZzeBR3oc",
         "type": "audio",
         "volume": 100,
-        "title": "Padre-Marcelo-Rossi-Anjos-De-Deus-Video-Ao-Vivo"
-      },
-      {
-        "url": "https://www.dropbox.com/scl/fi/apzuazyjqt2313l5x6m8q/Padre-Marcelo-Rossi-Anjos-De-Deus-Video-Ao-Vivo.mp3?rlkey=kkr3cpl7e1jadk1i80t8y2zx6&st=j14drv06&raw=1",
-        "type": "audio",
-        "volume": 100,
-        "title": "Padre-Marcelo-Rossi-Anjos-De-Deus-Video-Ao-Vivo"
-      },
-      {
-        "url": "https://www.dropbox.com/scl/fi/n18c1tzagdqv2q7208rkk/Padre-Marcelo-Rossi-Noites-Trai-oeiras-udio-Oficial.mp3?rlkey=vs27rga983sj58n85gvipt8hu&st=w39oq9pn&raw=1",
-        "type": "audio",
-        "volume": 100,
-        "title": "Padre-Marcelo-Rossi-Noites-Trai-oeiras-udio-Oficial"
-      },
-      {
-        "url": "https://www.dropbox.com/scl/fi/i1ockxfvx68jja1xf3dwe/Padre-Marcelo-Rossi-Segura-na-M-o-de-Deus-udio-Oficial.mp3?rlkey=9ffvgqlh4npbuaj6d5dbjdbgi&st=dsy7lj2j&raw=1",
-        "type": "audio",
-        "volume": 100,
-        "title": "Padre-Marcelo-Rossi-Segura-na-M-o-de-Deus-udio-Oficial"
+        "title": "Padre Marcelo Rossi - Deus Está Aqui (Noites Traiçoeiras)"
       }
     ],
     "loop": true

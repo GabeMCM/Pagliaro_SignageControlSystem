@@ -45,6 +45,23 @@ export interface Playlist {
   shuffle?: boolean;
 }
 
+export interface YoutubeTrackResult {
+  id: string;
+  title: string;
+  author?: string;
+  durationSeconds: number;
+  durationFormatted: string;
+  thumbnailUrl?: string;
+  url: string;
+}
+
+export interface YoutubePlaylistResult {
+  id: string;
+  title: string;
+  videoCount: number;
+  videos: YoutubeTrackResult[];
+}
+
 export interface RoomState {
   playlist: string | null;
   audioPlaylist: string | null;
@@ -234,4 +251,19 @@ export const signageApi = {
       method: "POST",
       body: JSON.stringify({ clientId, reason }),
     }),
+
+  searchYoutube: (query: string, limit = 15) =>
+    request<{ success: boolean; results: YoutubeTrackResult[] }>(
+      `/api/youtube/search?q=${encodeURIComponent(query)}&limit=${limit}`
+    ),
+
+  getYoutubePlaylist: (urlOrId: string) =>
+    request<{ success: boolean; playlist: YoutubePlaylistResult }>(
+      `/api/youtube/playlist?url=${encodeURIComponent(urlOrId)}`
+    ),
+
+  getYoutubeVideo: (urlOrId: string) =>
+    request<{ success: boolean; video: YoutubeTrackResult }>(
+      `/api/youtube/video?url=${encodeURIComponent(urlOrId)}`
+    ),
 };
