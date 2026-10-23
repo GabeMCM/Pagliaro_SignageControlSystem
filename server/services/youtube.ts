@@ -31,6 +31,25 @@ interface StreamCacheEntry {
   expiresAt: number;
 }
 
+// Helper de Timeout para proteger o processo do Deno de bloqueios longos
+function promiseTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(message));
+    }, ms);
+
+    promise
+      .then((val) => {
+        clearTimeout(timer);
+        resolve(val);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 class YoutubeService {
   private ytdl: Ytdl;
   private streamCache = new Map<string, StreamCacheEntry>();
@@ -178,7 +197,17 @@ class YoutubeService {
       return { url: cached.url, mimeType: cached.mimeType };
     }
 
-    const info = await this.ytdl.getInfo(videoId);
+    let info: any;
+    try {
+      info = await promiseTimeout(
+        this.ytdl.getInfo(videoId),
+        3500,
+        "Tempo limite excedido ao consultar YouTube (proteção anti-travamento do servidor)"
+      );
+    } catch (err: any) {
+      this.streamCache.delete(videoId);
+      throw new Error(err.message || "Falha ao resolver áudio do YouTube.");
+    }
     // Prioriza itag 140 (AAC 128k, áudio universal HTML5) ou qualquer formato apenas de áudio
     const format =
       info.formats.find((f: any) => f.itag === 140) ||

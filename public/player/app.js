@@ -273,7 +273,10 @@ function unlockAudioSubsystem() {
   try {
     bgmPlayer.muted = false;
     if (!aIsPaused) {
-      if (currentRoomState.audioStreamUrl || audioItems.length > 0) {
+      if (currentPlayingAudioType === 'yt') {
+        if (ytAudioPlayer && ytAudioPlayer.unMute) ytAudioPlayer.unMute();
+        if (ytAudioPlayer && ytAudioPlayer.playVideo) ytAudioPlayer.playVideo();
+      } else if (currentRoomState.audioStreamUrl || audioItems.length > 0) {
         bgmPlayer.play().catch(e => console.warn("[bgmPlayer Play on Unlock]:", e));
       }
     }
@@ -341,7 +344,7 @@ bgmPlayer.onerror = (e) => {
 
 function handleAudioEnded() {
   if (audioItems.length === 0) {
-    bgmPlayer.pause();
+    pauseCurrentAudio();
     return;
   }
   
@@ -349,8 +352,15 @@ function handleAudioEnded() {
   const shuffle = Boolean(currentRoomState.audioShuffle || (audioPlaylist && audioPlaylist.shuffle));
 
   if (loopMode === "one") {
-    bgmPlayer.currentTime = 0;
-    bgmPlayer.play().catch(() => {});
+    if (currentPlayingAudioType === 'yt') {
+      if (ytAudioPlayer && ytAudioPlayer.seekTo) {
+        ytAudioPlayer.seekTo(0);
+        ytAudioPlayer.playVideo();
+      }
+    } else {
+      bgmPlayer.currentTime = 0;
+      bgmPlayer.play().catch(() => {});
+    }
     return;
   }
 
@@ -367,7 +377,7 @@ function handleAudioEnded() {
   aIndex++;
   if (aIndex >= audioItems.length) {
     if (loopMode === "none") {
-      bgmPlayer.pause();
+      pauseCurrentAudio();
       return;
     }
     aIndex = 0;
@@ -394,9 +404,16 @@ function fadeBgmVolume(targetVolume) {
     let current = bgmPlayer.volume;
     if (Math.abs(current - targetVolume) < 0.05) {
       bgmPlayer.volume = targetVolume;
+      if (ytAudioPlayer && ytAudioPlayer.setVolume) {
+        try { ytAudioPlayer.setVolume(Math.round(targetVolume * 100)); } catch (_e) {}
+      }
       clearInterval(duckingInterval);
     } else {
-      bgmPlayer.volume += (targetVolume > current) ? 0.05 : -0.05;
+      const nextVol = Math.max(0, Math.min(1, current + ((targetVolume > current) ? 0.05 : -0.05)));
+      bgmPlayer.volume = nextVol;
+      if (ytAudioPlayer && ytAudioPlayer.setVolume) {
+        try { ytAudioPlayer.setVolume(Math.round(nextVol * 100)); } catch (_e) {}
+      }
     }
   }, 80);
 }
@@ -414,6 +431,16 @@ function setMasterVolume(vol) {
   }
 }
 
+function getAudioYoutubeId(url) {
+  if (!url) return null;
+  const clean = url.trim();
+  if (clean.startsWith("youtube:")) {
+    const id = clean.replace("youtube:", "").trim();
+    return id.length === 11 ? id : null;
+  }
+  return extractYtId(clean);
+}
+
 function normalizeAudioUrl(url) {
   if (!url) return url;
   let clean = url.trim();
@@ -421,16 +448,6 @@ function normalizeAudioUrl(url) {
   // Se já for uma URL do proxy interno do backend, retorna direto
   if (clean.includes("/api/youtube/stream/")) {
     return clean.startsWith("http") ? clean : `${API_BASE}${clean}`;
-  }
-
-  // YouTube: converte link completo ou identificador em stream direto do backend
-  if (clean.startsWith("youtube:")) {
-    const id = clean.replace("youtube:", "").trim();
-    if (id) return `${API_BASE}/api/youtube/stream/${id}`;
-  }
-  const ytId = extractYtId(clean);
-  if (ytId) {
-    return `${API_BASE}/api/youtube/stream/${ytId}`;
   }
 
   // Google Drive: converte link de compartilhamento para streaming direto
@@ -441,9 +458,133 @@ function normalizeAudioUrl(url) {
   return clean;
 }
 
+let ytAudioPlayer = null;
+let currentPlayingAudioType = null; // 'yt' | 'html5' | null
+
+function pauseCurrentAudio() {
+  if (!bgmPlayer.paused) {
+    bgmPlayer.pause();
+  }
+  if (ytAudioPlayer && ytAudioPlayer.pauseVideo) {
+    try { ytAudioPlayer.pauseVideo(); } catch (_e) {}
+  }
+}
+
+function resumeCurrentAudio() {
+  if (currentPlayingAudioType === 'yt') {
+    if (ytAudioPlayer && ytAudioPlayer.playVideo) {
+      try { ytAudioPlayer.playVideo(); } catch (_e) {}
+    }
+  } else if (bgmPlayer.src) {
+    bgmPlayer.play().catch(e => console.warn(e));
+  }
+}
+
+function syncAudioVolume() {
+  const targetRatio = calculateTargetAudioVolume();
+  bgmPlayer.volume = targetRatio;
+  if (ytAudioPlayer && ytAudioPlayer.setVolume) {
+    try { ytAudioPlayer.setVolume(Math.round(targetRatio * 100)); } catch (_e) {}
+  }
+}
+
+function playYoutubeAudio(ytId) {
+  currentPlayingAudioType = 'yt';
+  // Pausa o bgmPlayer HTML5 para não sobrepor áudios
+  if (!bgmPlayer.paused) bgmPlayer.pause();
+  bgmPlayer.src = '';
+
+  const targetVol = Math.round(calculateTargetAudioVolume() * 100);
+
+  if (!isYtReady) {
+    setTimeout(() => playYoutubeAudio(ytId), 150);
+    return;
+  }
+
+  if (!ytAudioPlayer) {
+    const container = document.getElementById('yt-audio-player');
+    if (!container) {
+      const c = document.createElement('div');
+      c.id = 'yt-audio-container';
+      c.style = 'position:fixed;bottom:-200px;left:-200px;width:10px;height:10px;opacity:0.001;pointer-events:none;z-index:-10;';
+      c.innerHTML = '<div id="yt-audio-player"></div>';
+      document.body.appendChild(c);
+    }
+
+    try {
+      ytAudioPlayer = new YT.Player('yt-audio-player', {
+        height: '10',
+        width: '10',
+        videoId: ytId,
+        playerVars: {
+          'autoplay': 1,
+          'controls': 0,
+          'disablekb': 1,
+          'fs': 0,
+          'rel': 0,
+          'playsinline': 1,
+        },
+        events: {
+          'onReady': (event) => {
+            event.target.setVolume(targetVol);
+            if (!aIsPaused) {
+              event.target.playVideo();
+            }
+          },
+          'onStateChange': (event) => {
+            if (event.data === YT.PlayerState.ENDED) {
+              if (!currentRoomState.audioStreamUrl) {
+                handleAudioEnded();
+              } else {
+                event.target.playVideo();
+              }
+            }
+          },
+          'onError': (event) => {
+            console.warn("[YT Audio] Erro no vídeo do YouTube:", event.data);
+            setTimeout(() => {
+              if (!currentRoomState.audioStreamUrl) {
+                handleAudioEnded();
+              }
+            }, 1500);
+          }
+        }
+      });
+    } catch (e) {
+      console.warn("[YT Audio] Falha ao instanciar player:", e);
+    }
+  } else {
+    try {
+      ytAudioPlayer.setVolume(targetVol);
+      if (ytAudioPlayer.loadVideoById) {
+        ytAudioPlayer.loadVideoById(ytId);
+        if (aIsPaused && ytAudioPlayer.pauseVideo) {
+          ytAudioPlayer.pauseVideo();
+        }
+      }
+    } catch (e) {
+      console.warn("[YT Audio] Falha ao carregar faixa:", e);
+    }
+  }
+}
+
 function startAudioPlayback() {
   if (currentRoomState.audioStreamUrl) {
-    const src = normalizeAudioUrl(currentRoomState.audioStreamUrl);
+    const rawSrc = currentRoomState.audioStreamUrl;
+    const ytId = getAudioYoutubeId(rawSrc);
+
+    if (ytId) {
+      playYoutubeAudio(ytId);
+      return;
+    }
+
+    // Áudio normal HTML5 (MP3 / Web Rádio / Stream direto)
+    currentPlayingAudioType = 'html5';
+    if (ytAudioPlayer && ytAudioPlayer.pauseVideo) {
+      try { ytAudioPlayer.pauseVideo(); } catch (_e) {}
+    }
+
+    const src = normalizeAudioUrl(rawSrc);
     if (bgmPlayer.src !== src) {
       bgmPlayer.src = src;
     }
@@ -473,7 +614,7 @@ function playNextAudio() {
   }
 
   if (audioItems.length === 0) {
-    bgmPlayer.pause();
+    pauseCurrentAudio();
     return;
   }
   
@@ -481,7 +622,7 @@ function playNextAudio() {
     if (audioPlaylist && audioPlaylist.loop !== false) {
       aIndex = 0;
     } else {
-      bgmPlayer.pause();
+      pauseCurrentAudio();
       return;
     }
   }
@@ -489,8 +630,21 @@ function playNextAudio() {
   const item = audioItems[aIndex];
   if (!item) return;
   const rawSrc = item.url.startsWith('http') ? item.url : `${API_BASE}${item.url}`;
+  const ytId = getAudioYoutubeId(rawSrc);
+
+  if (ytId) {
+    playYoutubeAudio(ytId);
+    emitCommand('audio', 'trackChanged', aIndex);
+    return;
+  }
+
+  // Áudio normal HTML5 (MP3 / URL de áudio)
+  currentPlayingAudioType = 'html5';
+  if (ytAudioPlayer && ytAudioPlayer.pauseVideo) {
+    try { ytAudioPlayer.pauseVideo(); } catch (_e) {}
+  }
+
   const src = normalizeAudioUrl(rawSrc);
-  
   if (bgmPlayer.src !== src) {
     bgmPlayer.src = src;
   }
@@ -768,9 +922,7 @@ function applyStandbyMode(active) {
     standbyJitterInterval = setInterval(shiftStandbyAntiBurnIn, 150000);
 
     // Pausa som de fundo
-    if (!bgmPlayer.paused) {
-      bgmPlayer.pause();
-    }
+    pauseCurrentAudio();
   } else {
     if (overlay) {
       overlay.classList.remove('standby-visible');
@@ -796,7 +948,7 @@ function applyStandbyMode(active) {
 
     // Restaura áudio caso não esteja pausado pelo operador
     if (!aIsPaused && (currentRoomState.audioStreamUrl || audioItems.length > 0)) {
-      bgmPlayer.play().catch(e => console.warn(e));
+      resumeCurrentAudio();
     }
   }
 }
@@ -818,8 +970,29 @@ setInterval(() => {
     return;
   }
 
+  // Monitoramento quando reproduzindo YouTube
+  if (currentPlayingAudioType === 'yt') {
+    if (ytAudioPlayer && ytAudioPlayer.getPlayerState) {
+      try {
+        const state = ytAudioPlayer.getPlayerState();
+        // BUFFERING = 3
+        if (state === 3) {
+          audioStallSecs += 3;
+          if (audioStallSecs >= 12) {
+            console.warn("[Audio Watchdog] Áudio do YouTube congelado em buffering por 12s. Recuperando...");
+            audioStallSecs = 0;
+            handleAudioEnded();
+          }
+        } else {
+          audioStallSecs = 0;
+        }
+      } catch (_e) {}
+    }
+    return;
+  }
+
   // Detecta se o navegador pausou o áudio em background
-  if (bgmPlayer.paused && !aIsPaused && !isStandbyActive) {
+  if (bgmPlayer.paused && !aIsPaused && !isStandbyActive && bgmPlayer.src) {
     audioStallSecs += 3;
     if (audioStallSecs >= 6) {
       console.log("[Audio Watchdog] Áudio pausado involuntariamente pelo sistema. Retomando...");
@@ -1136,15 +1309,12 @@ function handleCommand(target, cmd, value) {
       }
     } else if (cmd === 'pause') {
       aIsPaused = true;
-      bgmPlayer.pause();
+      pauseCurrentAudio();
       const btn = document.getElementById('btn-a-play');
       if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
     } else if (cmd === 'play') {
       aIsPaused = false;
-      if (currentRoomState.audioStreamUrl && !bgmPlayer.src) {
-        bgmPlayer.src = normalizeAudioUrl(currentRoomState.audioStreamUrl);
-      }
-      bgmPlayer.play().catch(e => console.warn(e));
+      resumeCurrentAudio();
       const btn = document.getElementById('btn-a-play');
       if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
     }
@@ -1231,12 +1401,12 @@ async function fetchState() {
         aIsPaused = data.audioStatus === "paused";
         playNextAudio();
       } else {
-        bgmPlayer.pause();
+        pauseCurrentAudio();
       }
     } else {
       currentRoomState.audioStreamUrl = null;
       audioItems = [];
-      bgmPlayer.pause();
+      pauseCurrentAudio();
     }
 
     // 2. Processa Modo Site vs Modo Playlist Visual
@@ -1293,7 +1463,7 @@ async function updateStateSilently(providedState) {
       if (data.audioStreamUrl) {
         startAudioPlayback();
       } else {
-        bgmPlayer.pause();
+        pauseCurrentAudio();
         if (data.audioPlaylist) {
           const p = allPlaylists.find(x => x.id === data.audioPlaylist);
           if (p && p.items.length > 0) {
@@ -1318,12 +1488,12 @@ async function updateStateSilently(providedState) {
           } else {
             audioPlaylist = null;
             audioItems = [];
-            bgmPlayer.pause();
+            pauseCurrentAudio();
           }
         } else {
           audioPlaylist = null;
           audioItems = [];
-          bgmPlayer.pause();
+          pauseCurrentAudio();
         }
       } else if (data.audioPlaylist) {
         // Atualiza itens da playlist de áudio se ela foi editada
@@ -1345,13 +1515,10 @@ async function updateStateSilently(providedState) {
 
     if (data.audioStatus === "paused" && !aIsPaused) {
       aIsPaused = true;
-      bgmPlayer.pause();
+      pauseCurrentAudio();
     } else if (data.audioStatus === "playing" && aIsPaused) {
       aIsPaused = false;
-      if (currentRoomState.audioStreamUrl && !bgmPlayer.src) {
-        bgmPlayer.src = normalizeAudioUrl(currentRoomState.audioStreamUrl);
-      }
-      bgmPlayer.play().catch(e => console.warn(e));
+      resumeCurrentAudio();
     }
 
     // Sincroniza Modo Site vs Visual
@@ -1420,7 +1587,7 @@ function returnToLobby(noticeMessage) {
 
   // 1. Interrompe reproduções imediatamente
   aIsPaused = true;
-  bgmPlayer.pause();
+  pauseCurrentAudio();
   bgmPlayer.src = '';
 
   if (vTimeoutId) { clearTimeout(vTimeoutId); vTimeoutId = null; }
@@ -1552,7 +1719,7 @@ function requireUserInteraction(reason) {
     // Resumo de Áudio
     if (!aIsPaused) {
       if (currentRoomState.audioStreamUrl || audioItems.length > 0) {
-        bgmPlayer.play().catch(e => console.warn("[Play after unlock error]:", e));
+        resumeCurrentAudio();
       }
     }
     // Resumo de Vídeo/YouTube

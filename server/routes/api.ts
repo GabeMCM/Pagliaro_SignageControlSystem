@@ -839,17 +839,10 @@ api.get("/youtube/stream/:videoId", async (c) => {
   };
 
   try {
-    let { res, mimeType } = await fetchStream(false);
-
-    // Se a URL upstream do Google expirou (403/410), invalida cache e refaz uma vez
-    if ((res.status === 403 || res.status === 410) && !res.ok) {
-      youtubeService.invalidateCache(videoId);
-      const retry = await fetchStream(true);
-      res = retry.res;
-      mimeType = retry.mimeType;
-    }
+    const { res, mimeType } = await fetchStream(false);
 
     if (!res.ok && res.status !== 206) {
+      youtubeService.invalidateCache(videoId);
       return c.text(`Erro ao buscar áudio do YouTube (${res.status})`, res.status as any);
     }
 
@@ -879,8 +872,11 @@ api.get("/youtube/stream/:videoId", async (c) => {
       headers: responseHeaders,
     });
   } catch (err: any) {
-    console.error(`[Stream Error] Vídeo ${videoId}:`, err);
-    return c.text(err.message || "Erro no proxy de áudio", 500);
+    console.warn(`[YouTube Stream Fail] Vídeo ${videoId}: ${err.message}`);
+    return c.json({
+      error: "Stream do YouTube indisponível via datacenter em nuvem.",
+      code: "STREAM_UNAVAILABLE",
+    }, 503);
   }
 });
 
