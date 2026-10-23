@@ -138,7 +138,7 @@ async function migrateLocalDataIfEmpty() {
 }
 
 let mongoConnectionError: string | null = null;
-let isConnecting = false;
+let connectPromise: Promise<boolean> | null = null;
 
 export async function tryConnectMongo(): Promise<boolean> {
   const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
@@ -146,33 +146,41 @@ export async function tryConnectMongo(): Promise<boolean> {
     mongoConnectionError = "Variável MONGODB_URI não configurada no servidor (Render).";
     return false;
   }
-  if (isConnectedToMongo) return true;
-  if (isConnecting) return false;
+  if (isConnectedToMongo && mongoDb) return true;
+  if (connectPromise) return connectPromise;
 
-  isConnecting = true;
-  try {
-    console.log("[Database] Conectando ao MongoDB Atlas...");
-    mongoClient = new MongoClient(currentUri, {
-      serverSelectionTimeoutMS: 6000,
-      connectTimeoutMS: 10000,
-    });
-    await mongoClient.connect();
-    const currentDbName = Deno.env.get("MONGODB_DB_NAME") || MONGODB_DB_NAME;
-    mongoDb = mongoClient.db(currentDbName);
-    isConnectedToMongo = true;
-    mongoConnectionError = null;
-    console.log(`[MongoDB Atlas] Conectado com sucesso ao banco '${currentDbName}'!`);
+  connectPromise = (async () => {
+    try {
+      console.log("[Database] Conectando ao MongoDB Atlas...");
+      mongoClient = new MongoClient(currentUri, {
+        serverSelectionTimeoutMS: 8000,
+        connectTimeoutMS: 10000,
+      });
+      await mongoClient.connect();
+      const currentDbName = Deno.env.get("MONGODB_DB_NAME") || MONGODB_DB_NAME;
+      mongoDb = mongoClient.db(currentDbName);
+      isConnectedToMongo = true;
+      mongoConnectionError = null;
+      console.log(`[MongoDB Atlas] Conectado com sucesso ao banco '${currentDbName}'!`);
 
-    await migrateLocalDataIfEmpty();
-    return true;
-  } catch (err: any) {
-    mongoConnectionError = err?.message || String(err);
-    console.error("⚠️ [MongoDB Atlas] Falha ao conectar ao banco:", mongoConnectionError);
-    isConnectedToMongo = false;
-    return false;
-  } finally {
-    isConnecting = false;
-  }
+      // Limpa os caches em memória para garantir dados frescos do MongoDB Atlas
+      roomsCache = null;
+      playlistsCache = null;
+      stateCache = null;
+
+      await migrateLocalDataIfEmpty();
+      return true;
+    } catch (err: any) {
+      mongoConnectionError = err?.message || String(err);
+      console.error("⚠️ [MongoDB Atlas] Falha ao conectar ao banco:", mongoConnectionError);
+      isConnectedToMongo = false;
+      return false;
+    } finally {
+      connectPromise = null;
+    }
+  })();
+
+  return connectPromise;
 }
 
 // Inicializa a conexão com o MongoDB Atlas na inicialização
@@ -181,6 +189,13 @@ if (MONGODB_URI) {
 } else {
   mongoConnectionError = "Variável MONGODB_URI não configurada no servidor (Render).";
   console.log("ℹ️ [Database] MONGODB_URI não configurada. Usando armazenamento local em arquivos JSON (./config/).");
+}
+
+async function ensureMongoConnected() {
+  const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
+  if (currentUri && (!isConnectedToMongo || !mongoDb)) {
+    await tryConnectMongo();
+  }
 }
 
 // Caches em memória para acelerar respostas para 0ms e evitar latência de rede no Render
@@ -193,6 +208,7 @@ export const db = {
    * Retorna a lista de todas as salas cadastradas
    */
   getRooms: async (): Promise<any[]> => {
+    await ensureMongoConnected();
     if (roomsCache) return roomsCache;
     if (isConnectedToMongo && mongoDb) {
       try {
@@ -203,9 +219,13 @@ export const db = {
         console.error("[MongoDB] Erro ao buscar salas:", e);
       }
     }
-    const local = (await readJson("rooms.json")) || [];
-    roomsCache = local;
-    return local;
+    const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
+    if (!currentUri) {
+      const local = (await readJson("rooms.json")) || [];
+      roomsCache = local;
+      return local;
+    }
+    return roomsCache || [];
   },
 
   /**
@@ -237,6 +257,7 @@ export const db = {
    * Retorna a lista de todas as playlists
    */
   getPlaylists: async (): Promise<any[]> => {
+    await ensureMongoConnected();
     if (playlistsCache) return playlistsCache;
     if (isConnectedToMongo && mongoDb) {
       try {
@@ -247,15 +268,20 @@ export const db = {
         console.error("[MongoDB] Erro ao buscar playlists:", e);
       }
     }
-    const local = (await readJson("playlists.json")) || [];
-    playlistsCache = local;
-    return local;
+    const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
+    if (!currentUri) {
+      const local = (await readJson("playlists.json")) || [];
+      playlistsCache = local;
+      return local;
+    }
+    return playlistsCache || [];
   },
 
   /**
    * Salva/atualiza a lista completa de playlists
    */
   savePlaylists: async (playlists: any[]): Promise<boolean> => {
+    await ensureMongoConnected();
     playlistsCache = playlists;
     if (isConnectedToMongo && mongoDb) {
       try {
@@ -281,6 +307,7 @@ export const db = {
    * Retorna o estado atual de todas as salas (objeto indexado por slug)
    */
   getState: async (): Promise<Record<string, any>> => {
+    await ensureMongoConnected();
     if (stateCache) return { ...stateCache };
     if (isConnectedToMongo && mongoDb) {
       try {
@@ -296,9 +323,13 @@ export const db = {
         console.error("[MongoDB] Erro ao buscar estado:", e);
       }
     }
-    const local = (await readJson("state.json")) || {};
-    stateCache = local;
-    return { ...local };
+    const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
+    if (!currentUri) {
+      const local = (await readJson("state.json")) || {};
+      stateCache = local;
+      return { ...local };
+    }
+    return stateCache ? { ...stateCache } : {};
   },
 
   /**

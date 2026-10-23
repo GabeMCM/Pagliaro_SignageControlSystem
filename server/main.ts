@@ -5,6 +5,7 @@ import { api } from "./routes/api.ts";
 import { mediaRoute } from "./routes/media.ts";
 import { wsRoute } from "./ws/index.ts";
 import { initScheduler } from "./services/scheduler.ts";
+import { tryConnectMongo } from "./services/db.ts";
 
 const app = new Hono();
 
@@ -51,6 +52,11 @@ app.get("*", async (c) => {
 
 const PORT = Number(Deno.env.get("PORT") || 8001);
 console.log(`Server running on port ${PORT} (env: ${Deno.env.get("NODE_ENV") || "development"})`);
+
+// Conecta ao MongoDB Atlas antes de inicializar o servidor e agendador
+await tryConnectMongo().catch((err) => {
+  console.error("⚠️ [Server] Aviso ao conectar ao MongoDB Atlas:", err);
+});
 
 initScheduler();
 

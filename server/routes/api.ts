@@ -17,6 +17,13 @@ function slugify(text: string): string {
 }
 
 // ========================
+// STATUS / DIAGNÓSTICO DO BANCO
+// ========================
+api.get("/status", async (c) => {
+  return c.json(await db.getStatus());
+});
+
+// ========================
 // SALAS (Rooms)
 // ========================
 api.get("/rooms", async (c) => {
