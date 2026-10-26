@@ -33,8 +33,14 @@ app.route("/ws", wsRoute);
 // Rota estática para servir a mídia (vídeos e imagens) para os Players
 app.use("/media/*", serveStatic({ root: "./" }));
 
-// Rota estática para o Kiosk Player
+// Rota estática para o Kiosk Player (sem cache para garantir atualização imediata nas Smart TVs)
 app.get("/player", (c) => c.redirect("/player/index.html"));
+app.use("/player/*", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  c.header("Pragma", "no-cache");
+  c.header("Expires", "0");
+});
 app.use("/player/*", serveStatic({ root: "./public" }));
 
 // Rotas estáticas para o frontend do Admin (Vite Build SPA)

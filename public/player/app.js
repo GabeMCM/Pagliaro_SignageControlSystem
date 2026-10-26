@@ -371,8 +371,8 @@ bgmPlayer.onerror = (e) => {
 };
 
 function handleAudioEnded() {
-  if (aIsPaused) {
-    console.log("[Audio] handleAudioEnded ignorado pois o áudio está pausado.");
+  if (aIsPaused || isStandbyActive) {
+    console.log("[Audio] handleAudioEnded ignorado pois o áudio está pausado ou em standby.");
     return;
   }
   if (audioItems.length === 0) {
@@ -402,7 +402,9 @@ function handleAudioEnded() {
       nextIdx = Math.floor(Math.random() * audioItems.length);
     }
     aIndex = nextIdx;
+    currentRoomState.currentAudioIndex = aIndex;
     playNextAudio();
+    emitCommand('audio', 'trackChanged', aIndex);
     return;
   }
 
@@ -414,7 +416,9 @@ function handleAudioEnded() {
     }
     aIndex = 0;
   }
+  currentRoomState.currentAudioIndex = aIndex;
   playNextAudio();
+  emitCommand('audio', 'trackChanged', aIndex);
 }
 
 function calculateTargetAudioVolume() {
@@ -458,7 +462,9 @@ function updateDucking(active) {
 
 function setMasterVolume(vol) {
   masterVolume = Math.max(0, Math.min(100, Number(vol)));
-  if (!aIsPaused) {
+  if (aIsPaused) {
+    syncAudioVolume();
+  } else {
     fadeBgmVolume(calculateTargetAudioVolume());
   }
 }
@@ -503,12 +509,21 @@ function pauseCurrentAudio() {
 }
 
 function resumeCurrentAudio() {
+  if (isStandbyActive) return;
+  syncAudioVolume();
   if (currentPlayingAudioType === 'yt') {
     if (ytAudioPlayer && ytAudioPlayer.playVideo) {
       try { ytAudioPlayer.playVideo(); } catch (_e) {}
+    } else {
+      startAudioPlayback();
     }
-  } else if (bgmPlayer.src) {
-    bgmPlayer.play().catch(e => console.warn(e));
+  } else if (bgmPlayer.src && bgmPlayer.src !== window.location.href) {
+    bgmPlayer.play().catch(e => {
+      console.warn("[Audio] resume play falhou, reiniciando faixa:", e);
+      startAudioPlayback();
+    });
+  } else {
+    startAudioPlayback();
   }
 }
 
@@ -646,27 +661,37 @@ function playYoutubeAudio(ytId) {
   }
 
   // Prioridade 1: Toca diretamente via streaming de áudio nativo do backend
-  // Funciona 100% perfeitamente em localhost e servidores sem restrição de IP
   currentPlayingAudioType = 'html5';
   const streamUrl = `${API_BASE}/api/youtube/stream/${ytId}`;
-  bgmPlayer.src = streamUrl;
+  if (bgmPlayer.src !== streamUrl) {
+    bgmPlayer.src = streamUrl;
+  }
   bgmPlayer.volume = calculateTargetAudioVolume();
 
-  if (!aIsPaused) {
+  if (!aIsPaused && !isStandbyActive) {
     const p = bgmPlayer.play();
     if (p !== undefined) {
       p.then(() => {
         consecutiveAudioErrors = 0;
         console.log(`[YT Audio] Streaming nativo iniciado para ${ytId}`);
       }).catch((err) => {
+        // Ignora AbortError causado por troca rápida de faixa
+        if (err && err.name === "AbortError") {
+          return;
+        }
+        // Se uma outra faixa já assumiu o player, ignora erro da faixa antiga
+        if (bgmPlayer.src && !bgmPlayer.src.includes(ytId)) {
+          return;
+        }
         console.warn("[YT Audio] Play nativo bloqueado ou indisponível:", err);
-        if (err && err.name === "NotAllowedError" && !isAudioUnlocked) {
+        if (err && err.name === "NotAllowedError") {
+          isAudioUnlocked = false;
           bgmPlayer.muted = true;
           bgmPlayer.play().catch(() => {});
           requireUserInteraction("Clique para Iniciar o Áudio");
           return;
         }
-        // Fallback para iframe apenas se for erro de rede/codec e não autoplay block
+        // Fallback para iframe apenas se for erro real de rede/codec na faixa atual
         playYoutubeIframe(ytId);
       });
     }
@@ -699,12 +724,14 @@ function startAudioPlayback() {
       bgmPlayer.src = src;
     }
     bgmPlayer.volume = calculateTargetAudioVolume();
-    if (!aIsPaused) {
+    if (!aIsPaused && !isStandbyActive) {
       const p = bgmPlayer.play();
       if (p !== undefined) {
         p.catch(e => {
+          if (e && e.name === "AbortError") return;
           console.warn("Audio stream play blocked:", e);
-          if (e && e.name === "NotAllowedError" && !isAudioUnlocked) {
+          if (e && e.name === "NotAllowedError") {
+            isAudioUnlocked = false;
             bgmPlayer.muted = true;
             bgmPlayer.play().catch(() => {});
             requireUserInteraction("Clique para Iniciar o Áudio / Rádio");
@@ -733,7 +760,7 @@ function playNextAudio() {
     return;
   }
   
-  if (aIndex >= audioItems.length) {
+  if (aIndex >= audioItems.length || aIndex < 0) {
     if (audioPlaylist && audioPlaylist.loop !== false) {
       aIndex = 0;
     } else {
@@ -749,10 +776,6 @@ function playNextAudio() {
 
   if (ytId) {
     playYoutubeAudio(ytId);
-    if (currentRoomState.currentAudioIndex !== aIndex) {
-      currentRoomState.currentAudioIndex = aIndex;
-      emitCommand('audio', 'trackChanged', aIndex);
-    }
     return;
   }
 
@@ -769,22 +792,20 @@ function playNextAudio() {
   
   bgmPlayer.volume = calculateTargetAudioVolume();
 
-  if (!aIsPaused) {
+  if (!aIsPaused && !isStandbyActive) {
     const p = bgmPlayer.play();
     if (p !== undefined) {
       p.catch(e => {
+        if (e && e.name === "AbortError") return;
         console.warn("BGM autoplay blocked:", e);
-        if (e && e.name === "NotAllowedError" && !isAudioUnlocked) {
+        if (e && e.name === "NotAllowedError") {
+          isAudioUnlocked = false;
           bgmPlayer.muted = true;
           bgmPlayer.play().catch(() => {});
           requireUserInteraction("Clique para Iniciar o Áudio");
         }
       });
     }
-  }
-  if (currentRoomState.currentAudioIndex !== aIndex) {
-    currentRoomState.currentAudioIndex = aIndex;
-    emitCommand('audio', 'trackChanged', aIndex);
   }
 }
 
@@ -1389,14 +1410,26 @@ function handleCommand(target, cmd, value) {
     } else if (cmd === 'setShuffle' && value !== undefined) {
       currentRoomState.audioShuffle = Boolean(value);
     } else if (cmd === 'setTrackIndex' && value !== undefined) {
-      if (!currentRoomState.audioStreamUrl && audioItems.length > 0) {
+      if (!currentRoomState.audioStreamUrl) {
         const targetIdx = Number(value);
+        currentRoomState.currentAudioIndex = targetIdx;
+        aIsPaused = false;
+        const btn = document.getElementById('btn-a-play');
+        if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
         if (targetIdx >= 0 && targetIdx < audioItems.length) {
           aIndex = targetIdx;
-          aIsPaused = false;
           playNextAudio();
-          const btn = document.getElementById('btn-a-play');
-          if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
+        } else {
+          // Caso a faixa tenha acabado de ser adicionada à playlist, recarrega a lista e toca imediatamente
+          fetch(`${API_BASE}/api/playlists`).then(r => r.json()).then(allPl => {
+            const p = allPl.find(x => x.id === currentRoomState.audioPlaylist);
+            if (p && p.items && p.items.length > 0) {
+              audioPlaylist = p;
+              audioItems = p.items;
+              aIndex = (targetIdx >= 0 && targetIdx < audioItems.length) ? targetIdx : audioItems.length - 1;
+              playNextAudio();
+            }
+          }).catch(() => {});
         }
       }
     } else if (cmd === 'trackChanged' && value !== undefined) {
@@ -1414,6 +1447,7 @@ function handleCommand(target, cmd, value) {
         } else {
           aIndex = (aIndex + 1) % audioItems.length;
         }
+        currentRoomState.currentAudioIndex = aIndex;
         playNextAudio();
         const btn = document.getElementById('btn-a-play');
         if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
@@ -1422,6 +1456,7 @@ function handleCommand(target, cmd, value) {
       if (!currentRoomState.audioStreamUrl && audioItems.length > 0) {
         aIsPaused = false;
         aIndex--; if (aIndex < 0) aIndex = audioItems.length - 1;
+        currentRoomState.currentAudioIndex = aIndex;
         playNextAudio();
         const btn = document.getElementById('btn-a-play');
         if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
@@ -1508,7 +1543,7 @@ async function fetchState() {
     // 1. Processa Áudio de Fundo (Stream URL ou Playlist BGM)
     if (data.audioStreamUrl) {
       currentRoomState.audioStreamUrl = data.audioStreamUrl;
-      aIsPaused = data.audioStatus === "paused";
+      aIsPaused = data.audioStatus !== "playing";
       startAudioPlayback();
     } else if (data.audioPlaylist) {
       currentRoomState.audioStreamUrl = null;
@@ -1516,8 +1551,9 @@ async function fetchState() {
       if (p && p.items.length > 0) {
         audioPlaylist = p;
         audioItems = p.items;
-        aIndex = 0;
-        aIsPaused = data.audioStatus === "paused";
+        const savedIdx = Number(data.currentAudioIndex ?? 0);
+        aIndex = (savedIdx >= 0 && savedIdx < p.items.length) ? savedIdx : 0;
+        aIsPaused = data.audioStatus !== "playing";
         playNextAudio();
       } else {
         pauseCurrentAudio();
@@ -1543,7 +1579,7 @@ async function fetchState() {
           playNextVisual();
         } else {
           container.innerHTML = '';
-          showStatus("Playlist visual vazia.");
+          showStatus("Playlist vazia.");
         }
       } else {
         visualItems = [];
@@ -1588,7 +1624,8 @@ async function updateStateSilently(providedState) {
           if (p && p.items.length > 0) {
             audioPlaylist = p;
             audioItems = p.items;
-            aIndex = 0;
+            const savedIdx = Number(data.currentAudioIndex ?? 0);
+            aIndex = (savedIdx >= 0 && savedIdx < p.items.length) ? savedIdx : 0;
             playNextAudio();
           }
         }
@@ -1601,8 +1638,9 @@ async function updateStateSilently(providedState) {
           if (p && p.items.length > 0) {
             audioPlaylist = p;
             audioItems = p.items;
-            aIndex = 0;
-            aIsPaused = data.audioStatus === "paused";
+            const savedIdx = Number(data.currentAudioIndex ?? 0);
+            aIndex = (savedIdx >= 0 && savedIdx < p.items.length) ? savedIdx : 0;
+            aIsPaused = data.audioStatus !== "playing";
             playNextAudio();
           } else {
             audioPlaylist = null;
@@ -1621,8 +1659,13 @@ async function updateStateSilently(providedState) {
           const wasEmpty = audioItems.length === 0;
           audioPlaylist = p;
           audioItems = p.items || [];
-          if (wasEmpty && audioItems.length > 0 && !aIsPaused) {
-            aIndex = 0;
+          const targetIdx = data.currentAudioIndex !== undefined ? Number(data.currentAudioIndex) : aIndex;
+          const indexChanged = targetIdx !== aIndex && targetIdx >= 0 && targetIdx < audioItems.length;
+          if (indexChanged) {
+            aIndex = targetIdx;
+          }
+          if ((wasEmpty || indexChanged) && audioItems.length > 0 && data.audioStatus === "playing") {
+            aIsPaused = false;
             playNextAudio();
           }
         }

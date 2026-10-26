@@ -201,7 +201,7 @@ class YoutubeService {
     try {
       info = await promiseTimeout(
         this.ytdl.getInfo(videoId),
-        3500,
+        8000,
         "Tempo limite excedido ao consultar YouTube (proteção anti-travamento do servidor)"
       );
     } catch (err: any) {

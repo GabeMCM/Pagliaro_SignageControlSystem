@@ -425,17 +425,11 @@ api.post("/reload/:roomSlug", async (c) => {
   return c.json({ success: true, message: `Reload emitido para a sala ${room}` });
 });
 
+const lastAutoTrackChangeByRoom = new Map<string, number>();
+
 api.post("/control/:roomSlug", async (c) => {
   const room = c.req.param("roomSlug");
   const body = await c.req.json();
-  
-  // 1. BROADCAST IMEDIATO para as TVs via WebSocket (latência < 10ms!)
-  wsManager.broadcast(room, JSON.stringify({
-    type: "control",
-    target: body.target,
-    command: body.command,
-    value: body.value,
-  }));
 
   const state = await db.getState();
   if (typeof state[room] === "string") {
@@ -455,6 +449,28 @@ api.post("/control/:roomSlug", async (c) => {
       currentAudioIndex: 0,
     };
   }
+
+  // Proteção no servidor contra avanço automático indevido (trackChanged) vindo de TVs com cache antigo:
+  // Só aceita trackChanged se a sala estiver tocando, fora de standby e com intervalo mínimo de 8s entre fins de música
+  if (body.target === "audio" && body.command === "trackChanged") {
+    if (state[room].audioStatus !== "playing" || state[room].standby) {
+      return c.json({ success: false, ignored: true, reason: "Audio is not playing" });
+    }
+    const now = Date.now();
+    const lastChange = lastAutoTrackChangeByRoom.get(room) || 0;
+    if (now - lastChange < 8000) {
+      return c.json({ success: false, ignored: true, reason: "Rate limited auto trackChanged" });
+    }
+    lastAutoTrackChangeByRoom.set(room, now);
+  }
+  
+  // 1. BROADCAST IMEDIATO para as TVs e Admin via WebSocket (latência < 10ms!)
+  wsManager.broadcast(room, JSON.stringify({
+    type: "control",
+    target: body.target,
+    command: body.command,
+    value: body.value,
+  }));
 
   if (body.target === "site") {
     if (body.command === "reload") {
@@ -478,7 +494,11 @@ api.post("/control/:roomSlug", async (c) => {
       state[room].audioLoopMode = body.value;
     } else if (body.command === "setShuffle") {
       state[room].audioShuffle = Boolean(body.value);
-    } else if (body.command === "setTrackIndex" || body.command === "trackChanged") {
+    } else if (body.command === "setTrackIndex") {
+      state[room].currentAudioIndex = Number(body.value ?? 0);
+      state[room].audioStatus = "playing";
+      lastAutoTrackChangeByRoom.set(room, Date.now());
+    } else if (body.command === "trackChanged") {
       state[room].currentAudioIndex = Number(body.value ?? 0);
     }
   } else if (body.target === "room") {
