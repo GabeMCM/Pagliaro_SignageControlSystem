@@ -75,6 +75,8 @@ export interface RoomState {
   audioShuffle?: boolean;
   currentAudioIndex?: number;
   standby?: boolean;
+  version?: number;
+  updatedAt?: number;
 }
 
 export interface ScheduleTask {
@@ -184,13 +186,13 @@ export const signageApi = {
       standby?: boolean;
     }
   ) =>
-    request<{ success: boolean; state: RoomState }>(`/api/state/${slug}`, {
+    request<{ success: boolean; state: RoomState; version?: number }>(`/api/state/${slug}`, {
       method: "POST",
       body: JSON.stringify(stateUpdate),
     }),
 
   setStandby: (slug: string, standby: boolean) =>
-    request<{ success: boolean; state: RoomState }>(`/api/state/${slug}`, {
+    request<{ success: boolean; state: RoomState; version?: number }>(`/api/state/${slug}`, {
       method: "POST",
       body: JSON.stringify({ standby }),
     }),
@@ -200,41 +202,41 @@ export const signageApi = {
     
   sendCommand: (
     slug: string,
-    target: "visual" | "audio" | "site",
-    command: "play" | "pause" | "next" | "prev" | "reload" | "setVolume" | "setLoopMode" | "setShuffle" | "setTrackIndex",
+    target: "visual" | "audio" | "site" | "room",
+    command: "play" | "pause" | "next" | "prev" | "reload" | "setVolume" | "setLoopMode" | "setShuffle" | "setTrackIndex" | "setStandby",
     value?: any
   ) =>
-    request<{ success: boolean }>(`/api/control/${slug}`, {
+    request<{ success: boolean; state?: RoomState; version?: number }>(`/api/control/${slug}`, {
       method: "POST",
       body: JSON.stringify({ target, command, value }),
     }),
 
   setAudioVolume: (slug: string, value: number) =>
-    request<{ success: boolean }>(`/api/control/${slug}`, {
+    request<{ success: boolean; state?: RoomState; version?: number }>(`/api/control/${slug}`, {
       method: "POST",
       body: JSON.stringify({ target: "audio", command: "setVolume", value }),
     }),
 
   setLoopMode: (slug: string, mode: "all" | "one" | "none") =>
-    request<{ success: boolean }>(`/api/control/${slug}`, {
+    request<{ success: boolean; state?: RoomState; version?: number }>(`/api/control/${slug}`, {
       method: "POST",
       body: JSON.stringify({ target: "audio", command: "setLoopMode", value: mode }),
     }),
 
   setShuffle: (slug: string, shuffle: boolean) =>
-    request<{ success: boolean }>(`/api/control/${slug}`, {
+    request<{ success: boolean; state?: RoomState; version?: number }>(`/api/control/${slug}`, {
       method: "POST",
       body: JSON.stringify({ target: "audio", command: "setShuffle", value: shuffle }),
     }),
 
   setTrackIndex: (slug: string, index: number) =>
-    request<{ success: boolean }>(`/api/control/${slug}`, {
+    request<{ success: boolean; state?: RoomState; version?: number }>(`/api/control/${slug}`, {
       method: "POST",
       body: JSON.stringify({ target: "audio", command: "setTrackIndex", value: index }),
     }),
 
   reloadSite: (slug: string) =>
-    request<{ success: boolean }>(`/api/control/${slug}`, {
+    request<{ success: boolean; state?: RoomState; version?: number }>(`/api/control/${slug}`, {
       method: "POST",
       body: JSON.stringify({ target: "site", command: "reload" }),
     }),

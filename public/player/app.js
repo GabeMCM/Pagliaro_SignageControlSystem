@@ -194,7 +194,18 @@ function extractYtId(url) {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// --- APP STATE ---
+// --- APP STATE (Prioridade ao Estado Autoritativo do Servidor) ---
+let currentStateVersion = 0;
+let playerEventQueue = Promise.resolve();
+
+function enqueuePlayerEvent(taskFn) {
+  const next = playerEventQueue.then(() => Promise.resolve(taskFn())).catch((err) => {
+    console.warn("[PlayerEventQueue] Erro ao processar evento:", err);
+  });
+  playerEventQueue = next;
+  return next;
+}
+
 let currentRoomState = {
   playlist: null,
   audioPlaylist: null,
@@ -203,7 +214,8 @@ let currentRoomState = {
   mode: "playlist",
   visualStatus: "idle",
   audioStatus: "idle",
-  audioVolume: 100,
+  audioVolume: 0,
+  version: 0,
 };
 
 // --- VISUAL ENGINE ---
@@ -222,7 +234,7 @@ let aIndex = 0;
 let aIsPaused = false;
 let duckingActive = false;
 let duckingInterval = null;
-let masterVolume = 100; // 0 a 100
+let masterVolume = 0; // Padrão seguro 0% até sincronizar com o servidor
 
 // Player de Áudio Centralizado (conecta ao elemento do DOM)
 let bgmPlayer = document.getElementById('bgm-player');
@@ -1523,79 +1535,97 @@ if (btnAPlay) btnAPlay.addEventListener('click', function() { emitCommand('audio
 var btnANext = document.getElementById('btn-a-next');
 if (btnANext) btnANext.addEventListener('click', function() { emitCommand('audio', 'next'); });
 
-// --- INICIALIZAÇÃO & SINCRONIZAÇÃO SILENCIOSA ---
-async function fetchState() {
-  try {
-    const res = await fetch(`${API_BASE}/api/state/${roomSlug}`);
-    const data = await res.json();
-    currentRoomState = { ...currentRoomState, ...data };
-
-    // Sincroniza Modo Standby / Blackout
-    applyStandbyMode(Boolean(data.standby));
-
-    if (data.audioVolume !== undefined) {
-      masterVolume = data.audioVolume;
-    }
-
-    const plRes = await fetch(`${API_BASE}/api/playlists`);
-    const allPlaylists = await plRes.json();
-
-    // 1. Processa Áudio de Fundo (Stream URL ou Playlist BGM)
-    if (data.audioStreamUrl) {
-      currentRoomState.audioStreamUrl = data.audioStreamUrl;
-      aIsPaused = data.audioStatus !== "playing";
-      startAudioPlayback();
-    } else if (data.audioPlaylist) {
-      currentRoomState.audioStreamUrl = null;
-      const p = allPlaylists.find(x => x.id === data.audioPlaylist);
-      if (p && p.items.length > 0) {
-        audioPlaylist = p;
-        audioItems = p.items;
-        const savedIdx = Number(data.currentAudioIndex ?? 0);
-        aIndex = (savedIdx >= 0 && savedIdx < p.items.length) ? savedIdx : 0;
-        aIsPaused = data.audioStatus !== "playing";
-        playNextAudio();
-      } else {
-        pauseCurrentAudio();
+// --- INICIALIZAÇÃO & SINCRONIZAÇÃO SILENCIOSA (FILA DE EVENTOS FIFO) ---
+function fetchState() {
+  return enqueuePlayerEvent(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/state/${roomSlug}`);
+      const data = await res.json();
+      const incomingVer = Number(data.version || 0);
+      if (incomingVer > 0 && incomingVer < currentStateVersion) {
+        return;
       }
-    } else {
-      currentRoomState.audioStreamUrl = null;
-      audioItems = [];
-      pauseCurrentAudio();
-    }
+      if (incomingVer > currentStateVersion) {
+        currentStateVersion = incomingVer;
+      }
+      currentRoomState = { ...currentRoomState, ...data };
 
-    // 2. Processa Modo Site vs Modo Playlist Visual
-    if (data.mode === "site" && data.siteUrl) {
-      activateSiteMode(data.siteUrl);
-    } else {
-      deactivateSiteMode();
-      if (data.playlist) {
-        const p = allPlaylists.find(x => x.id === data.playlist);
+      // Sincroniza Modo Standby / Blackout
+      applyStandbyMode(Boolean(data.standby));
+
+      if (data.audioVolume !== undefined) {
+        setMasterVolume(data.audioVolume);
+      }
+
+      const plRes = await fetch(`${API_BASE}/api/playlists`);
+      const allPlaylists = await plRes.json();
+
+      // 1. Processa Áudio de Fundo (Stream URL ou Playlist BGM)
+      if (data.audioStreamUrl) {
+        currentRoomState.audioStreamUrl = data.audioStreamUrl;
+        aIsPaused = data.audioStatus !== "playing";
+        startAudioPlayback();
+      } else if (data.audioPlaylist) {
+        currentRoomState.audioStreamUrl = null;
+        const p = allPlaylists.find(x => x.id === data.audioPlaylist);
         if (p && p.items.length > 0) {
-          visualPlaylist = p;
-          visualItems = p.items;
-          vIndex = 0;
-          vIsPaused = data.visualStatus === "paused";
-          playNextVisual();
+          audioPlaylist = p;
+          audioItems = p.items;
+          const savedIdx = Number(data.currentAudioIndex ?? 0);
+          aIndex = (savedIdx >= 0 && savedIdx < p.items.length) ? savedIdx : 0;
+          aIsPaused = data.audioStatus !== "playing";
+          playNextAudio();
         } else {
-          container.innerHTML = '';
-          showStatus("Playlist vazia.");
+          pauseCurrentAudio();
         }
       } else {
-        visualItems = [];
-        container.innerHTML = '';
-        showStatus("Sala inativa (Idle).");
+        currentRoomState.audioStreamUrl = null;
+        audioItems = [];
+        pauseCurrentAudio();
       }
+
+      // 2. Processa Modo Site vs Modo Playlist Visual
+      if (data.mode === "site" && data.siteUrl) {
+        activateSiteMode(data.siteUrl);
+      } else {
+        deactivateSiteMode();
+        if (data.playlist) {
+          const p = allPlaylists.find(x => x.id === data.playlist);
+          if (p && p.items.length > 0) {
+            visualPlaylist = p;
+            visualItems = p.items;
+            vIndex = 0;
+            vIsPaused = data.visualStatus === "paused";
+            playNextVisual();
+          } else {
+            container.innerHTML = '';
+            showStatus("Playlist vazia.");
+          }
+        } else {
+          visualItems = [];
+          container.innerHTML = '';
+          showStatus("Sala inativa (Idle).");
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      showStatus("Erro ao sincronizar estado da sala.");
     }
-  } catch (err) {
-    console.error(err);
-    showStatus("Erro ao sincronizar estado da sala.");
-  }
+  });
 }
 
-async function updateStateSilently(providedState) {
+async function updateStateSilently(providedState, explicitVersion) {
   try {
     const data = providedState || await (await fetch(`${API_BASE}/api/state/${roomSlug}`)).json();
+    const incomingVer = Number(explicitVersion ?? data.version ?? 0);
+    if (incomingVer > 0 && incomingVer < currentStateVersion) {
+      // Ignora estado obsoleto fora de ordem
+      return;
+    }
+    if (incomingVer > currentStateVersion) {
+      currentStateVersion = incomingVer;
+    }
+
     const oldState = { ...currentRoomState };
     currentRoomState = { ...currentRoomState, ...data };
 
@@ -1821,10 +1851,16 @@ function connectWebSocket() {
       } else if (data.type === "roomDeleted") {
         showStatus("Esta sala foi excluída no painel.");
         setTimeout(() => returnToLobby("Esta sala foi excluída no painel."), 3000);
-      } else if (data.type === "updateState") {
-        updateStateSilently(data.state);
+      } else if (data.type === "stateSync" || data.type === "updateState") {
+        enqueuePlayerEvent(() => updateStateSilently(data.state, data.version));
       } else if (data.type === "control") {
-        handleCommand(data.target, data.command, data.value);
+        enqueuePlayerEvent(() => {
+          const ver = Number(data.version || 0);
+          if (ver > currentStateVersion) {
+            currentStateVersion = ver;
+          }
+          handleCommand(data.target, data.command, data.value);
+        });
       }
     } catch (e) {
       console.warn("WS parse error", e);

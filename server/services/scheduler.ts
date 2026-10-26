@@ -1,5 +1,5 @@
 import { db } from "./db.ts";
-import { wsManager } from "../ws/manager.ts";
+import { roomEventQueue } from "./event-queue.ts";
 
 export interface ScheduleTask {
   id: string;
@@ -54,109 +54,30 @@ export function parseScheduledTime(scheduledAt: string | number | undefined | nu
 }
 
 /**
- * Executa uma ação agendada no estado da sala e notifica os players via WebSocket
+ * Executa uma ação agendada no estado da sala através da Fila de Eventos do Servidor
  */
 export async function executeSchedule(task: ScheduleTask, markExecuted = true): Promise<boolean> {
   if (!task || !task.roomSlug) return false;
 
   try {
     const room = task.roomSlug;
-    const state = await db.getState();
-
-    if (typeof state[room] === "string") {
-      state[room] = { playlist: state[room], audioPlaylist: null };
-    } else if (!state[room]) {
-      state[room] = {
-        playlist: null,
-        audioPlaylist: null,
-        audioStreamUrl: null,
-        siteUrl: null,
-        mode: "playlist",
-        visualStatus: "idle",
-        audioStatus: "idle",
-        audioVolume: 0,
-        audioLoopMode: "all",
-        audioShuffle: false,
-        currentAudioIndex: 0,
-      };
-    }
-
     const actions = task.actions || {};
+    const updates: Record<string, any> = {};
 
-    // 1. Standby (Modo Suspenso / Tela Ativa)
-    if (actions.standby !== undefined) {
-      state[room].standby = Boolean(actions.standby);
-    }
+    if (actions.standby !== undefined) updates.standby = Boolean(actions.standby);
+    if (actions.siteUrl !== undefined) updates.siteUrl = actions.siteUrl ? String(actions.siteUrl).trim() : null;
+    if (actions.mode !== undefined) updates.mode = actions.mode;
+    if (actions.playlist !== undefined) updates.playlist = actions.playlist;
+    if (actions.audioPlaylist !== undefined) updates.audioPlaylist = actions.audioPlaylist;
+    if (actions.audioStreamUrl !== undefined) updates.audioStreamUrl = actions.audioStreamUrl ? String(actions.audioStreamUrl).trim() : null;
+    if (actions.audioVolume !== undefined) updates.audioVolume = Math.max(0, Math.min(100, Number(actions.audioVolume)));
+    if (actions.audioStatus !== undefined) updates.audioStatus = actions.audioStatus;
+    if (actions.currentAudioIndex !== undefined) updates.currentAudioIndex = Number(actions.currentAudioIndex);
+    if (actions.audioLoopMode !== undefined) updates.audioLoopMode = actions.audioLoopMode;
+    if (actions.audioShuffle !== undefined) updates.audioShuffle = Boolean(actions.audioShuffle);
 
-    // 2. Site de Homenagem
-    if (actions.siteUrl !== undefined) {
-      state[room].siteUrl = actions.siteUrl ? String(actions.siteUrl).trim() : null;
-      if (state[room].siteUrl) {
-        state[room].mode = "site";
-        state[room].visualStatus = "playing";
-      } else {
-        state[room].mode = "playlist";
-        if (!state[room].playlist) {
-          state[room].visualStatus = "idle";
-        }
-      }
-    }
-
-    if (actions.mode !== undefined) {
-      state[room].mode = actions.mode;
-    }
-
-    // 3. Playlist Visual
-    if (actions.playlist !== undefined) {
-      state[room].playlist = actions.playlist;
-      if (actions.playlist) {
-        state[room].visualStatus = "playing";
-      }
-    }
-
-    // 4. Playlist de Áudio
-    if (actions.audioPlaylist !== undefined) {
-      state[room].audioPlaylist = actions.audioPlaylist;
-      if (actions.audioPlaylist) {
-        state[room].audioStatus = actions.audioStatus || "playing";
-        state[room].audioStreamUrl = null;
-      }
-    }
-
-    // 5. Stream de Áudio Direto / Web Rádio
-    if (actions.audioStreamUrl !== undefined) {
-      state[room].audioStreamUrl = actions.audioStreamUrl ? String(actions.audioStreamUrl).trim() : null;
-      if (state[room].audioStreamUrl) {
-        state[room].audioStatus = actions.audioStatus || "playing";
-      }
-    }
-
-    // 6. Volume de Áudio
-    if (actions.audioVolume !== undefined) {
-      state[room].audioVolume = Math.max(0, Math.min(100, Number(actions.audioVolume)));
-    }
-
-    // 7. Status do Áudio (Play / Pause / Idle)
-    if (actions.audioStatus !== undefined) {
-      state[room].audioStatus = actions.audioStatus;
-    }
-
-    // 8. Índice da Música / Loop / Shuffle
-    if (actions.currentAudioIndex !== undefined) {
-      state[room].currentAudioIndex = Number(actions.currentAudioIndex);
-    }
-    if (actions.audioLoopMode !== undefined) {
-      state[room].audioLoopMode = actions.audioLoopMode;
-    }
-    if (actions.audioShuffle !== undefined) {
-      state[room].audioShuffle = Boolean(actions.audioShuffle);
-    }
-
-    // Salva o novo estado consolidado
-    await db.saveState(state);
-
-    // Emite atualização imediata via WebSocket para as telas da sala
-    wsManager.broadcast(room, JSON.stringify({ type: "updateState", state: state[room] }));
+    // Enfileira na Fila de Eventos Central do Servidor (garante prioridade e versão monotônica)
+    await roomEventQueue.enqueueSetState(room, updates, `schedule:${task.id}`);
 
     // Atualiza status do agendamento
     if (markExecuted) {

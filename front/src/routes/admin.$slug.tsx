@@ -446,32 +446,81 @@ interface VolumeWheelPickerProps {
   value: number;
   onChange: (val: number) => void;
   compact?: boolean;
+  disabled?: boolean;
 }
 
 /**
  * Seletor de Volume Estilo Roleta (UIDatePicker Wheel Picker)
+ * Blindado contra eventos de scroll programáticos (evita sobrescrever o volume do servidor ao abrir/recarregar a página em outro aparelho).
  */
-function VolumeWheelPicker({ value, onChange, compact = false }: VolumeWheelPickerProps) {
+function VolumeWheelPicker({ value, onChange, compact = false, disabled = false }: VolumeWheelPickerProps) {
   const ITEM_HEIGHT = compact ? 32 : 38;
   const numbers = useMemo(() => Array.from({ length: 101 }, (_, i) => i), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isUserInteractingRef = useRef(false);
+  const isProgrammaticScrollRef = useRef(false);
+  const programmaticTimerRef = useRef<any>(null);
   const debounceTimerRef = useRef<any>(null);
+  const lastConfirmedValueRef = useRef<number>(Math.round(value));
   const [currentVal, setCurrentVal] = useState<number>(Math.round(value));
 
+  const syncScrollPosition = (targetVal: number, smooth = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    isProgrammaticScrollRef.current = true;
+    if (programmaticTimerRef.current) clearTimeout(programmaticTimerRef.current);
+
+    const targetTop = targetVal * ITEM_HEIGHT;
+    if (smooth) {
+      el.scrollTo({ top: targetTop, behavior: "smooth" });
+      programmaticTimerRef.current = setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 350);
+    } else {
+      el.scrollTop = targetTop;
+      programmaticTimerRef.current = setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 150);
+    }
+  };
+
   useEffect(() => {
-    const rounded = Math.round(value);
+    const rounded = Math.max(0, Math.min(100, Math.round(value)));
+    lastConfirmedValueRef.current = rounded;
     setCurrentVal(rounded);
-    if (!isUserInteractingRef.current && scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: rounded * ITEM_HEIGHT,
-        behavior: "smooth",
-      });
+    if (!isUserInteractingRef.current) {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      // Usa atribuição direta (instantânea) quando o valor vem do servidor/WS para nunca disparar scroll intermediário
+      syncScrollPosition(rounded, false);
     }
   }, [value, ITEM_HEIGHT]);
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+  useEffect(() => {
+    return () => {
+      if (programmaticTimerRef.current) clearTimeout(programmaticTimerRef.current);
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
+
+  const markUserGesture = () => {
+    if (disabled) return;
+    isProgrammaticScrollRef.current = false;
+    if (programmaticTimerRef.current) {
+      clearTimeout(programmaticTimerRef.current);
+      programmaticTimerRef.current = null;
+    }
     isUserInteractingRef.current = true;
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    // Ignora completamente qualquer scroll causado por inicialização, reload ou sincronização do servidor!
+    if (disabled || isProgrammaticScrollRef.current || !isUserInteractingRef.current) {
+      return;
+    }
+
     const top = e.currentTarget.scrollTop;
     const idx = Math.max(0, Math.min(100, Math.round(top / ITEM_HEIGHT)));
     setCurrentVal(idx);
@@ -479,40 +528,41 @@ function VolumeWheelPicker({ value, onChange, compact = false }: VolumeWheelPick
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
       isUserInteractingRef.current = false;
-      onChange(idx);
-      if (scrollRef.current) {
-        scrollRef.current.scrollTo({
-          top: idx * ITEM_HEIGHT,
-          behavior: "smooth",
-        });
+      syncScrollPosition(idx, false);
+      if (idx !== lastConfirmedValueRef.current) {
+        lastConfirmedValueRef.current = idx;
+        onChange(idx);
       }
-    }, 120);
+    }, 140);
   };
 
   const handleSelect = (num: number) => {
+    if (disabled) return;
+    const clamped = Math.max(0, Math.min(100, Math.round(num)));
     isUserInteractingRef.current = false;
-    setCurrentVal(num);
-    onChange(num);
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: num * ITEM_HEIGHT,
-        behavior: "smooth",
-      });
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
     }
+    setCurrentVal(clamped);
+    lastConfirmedValueRef.current = clamped;
+    syncScrollPosition(clamped, false);
+    onChange(clamped);
   };
 
   const step = (delta: number) => {
+    if (disabled) return;
     const next = Math.max(0, Math.min(100, currentVal + delta));
     handleSelect(next);
   };
 
   return (
-    <div className={`flex ${compact ? "flex-row items-center gap-2" : "flex-col sm:flex-row items-center gap-2.5"} w-full`}>
+    <div className={`flex ${compact ? "flex-row items-center gap-2" : "flex-col sm:flex-row items-center gap-2.5"} w-full ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
       <div className="flex items-center gap-1.5 justify-center w-full sm:w-auto">
         <button
           type="button"
           onClick={() => step(-1)}
-          disabled={currentVal <= 0}
+          disabled={disabled || currentVal <= 0}
           className={`${compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"} rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0`}
           title="Diminuir 1%"
         >
@@ -529,6 +579,10 @@ function VolumeWheelPicker({ value, onChange, compact = false }: VolumeWheelPick
 
           <div
             ref={scrollRef}
+            onTouchStart={markUserGesture}
+            onPointerDown={markUserGesture}
+            onMouseDown={markUserGesture}
+            onWheel={markUserGesture}
             onScroll={handleScroll}
             className={`h-full overflow-y-auto snap-y snap-mandatory scrollbar-none ${compact ? "py-[32px]" : "py-[38px]"}`}
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
@@ -558,7 +612,7 @@ function VolumeWheelPicker({ value, onChange, compact = false }: VolumeWheelPick
         <button
           type="button"
           onClick={() => step(1)}
-          disabled={currentVal >= 100}
+          disabled={disabled || currentVal >= 100}
           className={`${compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"} rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0`}
           title="Aumentar 1%"
         >
@@ -567,13 +621,14 @@ function VolumeWheelPicker({ value, onChange, compact = false }: VolumeWheelPick
 
         <button
           type="button"
-          onClick={() => onChange(currentVal > 0 ? 0 : 100)}
+          disabled={disabled}
+          onClick={() => handleSelect(currentVal > 0 ? 0 : 50)}
           className={`${compact ? "h-8 w-8" : "h-9 w-9"} rounded-[2px] border flex items-center justify-center transition flex-shrink-0 ${
             currentVal === 0
               ? "bg-red-500/20 border-red-500/40 text-red-300"
               : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:text-white"
           }`}
-          title={currentVal === 0 ? "Desmutar" : "Mudo"}
+          title={currentVal === 0 ? "Desmutar (50%)" : "Mudo (0%)"}
         >
           {currentVal === 0 ? (
             <VolumeX className="h-4 w-4 text-red-400" />
@@ -600,6 +655,33 @@ function RoomOperator() {
   const qc = useQueryClient();
   const router = useRouter();
 
+  // Controle de Versão Autoritativa do Servidor e Filas FIFO de Eventos (Entrada e Saída)
+  const serverVersionRef = useRef<number>(0);
+  const outgoingQueueRef = useRef<Promise<any>>(Promise.resolve());
+  const incomingWsQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  // Reseta a versão ao trocar de sala
+  useEffect(() => {
+    serverVersionRef.current = 0;
+  }, [slug]);
+
+  /**
+   * Aplica o estado autoritativo vindo do servidor respeitando a prioridade de versão monotônica.
+   * Impede que respostas HTTP atrasadas sobrescrevam estados mais recentes recebidos via WebSocket.
+   */
+  const applyServerAuthoritativeState = (incomingState: any, explicitVersion?: number) => {
+    if (!incomingState || typeof incomingState !== "object") return;
+    const ver = Number(explicitVersion ?? incomingState.version ?? 0);
+    if (ver > 0 && ver < serverVersionRef.current) {
+      // Ignora pacote obsoleto (fora de ordem)
+      return;
+    }
+    if (ver > serverVersionRef.current) {
+      serverVersionRef.current = ver;
+    }
+    qc.setQueryData(["state", slug], incomingState);
+  };
+
   // Abas Principais: Conteúdo / Áudio / Automação / Aparelhos
   const [activeTab, setActiveTab] = useState<"content" | "audio" | "automation" | "devices">(() => {
     if (typeof window !== "undefined") {
@@ -624,7 +706,7 @@ function RoomOperator() {
   const [queueSearchQuery, setQueueSearchQuery] = useState("");
 
   // Consultas de dados com intervalos mais suaves para poupar celulares antigos
-  // O WebSocket já realiza invalidação em tempo real para mudanças instantâneas!
+  // O WebSocket já realiza sincronização em tempo real com prioridade ao estado do servidor!
   const roomsQ = useQuery({
     queryKey: ["rooms"],
     queryFn: signageApi.listRooms,
@@ -634,8 +716,20 @@ function RoomOperator() {
 
   const stateQ = useQuery({
     queryKey: ["state", slug],
-    queryFn: () => signageApi.getState(slug),
-    refetchInterval: 6000,
+    queryFn: async () => {
+      const fresh = await signageApi.getState(slug);
+      const freshVer = Number(fresh?.version ?? 0);
+      // Se o WebSocket já entregou uma versão mais nova enquanto o GET HTTP estava em trânsito, preserva o estado mais novo
+      if (freshVer > 0 && freshVer < serverVersionRef.current) {
+        const cached = qc.getQueryData<any>(["state", slug]);
+        if (cached) return cached;
+      }
+      if (freshVer > serverVersionRef.current) {
+        serverVersionRef.current = freshVer;
+      }
+      return fresh;
+    },
+    refetchInterval: 8000,
   });
 
   const playlistsQ = useQuery({
@@ -656,7 +750,18 @@ function RoomOperator() {
       currentAudioIndex?: number;
       standby?: boolean;
       audioStatus?: "playing" | "paused";
-    }) => signageApi.setState(slug, updates),
+    }) => {
+      // Enfileira na fila FIFO de saída do cliente
+      const task = outgoingQueueRef.current.then(async () => {
+        const res = await signageApi.setState(slug, updates);
+        if (res?.state) {
+          applyServerAuthoritativeState(res.state, res.version);
+        }
+        return res;
+      });
+      outgoingQueueRef.current = task.catch(() => {});
+      return task;
+    },
     onMutate: async (updates) => {
       await qc.cancelQueries({ queryKey: ["state", slug] });
       const previousState = qc.getQueryData(["state", slug]);
@@ -670,18 +775,21 @@ function RoomOperator() {
       if (context?.previousState) {
         qc.setQueryData(["state", slug], context.previousState);
       }
-    },
-    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["state", slug] });
     },
   });
 
-  // Disparo com Resposta Instantânea (0ms no celular e broadcast imediato na TV)
+  // Disparo enfileirado (FIFO) com feedback visual imediato e reconciliação pelo Estado Autoritativo do Servidor
   const handleOptimisticCommand = (
     target: "visual" | "audio" | "site" | "room",
     command: "play" | "pause" | "next" | "prev" | "reload" | "setVolume" | "setLoopMode" | "setShuffle" | "setTrackIndex" | "setStandby",
     value?: any
   ) => {
+    // Nunca permite que um dispositivo sem o estado carregado do servidor dispare alteração de volume
+    if (!stateQ.data && command === "setVolume") {
+      return;
+    }
+
     qc.setQueryData(["state", slug], (old: any) => {
       if (!old) return old;
       const updated = { ...old };
@@ -708,11 +816,21 @@ function RoomOperator() {
       return updated;
     });
 
-    if (command === "setVolume") {
-      signageApi.setAudioVolume(slug, Number(value)).catch(() => qc.invalidateQueries({ queryKey: ["state", slug] }));
-    } else {
-      signageApi.sendCommand(slug, target as any, command as any, value).catch(() => qc.invalidateQueries({ queryKey: ["state", slug] }));
-    }
+    // Enfileira o comando na Fila de Eventos de Saída (FIFO) e aplica o estado oficial retornado pelo servidor
+    const nextTask = outgoingQueueRef.current.then(async () => {
+      try {
+        const res =
+          command === "setVolume"
+            ? await signageApi.setAudioVolume(slug, Number(value))
+            : await signageApi.sendCommand(slug, target as any, command as any, value);
+        if (res?.state) {
+          applyServerAuthoritativeState(res.state, res.version);
+        }
+      } catch (_err) {
+        qc.invalidateQueries({ queryKey: ["state", slug] });
+      }
+    });
+    outgoingQueueRef.current = nextTask.catch(() => {});
   };
 
   const deleteRoomMut = useMutation({
@@ -831,8 +949,8 @@ function RoomOperator() {
   const [ytQuery, setYtQuery] = useState("");
   const [ytResults, setYtResults] = useState<YoutubeTrackResult[]>([]);
   const [isSearchingYt, setIsSearchingYt] = useState(false);
-  const [ytSearchError, setYtSearchError] = useState<string | null>(null);
-  const [addedSuccessId, setAddedSuccessId] = useState<string | null>(null);
+  const [ytSearchError, setYtSearchError] = useState(null as string | null);
+  const [addedSuccessId, setAddedSuccessId] = useState(null as string | null);
 
   // Estados para Importação de Playlist / Álbum do YouTube
   const [playlistInputUrl, setPlaylistInputUrl] = useState("");
@@ -870,7 +988,8 @@ function RoomOperator() {
   const playerUrl = `${API_BASE}/player/index.html?room=${slug}`;
   const isSiteActive = stateQ.data?.mode === "site" && Boolean(stateQ.data?.siteUrl);
   const isAudioStreamActive = Boolean(stateQ.data?.audioStreamUrl);
-  const currentAudioVolume = stateQ.data?.audioVolume ?? 100;
+  // Segurança: Padrão 0% enquanto o estado do servidor não carregou (jamais 100%)
+  const currentAudioVolume = stateQ.data?.audioVolume ?? 0;
   const loopMode = stateQ.data?.audioLoopMode || (activeAudio && activeAudio.loopMode) || "all";
   const shuffleActive = Boolean(stateQ.data?.audioShuffle || (activeAudio && activeAudio.shuffle));
   const currentAudioIndex = stateQ.data?.currentAudioIndex ?? 0;
@@ -886,7 +1005,7 @@ function RoomOperator() {
     return null;
   }, [isAudioStreamActive, activeAudio, currentAudioIndex]);
 
-  // Sincronização via WebSocket para atualização instantânea (não consome vaga de TV)
+  // Sincronização via WebSocket com Fila de Eventos (FIFO) e Estado Autoritativo do Servidor
   useEffect(() => {
     const wsUrl = API_BASE.replace("http", "ws");
     const ws = new WebSocket(`${wsUrl}/ws/${slug}?role=admin`);
@@ -901,39 +1020,55 @@ function RoomOperator() {
     };
 
     ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "pong") return;
-        if (data.type === "control") {
-          // Atualiza diretamente o estado no cache local em 0ms sem disparar requisições HTTP
-          qc.setQueryData(["state", slug], (old: any) => {
-            if (!old) return old;
-            const updated = { ...old };
-            if (data.target === "audio") {
-              if (data.command === "play") updated.audioStatus = "playing";
-              else if (data.command === "pause") updated.audioStatus = "paused";
-              else if (data.command === "setVolume") updated.audioVolume = data.value;
-              else if (data.command === "setLoopMode") updated.audioLoopMode = data.value;
-              else if (data.command === "setShuffle") updated.audioShuffle = data.value;
-              else if (data.command === "setTrackIndex" || data.command === "trackChanged") updated.currentAudioIndex = data.value;
-            } else if (data.target === "room" && data.command === "setStandby") {
-              updated.standby = data.value;
-            }
-            return updated;
-          });
-          return;
-        } else if (data.type === "updateState" && data.state) {
-          // Atualiza o estado em cache com os dados já presentes no WebSocket sem ir ao banco
-          qc.setQueryData(["state", slug], data.state);
-          return;
-        } else if (data.type === "devicesUpdate" || data.type === "presence") {
-          qc.invalidateQueries({ queryKey: ["roomDevices", slug] });
-          return;
-        }
-      } catch (_e) {}
+      const rawData = event.data;
+      // Enfileira cada mensagem recebida do WebSocket para processamento estritamente sequencial (FIFO)
+      incomingWsQueueRef.current = incomingWsQueueRef.current
+        .then(async () => {
+          try {
+            const data = JSON.parse(rawData);
+            if (data.type === "pong") return;
 
-      // Fallback suave
-      qc.invalidateQueries({ queryKey: ["state", slug] });
+            // 1. Sincronização inicial imediata ou atualização de estado oficial do servidor
+            if ((data.type === "stateSync" || data.type === "updateState") && data.state) {
+              applyServerAuthoritativeState(data.state, data.version);
+              return;
+            }
+
+            // 2. Comando processado pela fila do servidor (já traz o state oficial e version atualizados)
+            if (data.type === "control") {
+              if (data.state) {
+                applyServerAuthoritativeState(data.state, data.version);
+                return;
+              }
+              // Fallback caso venha um comando sem state acoplado
+              qc.setQueryData(["state", slug], (old: any) => {
+                if (!old) return old;
+                const updated = { ...old };
+                if (data.target === "audio") {
+                  if (data.command === "play") updated.audioStatus = "playing";
+                  else if (data.command === "pause") updated.audioStatus = "paused";
+                  else if (data.command === "setVolume") updated.audioVolume = data.value;
+                  else if (data.command === "setLoopMode") updated.audioLoopMode = data.value;
+                  else if (data.command === "setShuffle") updated.audioShuffle = data.value;
+                  else if (data.command === "setTrackIndex" || data.command === "trackChanged")
+                    updated.currentAudioIndex = data.value;
+                } else if (data.target === "room" && data.command === "setStandby") {
+                  updated.standby = data.value;
+                }
+                return updated;
+              });
+              return;
+            }
+
+            if (data.type === "devicesUpdate" || data.type === "presence") {
+              qc.invalidateQueries({ queryKey: ["roomDevices", slug] });
+              return;
+            }
+          } catch (_e) {
+            qc.invalidateQueries({ queryKey: ["state", slug] });
+          }
+        })
+        .catch(() => {});
     };
 
     return () => {
@@ -1851,6 +1986,7 @@ function RoomOperator() {
                 <div className="w-full sm:w-auto space-y-2 bg-neutral-900/60 p-2.5 rounded-[2px] border border-neutral-800 overflow-hidden">
                   <VolumeWheelPicker
                     compact
+                    disabled={!stateQ.data}
                     value={currentAudioVolume}
                     onChange={(val) => handleOptimisticCommand("audio", "setVolume", val)}
                   />
@@ -1862,12 +1998,13 @@ function RoomOperator() {
                     </span>
                     <div className="grid grid-cols-3 sm:grid-cols-9 gap-1 w-full">
                       {VOLUME_PRESETS.map((preset) => {
-                        const isSelected = Math.abs(currentAudioVolume - preset.val) < 0.5;
+                        const isSelected = Boolean(stateQ.data) && Math.abs(currentAudioVolume - preset.val) < 0.5;
                         return (
                           <button
                             key={preset.val}
+                            disabled={!stateQ.data}
                             onClick={() => handleOptimisticCommand("audio", "setVolume", preset.val)}
-                            className={`min-h-[28px] px-1 py-0.5 rounded-[2px] text-[10px] font-semibold transition text-center truncate flex items-center justify-center ${
+                            className={`min-h-[28px] px-1 py-0.5 rounded-[2px] text-[10px] font-semibold transition text-center truncate flex items-center justify-center disabled:opacity-40 ${
                               isSelected
                                 ? "bg-white text-black font-bold border border-white shadow-xs"
                                 : "bg-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 border border-neutral-800"

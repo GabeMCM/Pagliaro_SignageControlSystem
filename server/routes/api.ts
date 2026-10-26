@@ -3,6 +3,7 @@ import { db } from "../services/db.ts";
 import { wsManager, detectDeviceType } from "../ws/manager.ts";
 import { youtubeService } from "../services/youtube.ts";
 import { executeSchedule, type ScheduleTask } from "../services/scheduler.ts";
+import { roomEventQueue } from "../services/event-queue.ts";
 
 export const api = new Hono();
 
@@ -290,133 +291,15 @@ api.get("/state", async (c) => {
 
 api.get("/state/:roomSlug", async (c) => {
   const room = c.req.param("roomSlug");
-  const state = await db.getState();
-  let roomState = state[room];
-  if (typeof roomState === "string") {
-    roomState = { playlist: roomState, audioPlaylist: null };
-  }
-  const defaultState = {
-    playlist: null,
-    audioPlaylist: null,
-    audioStreamUrl: null,
-    siteUrl: null,
-    mode: "playlist", // "playlist" ou "site"
-    visualStatus: "idle",
-    audioStatus: "idle",
-    audioVolume: 0,
-    audioLoopMode: "all",
-    audioShuffle: false,
-    currentAudioIndex: 0,
-  };
-  return c.json({ ...defaultState, ...(roomState || {}) });
+  const roomState = await roomEventQueue.getAuthoritativeRoomState(room);
+  return c.json(roomState);
 });
 
 api.post("/state/:roomSlug", async (c) => {
   const room = c.req.param("roomSlug");
   const body = await c.req.json();
-  
-  const state = await db.getState();
-  if (typeof state[room] === "string") {
-    state[room] = { playlist: state[room], audioPlaylist: null };
-  } else if (!state[room]) {
-    state[room] = {
-      playlist: null,
-      audioPlaylist: null,
-      audioStreamUrl: null,
-      siteUrl: null,
-      mode: "playlist",
-      visualStatus: "idle",
-      audioStatus: "idle",
-      audioVolume: 0,
-      audioLoopMode: "all",
-      audioShuffle: false,
-      currentAudioIndex: 0,
-    };
-  }
-
-  // Atualização da URL de Site
-  if (body.siteUrl !== undefined) {
-    state[room].siteUrl = body.siteUrl ? String(body.siteUrl).trim() : null;
-    if (state[room].siteUrl) {
-      state[room].mode = "site";
-      state[room].visualStatus = "playing";
-    } else {
-      state[room].mode = "playlist";
-      if (!state[room].playlist) {
-        state[room].visualStatus = "idle";
-      }
-    }
-  }
-
-  if (body.mode !== undefined) {
-    state[room].mode = body.mode;
-  }
-
-  // Atualização de URL Direta de Stream de Áudio (ex: Zeno.FM, Web Radio, MP3)
-  if (body.audioStreamUrl !== undefined) {
-    state[room].audioStreamUrl = body.audioStreamUrl ? String(body.audioStreamUrl).trim() : null;
-    if (state[room].audioStreamUrl) {
-      state[room].audioStatus = "playing";
-    } else {
-      if (!state[room].audioPlaylist) {
-        state[room].audioStatus = "idle";
-      }
-    }
-  }
-
-  // Atualização de Playlist Visual
-  if (body.playlist !== undefined) {
-    state[room].playlist = body.playlist;
-    if (body.playlist) {
-      state[room].visualStatus = "playing";
-      if (body.mode === undefined && !body.siteUrl) {
-        state[room].mode = "playlist";
-      }
-    } else {
-      if (!state[room].siteUrl || state[room].mode !== "site") {
-        state[room].visualStatus = "idle";
-      }
-    }
-  }
-
-  // Atualização de Playlist de Áudio
-  if (body.audioPlaylist !== undefined) {
-    state[room].audioPlaylist = body.audioPlaylist;
-    if (body.audioPlaylist) {
-      state[room].audioStatus = "playing";
-    } else {
-      if (!state[room].audioStreamUrl) {
-        state[room].audioStatus = "idle";
-      }
-    }
-  }
-
-  // Atualização de Volume de Áudio Remoto
-  if (body.audioVolume !== undefined) {
-    state[room].audioVolume = Math.max(0, Math.min(100, Number(body.audioVolume)));
-  }
-
-  // Atualização de Modo de Repetição e Shuffle
-  if (body.audioLoopMode !== undefined) state[room].audioLoopMode = body.audioLoopMode;
-  if (body.audioShuffle !== undefined) state[room].audioShuffle = Boolean(body.audioShuffle);
-  if (body.currentAudioIndex !== undefined) state[room].currentAudioIndex = Number(body.currentAudioIndex);
-
-  // Standby / Blackout Virtual
-  if (body.standby !== undefined) {
-    state[room].standby = Boolean(body.standby);
-  }
-
-  // Atualização manual de status
-  if (body.visualStatus !== undefined) state[room].visualStatus = body.visualStatus;
-  if (body.audioStatus !== undefined) state[room].audioStatus = body.audioStatus;
-
-  // 1. Emite evento para os Kiosks/Players conectados imediatamente (sub-10ms!)
-  wsManager.broadcast(room, JSON.stringify({ type: "updateState", state: state[room] }));
-  
-  // 2. Persiste no banco apenas esta sala de forma rápida
-  await db.saveRoomState(room, state[room]);
-  
-  return c.json({ success: true, state: state[room] });
+  const updatedState = await roomEventQueue.enqueueSetState(room, body);
+  return c.json({ success: true, state: updatedState, version: updatedState.version });
 });
 
 api.post("/reload/:roomSlug", async (c) => {
@@ -425,92 +308,19 @@ api.post("/reload/:roomSlug", async (c) => {
   return c.json({ success: true, message: `Reload emitido para a sala ${room}` });
 });
 
-const lastAutoTrackChangeByRoom = new Map<string, number>();
-
 api.post("/control/:roomSlug", async (c) => {
   const room = c.req.param("roomSlug");
   const body = await c.req.json();
-
-  const state = await db.getState();
-  if (typeof state[room] === "string") {
-    state[room] = { playlist: state[room], audioPlaylist: null };
-  } else if (!state[room]) {
-    state[room] = {
-      playlist: null,
-      audioPlaylist: null,
-      audioStreamUrl: null,
-      siteUrl: null,
-      mode: "playlist",
-      visualStatus: "idle",
-      audioStatus: "idle",
-      audioVolume: 0,
-      audioLoopMode: "all",
-      audioShuffle: false,
-      currentAudioIndex: 0,
-    };
+  const result = await roomEventQueue.enqueueControl(room, body);
+  if (result.ignored) {
+    return c.json({ success: false, ignored: true, reason: result.reason, state: result.state });
   }
-
-  // Proteção no servidor contra avanço automático indevido (trackChanged) vindo de TVs com cache antigo:
-  // Só aceita trackChanged se a sala estiver tocando, fora de standby e com intervalo mínimo de 8s entre fins de música
-  if (body.target === "audio" && body.command === "trackChanged") {
-    if (state[room].audioStatus !== "playing" || state[room].standby) {
-      return c.json({ success: false, ignored: true, reason: "Audio is not playing" });
-    }
-    const now = Date.now();
-    const lastChange = lastAutoTrackChangeByRoom.get(room) || 0;
-    if (now - lastChange < 8000) {
-      return c.json({ success: false, ignored: true, reason: "Rate limited auto trackChanged" });
-    }
-    lastAutoTrackChangeByRoom.set(room, now);
-  }
-  
-  // 1. BROADCAST IMEDIATO para as TVs e Admin via WebSocket (latência < 10ms!)
-  wsManager.broadcast(room, JSON.stringify({
-    type: "control",
-    target: body.target,
-    command: body.command,
-    value: body.value,
-  }));
-
-  if (body.target === "site") {
-    if (body.command === "reload") {
-      wsManager.broadcast(room, JSON.stringify({ type: "reloadSite" }));
-      return c.json({ success: true, message: `Reload de site emitido para ${room}` });
-    }
-  } else if (body.target === "visual") {
-    if (body.command === "play" || body.command === "next" || body.command === "prev") {
-      state[room].visualStatus = "playing";
-    } else if (body.command === "pause") {
-      state[room].visualStatus = "paused";
-    }
-  } else if (body.target === "audio") {
-    if (body.command === "play" || body.command === "next" || body.command === "prev") {
-      state[room].audioStatus = "playing";
-    } else if (body.command === "pause") {
-      state[room].audioStatus = "paused";
-    } else if (body.command === "setVolume") {
-      state[room].audioVolume = Math.max(0, Math.min(100, Number(body.value ?? 0)));
-    } else if (body.command === "setLoopMode") {
-      state[room].audioLoopMode = body.value;
-    } else if (body.command === "setShuffle") {
-      state[room].audioShuffle = Boolean(body.value);
-    } else if (body.command === "setTrackIndex") {
-      state[room].currentAudioIndex = Number(body.value ?? 0);
-      state[room].audioStatus = "playing";
-      lastAutoTrackChangeByRoom.set(room, Date.now());
-    } else if (body.command === "trackChanged") {
-      state[room].currentAudioIndex = Number(body.value ?? 0);
-    }
-  } else if (body.target === "room") {
-    if (body.command === "setStandby") {
-      state[room].standby = Boolean(body.value);
-    }
-  }
-  
-  // 2. Persiste estado apenas para esta sala (sem percorrer todas as outras)
-  await db.saveRoomState(room, state[room]);
-  
-  return c.json({ success: true, message: `Command ${body.command} broadcasted to ${body.target}`, state: state[room] });
+  return c.json({
+    success: true,
+    message: `Command ${body.command} processed in queue for ${body.target}`,
+    state: result.state,
+    version: result.state?.version,
+  });
 });
 
 // ========================

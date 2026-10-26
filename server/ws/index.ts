@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { upgradeWebSocket } from "hono/deno";
 import { wsManager } from "./manager.ts";
+import { roomEventQueue } from "../services/event-queue.ts";
 
 export const wsRoute = new Hono();
 
@@ -72,14 +73,30 @@ wsRoute.get(
     const userAgent = c.req.header("user-agent") || "Admin Panel";
 
     return {
-      onOpen(_event, ws) {
+      async onOpen(_event, ws) {
         wsManager.add(room, ws, { ip, userAgent, role: "admin" });
+        try {
+          const authState = await roomEventQueue.getAuthoritativeRoomState(room);
+          ws.send(JSON.stringify({ type: "stateSync", state: authState, version: authState.version }));
+        } catch (_e) {}
       },
       onMessage(event, ws) {
         try {
           const data = JSON.parse(String(event.data));
           if (data.type === "ping") {
             ws.send(JSON.stringify({ type: "pong", time: Date.now() }));
+            return;
+          }
+          if (data.type === "control" && data.target && data.command) {
+            roomEventQueue.enqueueControl(room, {
+              target: data.target,
+              command: data.command,
+              value: data.value,
+            }).catch(() => {});
+            return;
+          }
+          if (data.type === "setState" && data.updates) {
+            roomEventQueue.enqueueSetState(room, data.updates).catch(() => {});
             return;
           }
         } catch (_e) {}
@@ -91,7 +108,7 @@ wsRoute.get(
   })
 );
 
-// Rota WebSocket para TVs conectadas a uma sala específica
+// Rota WebSocket para TVs e Painéis conectados a uma sala específica
 wsRoute.get(
   "/:room",
   upgradeWebSocket((c) => {
@@ -107,14 +124,30 @@ wsRoute.get(
     const userAgent = c.req.header("user-agent") || "Navegador Web";
 
     return {
-      onOpen(_event, ws) {
+      async onOpen(_event, ws) {
         wsManager.add(room, ws, { ip, userAgent, role, deviceId, path: `/player/index.html?room=${room}` });
+        try {
+          const authState = await roomEventQueue.getAuthoritativeRoomState(room);
+          ws.send(JSON.stringify({ type: "stateSync", state: authState, version: authState.version }));
+        } catch (_e) {}
       },
       onMessage(event, ws) {
         try {
           const data = JSON.parse(String(event.data));
           if (data.type === "ping") {
             ws.send(JSON.stringify({ type: "pong", time: Date.now() }));
+            return;
+          }
+          if (data.type === "control" && data.target && data.command) {
+            roomEventQueue.enqueueControl(room, {
+              target: data.target,
+              command: data.command,
+              value: data.value,
+            }).catch(() => {});
+            return;
+          }
+          if (data.type === "setState" && data.updates) {
+            roomEventQueue.enqueueSetState(room, data.updates).catch(() => {});
             return;
           }
         } catch (_e) {}
