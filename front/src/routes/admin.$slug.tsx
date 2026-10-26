@@ -1662,22 +1662,14 @@ function RoomOperator() {
             <button
               onClick={() => {
                 const nextStandby = !stateQ.data?.standby;
-                if (
-                  confirm(
-                    nextStandby
-                      ? "Ativar Modo Standby? A TV exibirá data, relógio e clima de Uberaba-MG (som pausado)."
-                      : "Retomar a exibição normal na TV?"
-                  )
-                ) {
-                  setState.mutate({ standby: nextStandby });
-                }
+                setState.mutate({ standby: nextStandby });
               }}
               className={`min-h-[34px] px-2.5 py-1 rounded-[2px] text-xs font-bold transition flex items-center justify-center gap-1.5 text-center truncate ${
                 stateQ.data?.standby
                   ? "bg-amber-500 text-neutral-950 hover:bg-amber-400 font-extrabold"
                   : "bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-amber-300 hover:border-amber-500/50"
               }`}
-              title="Pausa tela e som sem desligar a TV da tomada"
+              title="Exibe relógio e clima na tela da TV (permite manter ou pausar a música)"
             >
               {stateQ.data?.standby ? <Sun className="h-3.5 w-3.5 flex-shrink-0" /> : <Moon className="h-3.5 w-3.5 flex-shrink-0" />}
               <span className="truncate">{stateQ.data?.standby ? "Standby" : "Suspender"}</span>
@@ -1774,22 +1766,49 @@ function RoomOperator() {
         </div>
       </header>
 
-      {/* Banner de Standby Ativo */}
+      {/* Banner de Standby Ativo com controle rápido de som */}
       {stateQ.data?.standby && (
         <div className="bg-amber-500/10 border-b border-amber-500/30 px-3.5 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-amber-200 flex-shrink-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <Moon className="h-4 w-4 text-amber-400 flex-shrink-0" />
-            <div className="text-xs">
-              <strong>Modo Standby Ativo:</strong> A TV está exibindo relógio, data e clima de Uberaba-MG (som pausado).
+            <div className="text-xs leading-snug">
+              <strong>Modo Suspenso (Standby) Ativo:</strong> A TV exibe relógio, data e clima de Uberaba-MG •{" "}
+              <span className={isAudioPlaying ? "text-emerald-300 font-bold" : "text-amber-200/80"}>
+                {isAudioPlaying
+                  ? `Música tocando (${currentPlayingTrack || "Ativa"} - Vol: ${currentAudioVolume}%)`
+                  : "Música pausada"}
+              </span>
             </div>
           </div>
-          <button
-            onClick={() => setState.mutate({ standby: false })}
-            className="w-full sm:w-auto min-h-[32px] px-3 py-1 rounded-[2px] bg-amber-500 text-neutral-950 font-bold text-xs hover:bg-amber-400 transition flex items-center justify-center gap-1.5"
-          >
-            <Sun className="h-3.5 w-3.5" />
-            <span>Retomar Exibição na TV</span>
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-shrink-0">
+            <button
+              onClick={() => handleOptimisticCommand("audio", isAudioPlaying ? "pause" : "play")}
+              className={`flex-1 sm:flex-initial min-h-[32px] px-3 py-1 rounded-[2px] font-bold text-xs transition flex items-center justify-center gap-1.5 border ${
+                isAudioPlaying
+                  ? "bg-neutral-900 border-amber-500/40 text-amber-300 hover:bg-neutral-800"
+                  : "bg-emerald-500 text-neutral-950 border-emerald-400 hover:bg-emerald-400"
+              }`}
+            >
+              {isAudioPlaying ? (
+                <>
+                  <Pause className="h-3.5 w-3.5" />
+                  <span>Pausar Música</span>
+                </>
+              ) : (
+                <>
+                  <Play className="h-3.5 w-3.5" />
+                  <span>Tocar Música no Standby</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => setState.mutate({ standby: false })}
+              className="flex-1 sm:flex-initial min-h-[32px] px-3 py-1 rounded-[2px] bg-amber-500 text-neutral-950 font-bold text-xs hover:bg-amber-400 transition flex items-center justify-center gap-1.5"
+            >
+              <Sun className="h-3.5 w-3.5" />
+              <span>Retomar Tela da TV</span>
+            </button>
+          </div>
         </div>
       )}
 

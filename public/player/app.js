@@ -383,8 +383,8 @@ bgmPlayer.onerror = (e) => {
 };
 
 function handleAudioEnded() {
-  if (aIsPaused || isStandbyActive) {
-    console.log("[Audio] handleAudioEnded ignorado pois o áudio está pausado ou em standby.");
+  if (aIsPaused) {
+    console.log("[Audio] handleAudioEnded ignorado pois o áudio está pausado.");
     return;
   }
   if (audioItems.length === 0) {
@@ -440,7 +440,7 @@ function calculateTargetAudioVolume() {
   }
   const masterRatio = masterVolume / 100;
   let finalVol = itemVol * masterRatio;
-  if (duckingActive && currentRoomState.mode !== "site") {
+  if (duckingActive && currentRoomState.mode !== "site" && !isStandbyActive) {
     finalVol *= 0.1;
   }
   return Math.max(0, Math.min(1, finalVol));
@@ -521,7 +521,6 @@ function pauseCurrentAudio() {
 }
 
 function resumeCurrentAudio() {
-  if (isStandbyActive) return;
   syncAudioVolume();
   if (currentPlayingAudioType === 'yt') {
     if (ytAudioPlayer && ytAudioPlayer.playVideo) {
@@ -680,7 +679,7 @@ function playYoutubeAudio(ytId) {
   }
   bgmPlayer.volume = calculateTargetAudioVolume();
 
-  if (!aIsPaused && !isStandbyActive) {
+  if (!aIsPaused) {
     const p = bgmPlayer.play();
     if (p !== undefined) {
       p.then(() => {
@@ -736,7 +735,7 @@ function startAudioPlayback() {
       bgmPlayer.src = src;
     }
     bgmPlayer.volume = calculateTargetAudioVolume();
-    if (!aIsPaused && !isStandbyActive) {
+    if (!aIsPaused) {
       const p = bgmPlayer.play();
       if (p !== undefined) {
         p.catch(e => {
@@ -804,7 +803,7 @@ function playNextAudio() {
   
   bgmPlayer.volume = calculateTargetAudioVolume();
 
-  if (!aIsPaused && !isStandbyActive) {
+  if (!aIsPaused) {
     const p = bgmPlayer.play();
     if (p !== undefined) {
       p.catch(e => {
@@ -1075,8 +1074,8 @@ function applyStandbyMode(active) {
     if (standbyJitterInterval) clearInterval(standbyJitterInterval);
     standbyJitterInterval = setInterval(shiftStandbyAntiBurnIn, 150000);
 
-    // Pausa som de fundo
-    pauseCurrentAudio();
+    // Permite reproduzir música normalmente mesmo em modo suspenso (respeita apenas o estado de play/pause do áudio)
+    syncAudioVolume();
   } else {
     if (overlay) {
       overlay.classList.remove('standby-visible');
@@ -1100,7 +1099,8 @@ function applyStandbyMode(active) {
       standbyJitterInterval = null;
     }
 
-    // Restaura áudio caso não esteja pausado pelo operador
+    // Restaura volume/áudio caso não esteja pausado pelo operador
+    syncAudioVolume();
     if (!aIsPaused && (currentRoomState.audioStreamUrl || audioItems.length > 0)) {
       resumeCurrentAudio();
     }
@@ -1112,8 +1112,8 @@ let audioStallSecs = 0;
 let lastObservedAudioTime = -1;
 
 setInterval(() => {
-  // Ignora se o áudio estiver pausado pelo operador ou em modo Standby
-  if (aIsPaused || isStandbyActive) {
+  // Ignora apenas se o áudio estiver pausado pelo operador (permite tocar inclusive em modo Standby)
+  if (aIsPaused) {
     audioStallSecs = 0;
     lastObservedAudioTime = -1;
     return;
@@ -1146,7 +1146,7 @@ setInterval(() => {
   }
 
   // Detecta se o navegador pausou o áudio em background
-  if (bgmPlayer.paused && !aIsPaused && !isStandbyActive && bgmPlayer.src) {
+  if (bgmPlayer.paused && !aIsPaused && bgmPlayer.src) {
     audioStallSecs += 3;
     if (audioStallSecs >= 6) {
       console.log("[Audio Watchdog] Áudio pausado involuntariamente pelo sistema. Retomando...");

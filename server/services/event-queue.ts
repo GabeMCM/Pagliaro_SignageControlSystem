@@ -196,7 +196,7 @@ class RoomEventQueueManager {
 
       // Proteção contra avanço automático indevido (trackChanged) vindo de players:
       if (body.target === "audio" && body.command === "trackChanged") {
-        if (current.audioStatus !== "playing" || current.standby) {
+        if (current.audioStatus !== "playing") {
           return { ignored: true, reason: "Audio is not playing", state: current };
         }
         const now = Date.now();
