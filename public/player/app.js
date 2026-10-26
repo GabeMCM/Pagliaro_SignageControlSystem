@@ -240,7 +240,7 @@ if (!bgmPlayer) {
 }
 
 // Controle de Desbloqueio Definitivo de Áudio (Autoplay Bypass)
-let isAudioUnlocked = false; // Começa falso por sessão do documento para garantir ativação real do navegador
+let isAudioUnlocked = safeGetStorage('signage_audio_unlocked') === 'true';
 let consecutiveAudioErrors = 0;
 let audioRetryTimeout = null;
 
@@ -298,6 +298,10 @@ function unlockAudioSubsystem() {
 });
 
 bgmPlayer.onended = () => {
+  if (aIsPaused) {
+    console.log("[Audio] onended ignorado pois o áudio está pausado.");
+    return;
+  }
   if (currentPlayingAudioType !== 'html5') return;
   if (!bgmPlayer.src || !bgmPlayer.currentSrc) return;
   // Só considera finalizado se tocou por pelo menos 3 segundos (não foi corte/aborto de stream)
@@ -322,7 +326,8 @@ bgmPlayer.onplaying = () => {
 };
 
 bgmPlayer.onerror = (e) => {
-  // Ignora se o modo ativo for YouTube iframe ou se o elemento estiver sem fonte real
+  // Ignora se o áudio estiver pausado ou sem fonte
+  if (aIsPaused) return;
   if (currentPlayingAudioType !== 'html5') return;
   if (!bgmPlayer.currentSrc && !bgmPlayer.getAttribute('src')) return;
   if (!bgmPlayer.src || bgmPlayer.src === window.location.href || bgmPlayer.src === "") return;
@@ -366,6 +371,10 @@ bgmPlayer.onerror = (e) => {
 };
 
 function handleAudioEnded() {
+  if (aIsPaused) {
+    console.log("[Audio] handleAudioEnded ignorado pois o áudio está pausado.");
+    return;
+  }
   if (audioItems.length === 0) {
     pauseCurrentAudio();
     return;
@@ -567,10 +576,26 @@ function playYoutubeIframe(ytId) {
               consecutiveYtErrors = 0;
             } else if (event.data === YT.PlayerState.ENDED) {
               consecutiveYtErrors = 0;
-              if (!currentRoomState.audioStreamUrl) {
-                handleAudioEnded();
-              } else {
-                event.target.playVideo();
+              if (aIsPaused) {
+                console.log("[YT Audio] ENDED ignorado pois áudio está pausado.");
+                return;
+              }
+              if (currentPlayingAudioType === 'yt') {
+                let curTime = 0;
+                let dur = 0;
+                try {
+                  curTime = ytAudioPlayer.getCurrentTime ? ytAudioPlayer.getCurrentTime() : 0;
+                  dur = ytAudioPlayer.getDuration ? ytAudioPlayer.getDuration() : 0;
+                } catch (_e) {}
+                if (curTime < 3 || (dur > 10 && curTime < dur - 5)) {
+                  console.warn(`[YT Audio] ENDED prematuro ignorado (${curTime.toFixed(1)}s de ${dur.toFixed(1)}s).`);
+                  return;
+                }
+                if (!currentRoomState.audioStreamUrl) {
+                  handleAudioEnded();
+                } else {
+                  event.target.playVideo();
+                }
               }
             }
           },
@@ -592,10 +617,15 @@ function playYoutubeIframe(ytId) {
   } else {
     try {
       ytAudioPlayer.setVolume(targetVol);
-      if (ytAudioPlayer.loadVideoById) {
-        ytAudioPlayer.loadVideoById(ytId);
-        if (aIsPaused && ytAudioPlayer.pauseVideo) {
+      if (aIsPaused) {
+        if (ytAudioPlayer.cueVideoById) {
+          ytAudioPlayer.cueVideoById(ytId);
+        } else if (ytAudioPlayer.pauseVideo) {
           ytAudioPlayer.pauseVideo();
+        }
+      } else {
+        if (ytAudioPlayer.loadVideoById) {
+          ytAudioPlayer.loadVideoById(ytId);
         }
       }
     } catch (e) {
@@ -629,8 +659,14 @@ function playYoutubeAudio(ytId) {
         consecutiveAudioErrors = 0;
         console.log(`[YT Audio] Streaming nativo iniciado para ${ytId}`);
       }).catch((err) => {
-        console.warn("[YT Audio] Play nativo bloqueado ou indisponível. Tentando iframe do YouTube:", err);
-        // Fallback para iframe caso o backend falhe
+        console.warn("[YT Audio] Play nativo bloqueado ou indisponível:", err);
+        if (err && err.name === "NotAllowedError" && !isAudioUnlocked) {
+          bgmPlayer.muted = true;
+          bgmPlayer.play().catch(() => {});
+          requireUserInteraction("Clique para Iniciar o Áudio");
+          return;
+        }
+        // Fallback para iframe apenas se for erro de rede/codec e não autoplay block
         playYoutubeIframe(ytId);
       });
     }
@@ -713,7 +749,10 @@ function playNextAudio() {
 
   if (ytId) {
     playYoutubeAudio(ytId);
-    emitCommand('audio', 'trackChanged', aIndex);
+    if (currentRoomState.currentAudioIndex !== aIndex) {
+      currentRoomState.currentAudioIndex = aIndex;
+      emitCommand('audio', 'trackChanged', aIndex);
+    }
     return;
   }
 
@@ -743,7 +782,10 @@ function playNextAudio() {
       });
     }
   }
-  emitCommand('audio', 'trackChanged', aIndex);
+  if (currentRoomState.currentAudioIndex !== aIndex) {
+    currentRoomState.currentAudioIndex = aIndex;
+    emitCommand('audio', 'trackChanged', aIndex);
+  }
 }
 
 // --- SCREEN WAKE LOCK (Impede suspensão/apagar de tela na Smart TV) ---
