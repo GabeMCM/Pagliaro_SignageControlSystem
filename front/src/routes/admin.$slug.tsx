@@ -1806,23 +1806,6 @@ function RoomOperator() {
 
             {/* CONTROLE PRINCIPAL DE ÁUDIO: STATUS, BOTÕES E VOLUME (EM PRIMEIRO LUGAR) */}
             <div className="bg-neutral-950 rounded-[2px] border border-neutral-800 p-3 space-y-3 w-full overflow-hidden">
-              {/* Informação da música tocando agora */}
-              <div className="flex items-center justify-between gap-2 text-xs bg-neutral-900/80 px-2.5 py-2 rounded-[2px] border border-neutral-800/80 overflow-hidden w-full">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <div
-                    className={`h-2 w-2 rounded-full flex-shrink-0 ${
-                      isAudioPlaying ? "bg-emerald-400 animate-pulse" : "bg-neutral-600"
-                    }`}
-                  />
-                  <div className="truncate min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center sm:gap-1.5">
-                    <span className="text-neutral-500 text-[10px] sm:text-[11px] flex-shrink-0 uppercase font-semibold">Tocando agora:</span>
-                    <strong className="text-white font-medium truncate text-xs sm:text-sm">
-                      {currentPlayingTrack || "Nenhuma música selecionada"}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
               {/* Botões de Playback e Volume */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 w-full">
                 {/* Botões Prev / Play-Pause / Next */}

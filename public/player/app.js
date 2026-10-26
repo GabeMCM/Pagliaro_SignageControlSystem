@@ -299,6 +299,19 @@ function unlockAudioSubsystem() {
 
 bgmPlayer.onended = () => {
   if (currentPlayingAudioType !== 'html5') return;
+  if (!bgmPlayer.src || !bgmPlayer.currentSrc) return;
+  // Só considera finalizado se tocou por pelo menos 3 segundos (não foi corte/aborto de stream)
+  if (bgmPlayer.currentTime < 3) {
+    console.warn(`[Audio] onended ignorado: currentTime (${bgmPlayer.currentTime.toFixed(1)}s) < 3s.`);
+    return;
+  }
+  // Se a duração total é conhecida e ainda falta mais de 5s, é corte de conexão, não fim
+  if (bgmPlayer.duration && !isNaN(bgmPlayer.duration) && bgmPlayer.duration > 15) {
+    if (bgmPlayer.currentTime < bgmPlayer.duration - 5) {
+      console.warn(`[Audio] onended prematuro ignorado (${bgmPlayer.currentTime.toFixed(1)}s de ${bgmPlayer.duration.toFixed(1)}s).`);
+      return;
+    }
+  }
   if (!currentRoomState.audioStreamUrl) {
     handleAudioEnded();
   }
@@ -318,10 +331,23 @@ bgmPlayer.onerror = (e) => {
   const errMsg = bgmPlayer.error ? bgmPlayer.error.message : "";
   console.warn(`[Audio Error] Código ${errCode}: ${errMsg}`, e);
 
+  // Se falhou ao tocar uma faixa da playlist no HTML5:
+  // Se for uma URL do YouTube stream (/api/youtube/stream/:ytId), tenta fallback no iframe do YT antes de desistir
+  const currentSrc = bgmPlayer.currentSrc || bgmPlayer.src || "";
+  const ytStreamMatch = currentSrc.match(/\/api\/youtube\/stream\/([a-zA-Z0-9_-]{11})/);
+  if (ytStreamMatch && ytStreamMatch[1]) {
+    console.log(`[Audio Fallback] Stream falhou para ${ytStreamMatch[1]}, acionando iframe do YouTube...`);
+    playYoutubeIframe(ytStreamMatch[1]);
+    return;
+  }
+
   consecutiveAudioErrors++;
-  if (consecutiveAudioErrors >= 4) {
+  if (consecutiveAudioErrors >= 3) {
     console.error("[Audio] Falhas consecutivas de áudio. Pausando para evitar avanço infinito.");
-    if (audioRetryTimeout) clearTimeout(audioRetryTimeout);
+    if (audioRetryTimeout) {
+      clearTimeout(audioRetryTimeout);
+      audioRetryTimeout = null;
+    }
     pauseCurrentAudio();
     consecutiveAudioErrors = 0;
     return;
@@ -336,23 +362,6 @@ bgmPlayer.onerror = (e) => {
         bgmPlayer.play().catch(() => {});
       }
     }, 3000);
-  } else {
-    // Se falhou ao tocar uma faixa da playlist no HTML5:
-    // Se for uma URL do YouTube stream (/api/youtube/stream/:ytId), tenta fallback no iframe do YT antes de desistir
-    const currentSrc = bgmPlayer.currentSrc || bgmPlayer.src || "";
-    const ytStreamMatch = currentSrc.match(/\/api\/youtube\/stream\/([a-zA-Z0-9_-]{11})/);
-    if (ytStreamMatch && ytStreamMatch[1]) {
-      console.log(`[Audio Fallback] Stream falhou para ${ytStreamMatch[1]}, tentando iframe do YouTube...`);
-      playYoutubeIframe(ytStreamMatch[1]);
-      return;
-    }
-
-    if (audioRetryTimeout) clearTimeout(audioRetryTimeout);
-    audioRetryTimeout = setTimeout(() => {
-      if (currentPlayingAudioType === 'html5') {
-        handleAudioEnded();
-      }
-    }, 3500);
   }
 };
 
@@ -570,18 +579,10 @@ function playYoutubeIframe(ytId) {
             console.warn(`[YT Audio Iframe] Erro ${event.data} no vídeo ${ytId} (Falhas consecutivas: ${consecutiveYtErrors})`);
 
             if (consecutiveYtErrors >= 3) {
-              console.error("[YT Audio] 3 falhas consecutivas. Pausando para evitar avanço infinito.");
+              console.error("[YT Audio] 3 falhas consecutivas no YouTube. Pausando para evitar avanço infinito.");
               pauseCurrentAudio();
               consecutiveYtErrors = 0;
-              return;
             }
-
-            if (audioRetryTimeout) clearTimeout(audioRetryTimeout);
-            audioRetryTimeout = setTimeout(() => {
-              if (!currentRoomState.audioStreamUrl) {
-                handleAudioEnded();
-              }
-            }, 3500);
           }
         }
       });
@@ -1056,10 +1057,10 @@ setInterval(() => {
         // BUFFERING = 3
         if (state === 3) {
           audioStallSecs += 3;
-          if (audioStallSecs >= 12) {
-            console.warn("[Audio Watchdog] Áudio do YouTube congelado em buffering por 12s. Recuperando...");
+          if (audioStallSecs >= 18) {
+            console.warn("[Audio Watchdog] Buffering de YouTube prolongado (18s). Retomando...");
             audioStallSecs = 0;
-            handleAudioEnded();
+            ytAudioPlayer.playVideo();
           }
         } else {
           audioStallSecs = 0;
@@ -1080,26 +1081,24 @@ setInterval(() => {
     return;
   }
 
-  // Detecta se a posição do áudio congelou no mesmo ponto (buffering infinito de rede)
-  const currentPos = bgmPlayer.currentTime;
-  if (currentPos > 0 && Math.abs(currentPos - lastObservedAudioTime) < 0.15) {
-    audioStallSecs += 3;
-    if (audioStallSecs >= 9) { // 9 segundos congelado
-      console.warn(`[Audio Watchdog] Congelamento de áudio detectado em ${currentPos.toFixed(1)}s. Recuperando suavemente...`);
-      audioStallSecs = 0;
-      lastObservedAudioTime = -1;
-      if (currentRoomState.audioStreamUrl) {
-        // Rádio/Stream: reconecta o fluxo
-        bgmPlayer.src = normalizeAudioUrl(currentRoomState.audioStreamUrl);
-        bgmPlayer.play().catch(e => console.warn(e));
-      } else {
-        // Playlist de Áudio: avança suavemente para a próxima faixa sem parar o sistema
-        handleAudioEnded();
+  // Detecta se a posição do áudio HTML5 congelou no mesmo ponto (buffering infinito)
+  if (currentPlayingAudioType === 'html5' && !bgmPlayer.paused) {
+    const currentPos = bgmPlayer.currentTime;
+    if (currentPos > 1 && Math.abs(currentPos - lastObservedAudioTime) < 0.15) {
+      audioStallSecs += 3;
+      if (audioStallSecs >= 20) {
+        console.warn(`[Audio Watchdog] Buffering de áudio travado em ${currentPos.toFixed(1)}s. Retomando reprodução...`);
+        audioStallSecs = 0;
+        lastObservedAudioTime = -1;
+        bgmPlayer.play().catch(() => {});
       }
+    } else {
+      audioStallSecs = 0;
+      lastObservedAudioTime = currentPos;
     }
   } else {
     audioStallSecs = 0;
-    lastObservedAudioTime = currentPos;
+    lastObservedAudioTime = -1;
   }
 }, 3000);
 
