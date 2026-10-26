@@ -298,6 +298,7 @@ function unlockAudioSubsystem() {
 });
 
 bgmPlayer.onended = () => {
+  if (currentPlayingAudioType !== 'html5') return;
   if (!currentRoomState.audioStreamUrl) {
     handleAudioEnded();
   }
@@ -308,18 +309,21 @@ bgmPlayer.onplaying = () => {
 };
 
 bgmPlayer.onerror = (e) => {
+  // Ignora se o modo ativo for YouTube iframe ou se o elemento estiver sem fonte real
+  if (currentPlayingAudioType !== 'html5') return;
+  if (!bgmPlayer.currentSrc && !bgmPlayer.getAttribute('src')) return;
+  if (!bgmPlayer.src || bgmPlayer.src === window.location.href || bgmPlayer.src === "") return;
+
   const errCode = bgmPlayer.error ? bgmPlayer.error.code : 0;
   const errMsg = bgmPlayer.error ? bgmPlayer.error.message : "";
   console.warn(`[Audio Error] Código ${errCode}: ${errMsg}`, e);
 
   consecutiveAudioErrors++;
-  if (consecutiveAudioErrors >= 8) {
-    console.error("[Audio] Muitas falhas consecutivas de áudio. Aguardando 10s antes de tentar novamente.");
+  if (consecutiveAudioErrors >= 4) {
+    console.error("[Audio] Falhas consecutivas de áudio. Pausando para evitar avanço infinito.");
     if (audioRetryTimeout) clearTimeout(audioRetryTimeout);
-    audioRetryTimeout = setTimeout(() => {
-      consecutiveAudioErrors = 0;
-      handleAudioEnded();
-    }, 10000);
+    pauseCurrentAudio();
+    consecutiveAudioErrors = 0;
     return;
   }
 
@@ -333,12 +337,22 @@ bgmPlayer.onerror = (e) => {
       }
     }, 3000);
   } else {
-    // Dá um intervalo suave de 1.5s antes de avançar para a próxima faixa
-    // para evitar loop infinito que trava o navegador
+    // Se falhou ao tocar uma faixa da playlist no HTML5:
+    // Se for uma URL do YouTube stream (/api/youtube/stream/:ytId), tenta fallback no iframe do YT antes de desistir
+    const currentSrc = bgmPlayer.currentSrc || bgmPlayer.src || "";
+    const ytStreamMatch = currentSrc.match(/\/api\/youtube\/stream\/([a-zA-Z0-9_-]{11})/);
+    if (ytStreamMatch && ytStreamMatch[1]) {
+      console.log(`[Audio Fallback] Stream falhou para ${ytStreamMatch[1]}, tentando iframe do YouTube...`);
+      playYoutubeIframe(ytStreamMatch[1]);
+      return;
+    }
+
     if (audioRetryTimeout) clearTimeout(audioRetryTimeout);
     audioRetryTimeout = setTimeout(() => {
-      handleAudioEnded();
-    }, 1500);
+      if (currentPlayingAudioType === 'html5') {
+        handleAudioEnded();
+      }
+    }, 3500);
   }
 };
 
@@ -490,16 +504,22 @@ function syncAudioVolume() {
 
 let consecutiveYtErrors = 0;
 
-function playYoutubeAudio(ytId) {
+function playYoutubeIframe(ytId) {
   currentPlayingAudioType = 'yt';
-  // Pausa o bgmPlayer HTML5 para não sobrepor áudios
-  if (!bgmPlayer.paused) bgmPlayer.pause();
-  bgmPlayer.src = '';
+  if (!bgmPlayer.paused) {
+    try { bgmPlayer.pause(); } catch (_e) {}
+  }
+  bgmPlayer.removeAttribute('src');
+
+  if (audioRetryTimeout) {
+    clearTimeout(audioRetryTimeout);
+    audioRetryTimeout = null;
+  }
 
   const targetVol = Math.round(calculateTargetAudioVolume() * 100);
 
   if (!isYtReady) {
-    setTimeout(() => playYoutubeAudio(ytId), 150);
+    setTimeout(() => playYoutubeIframe(ytId), 150);
     return;
   }
 
@@ -525,7 +545,6 @@ function playYoutubeAudio(ytId) {
           'fs': 0,
           'rel': 0,
           'playsinline': 1,
-          'origin': window.location.origin,
         },
         events: {
           'onReady': (event) => {
@@ -548,7 +567,7 @@ function playYoutubeAudio(ytId) {
           },
           'onError': (event) => {
             consecutiveYtErrors++;
-            console.warn(`[YT Audio] Erro ${event.data} no vídeo ${ytId} (Falhas consecutivas: ${consecutiveYtErrors})`);
+            console.warn(`[YT Audio Iframe] Erro ${event.data} no vídeo ${ytId} (Falhas consecutivas: ${consecutiveYtErrors})`);
 
             if (consecutiveYtErrors >= 3) {
               console.error("[YT Audio] 3 falhas consecutivas. Pausando para evitar avanço infinito.");
@@ -557,28 +576,17 @@ function playYoutubeAudio(ytId) {
               return;
             }
 
-            // Tenta fallback via stream de áudio do backend antes de pular a música
-            const fallbackUrl = `${API_BASE}/api/youtube/stream/${ytId}`;
-            console.log(`[YT Audio] Tentando fallback para ${ytId}...`);
-            currentPlayingAudioType = 'html5';
-            bgmPlayer.src = fallbackUrl;
-            bgmPlayer.volume = calculateTargetAudioVolume();
-            if (!aIsPaused) {
-              bgmPlayer.play().then(() => {
-                consecutiveYtErrors = 0;
-              }).catch(() => {
-                setTimeout(() => {
-                  if (!currentRoomState.audioStreamUrl) {
-                    handleAudioEnded();
-                  }
-                }, 3500);
-              });
-            }
+            if (audioRetryTimeout) clearTimeout(audioRetryTimeout);
+            audioRetryTimeout = setTimeout(() => {
+              if (!currentRoomState.audioStreamUrl) {
+                handleAudioEnded();
+              }
+            }, 3500);
           }
         }
       });
     } catch (e) {
-      console.warn("[YT Audio] Falha ao instanciar player:", e);
+      console.warn("[YT Audio] Falha ao instanciar player iframe:", e);
     }
   } else {
     try {
@@ -590,12 +598,50 @@ function playYoutubeAudio(ytId) {
         }
       }
     } catch (e) {
-      console.warn("[YT Audio] Falha ao carregar faixa:", e);
+      console.warn("[YT Audio] Falha ao carregar faixa no iframe:", e);
+    }
+  }
+}
+
+function playYoutubeAudio(ytId) {
+  if (audioRetryTimeout) {
+    clearTimeout(audioRetryTimeout);
+    audioRetryTimeout = null;
+  }
+
+  // Se o iframe estiver rodando, pausa
+  if (ytAudioPlayer && ytAudioPlayer.pauseVideo) {
+    try { ytAudioPlayer.pauseVideo(); } catch (_e) {}
+  }
+
+  // Prioridade 1: Toca diretamente via streaming de áudio nativo do backend
+  // Funciona 100% perfeitamente em localhost e servidores sem restrição de IP
+  currentPlayingAudioType = 'html5';
+  const streamUrl = `${API_BASE}/api/youtube/stream/${ytId}`;
+  bgmPlayer.src = streamUrl;
+  bgmPlayer.volume = calculateTargetAudioVolume();
+
+  if (!aIsPaused) {
+    const p = bgmPlayer.play();
+    if (p !== undefined) {
+      p.then(() => {
+        consecutiveAudioErrors = 0;
+        console.log(`[YT Audio] Streaming nativo iniciado para ${ytId}`);
+      }).catch((err) => {
+        console.warn("[YT Audio] Play nativo bloqueado ou indisponível. Tentando iframe do YouTube:", err);
+        // Fallback para iframe caso o backend falhe
+        playYoutubeIframe(ytId);
+      });
     }
   }
 }
 
 function startAudioPlayback() {
+  if (audioRetryTimeout) {
+    clearTimeout(audioRetryTimeout);
+    audioRetryTimeout = null;
+  }
+
   if (currentRoomState.audioStreamUrl) {
     const rawSrc = currentRoomState.audioStreamUrl;
     const ytId = getAudioYoutubeId(rawSrc);
@@ -635,6 +681,11 @@ function startAudioPlayback() {
 }
 
 function playNextAudio() {
+  if (audioRetryTimeout) {
+    clearTimeout(audioRetryTimeout);
+    audioRetryTimeout = null;
+  }
+
   if (currentRoomState.audioStreamUrl) {
     startAudioPlayback();
     return;

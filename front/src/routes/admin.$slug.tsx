@@ -621,6 +621,7 @@ function RoomOperator() {
   const [saveQueueMode, setSaveQueueMode] = useState<"new" | "update">("new");
   const [isSavingQueue, setIsSavingQueue] = useState(false);
   const [isManagingPlaylistsOpen, setIsManagingPlaylistsOpen] = useState(false);
+  const [queueSearchQuery, setQueueSearchQuery] = useState("");
 
   // Consultas de dados com intervalos mais suaves para poupar celulares antigos
   // O WebSocket já realiza invalidação em tempo real para mudanças instantâneas!
@@ -1814,7 +1815,7 @@ function RoomOperator() {
                     }`}
                   />
                   <div className="truncate min-w-0 flex-1 flex flex-col sm:flex-row sm:items-center sm:gap-1.5">
-                    <span className="text-neutral-500 text-[10px] sm:text-[11px] flex-shrink-0 uppercase font-semibold">No som da TV:</span>
+                    <span className="text-neutral-500 text-[10px] sm:text-[11px] flex-shrink-0 uppercase font-semibold">Tocando agora:</span>
                     <strong className="text-white font-medium truncate text-xs sm:text-sm">
                       {currentPlayingTrack || "Nenhuma música selecionada"}
                     </strong>
@@ -2385,7 +2386,7 @@ function RoomOperator() {
 
                 {/* Lista de Faixas na Playlist */}
                 <div className="space-y-1.5 w-full overflow-hidden">
-                  <div className="flex items-center justify-between text-xs text-neutral-400 px-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-neutral-400 px-1">
                     <span className="font-semibold text-neutral-300 text-[11px]">
                       Faixas na Playlist ({activeAudio?.items?.length || 0})
                     </span>
@@ -2394,13 +2395,46 @@ function RoomOperator() {
                     </span>
                   </div>
 
+                  {/* Input de busca nas músicas da playlist */}
+                  {activeAudio && activeAudio.items && activeAudio.items.length > 0 && (
+                    <div className="relative w-full">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Buscar música nesta playlist..."
+                        value={queueSearchQuery}
+                        onChange={(e) => setQueueSearchQuery(e.target.value)}
+                        className="w-full rounded-[2px] border border-neutral-800 bg-neutral-900/90 pl-8 pr-7 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-600"
+                      />
+                      {queueSearchQuery && (
+                        <button
+                          onClick={() => setQueueSearchQuery("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-neutral-400 hover:text-white"
+                          title="Limpar busca"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {activeAudio && activeAudio.items && activeAudio.items.length > 0 ? (
                     <div className="space-y-1 max-h-96 overflow-y-auto pr-0.5 w-full">
-                      {activeAudio.items.map((item, idx) => {
-                        const isCurrentlyPlaying =
-                          !isAudioStreamActive && isAudioPlaying && currentAudioIndex === idx;
+                      {activeAudio.items
+                        .map((item, originalIndex) => ({ item, originalIndex }))
+                        .filter(({ item }) => {
+                          if (!queueSearchQuery.trim()) return true;
+                          const q = queueSearchQuery.toLowerCase();
+                          return (
+                            (item.title || "").toLowerCase().includes(q) ||
+                            (item.url || "").toLowerCase().includes(q)
+                          );
+                        })
+                        .map(({ item, originalIndex: idx }) => {
+                          const isCurrentlyPlaying =
+                            !isAudioStreamActive && isAudioPlaying && currentAudioIndex === idx;
 
-                        return (
+                          return (
                           <div
                             key={idx}
                             className={`flex items-center justify-between gap-2 p-2 rounded-[2px] border transition overflow-hidden w-full ${
@@ -3736,10 +3770,22 @@ function ScheduleModal({
   });
 
   const handleSave = () => {
-    if (!title.trim() || !scheduledAt) {
-      alert("Por favor, preencha o título e a data/hora do agendamento.");
+    if (!scheduledAt) {
+      alert("Por favor, selecione a data e horário do agendamento.");
       return;
     }
+
+    const autoTitle = title.trim() || initialData?.title || (() => {
+      if (standbyAction === "wake") return "Ligar TV (Sai do Standby)";
+      if (standbyAction === "standby") return "Suspender TV (Standby)";
+      if (siteUrl.trim()) return "Abrir Memorial / Site";
+      if (audioPlaylist) {
+        const pl = audioPlaylists.find((p) => p.id === audioPlaylist);
+        return pl ? `Tocar: ${pl.name}` : "Tocar Playlist";
+      }
+      if (audioStatus === "paused") return "Pausar Áudio";
+      return "Ação Agendada";
+    })();
 
     const actions: ScheduleTask["actions"] = {};
 
@@ -3765,7 +3811,7 @@ function ScheduleModal({
 
     onSave({
       roomSlug: slug,
-      title: title.trim(),
+      title: autoTitle,
       scheduledAt: toUtcIsoString(scheduledAt),
       enabled: true,
       executed: false,
@@ -3793,39 +3839,6 @@ function ScheduleModal({
         </div>
 
         <div className="space-y-2.5 text-xs">
-          {/* Título com sugestões rápidas */}
-          <div>
-            <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-              Título da Ação:
-            </label>
-            <input
-              type="text"
-              placeholder="Ex: Abertura da Sala, Despedida da Família, Encerramento"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
-            />
-            {/* Sugestões Rápidas */}
-            <div className="flex items-center gap-1 flex-wrap mt-1.5">
-              <span className="text-[10px] text-neutral-500 font-semibold mr-0.5">Sugestões:</span>
-              {[
-                "Recepção & Abertura",
-                "Despedida da Família",
-                "Homenagem Especial",
-                "Silêncio Noturno",
-                "Encerramento da Sala",
-              ].map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setTitle(s)}
-                  className="px-2 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 text-[10px] text-neutral-400 hover:text-white hover:border-neutral-700 transition"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Data e Hora */}
           <div>
