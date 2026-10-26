@@ -80,7 +80,7 @@ api.post("/rooms", async (c) => {
         mode: newRoom.defaultSiteUrl ? "site" : "playlist",
         visualStatus: newRoom.defaultSiteUrl ? "playing" : "idle",
         audioStatus: newRoom.defaultAudioStreamUrl ? "playing" : "idle",
-        audioVolume: 100,
+        audioVolume: 0,
       };
       await db.saveState(state);
     }
@@ -303,7 +303,7 @@ api.get("/state/:roomSlug", async (c) => {
     mode: "playlist", // "playlist" ou "site"
     visualStatus: "idle",
     audioStatus: "idle",
-    audioVolume: 100,
+    audioVolume: 0,
     audioLoopMode: "all",
     audioShuffle: false,
     currentAudioIndex: 0,
@@ -327,7 +327,7 @@ api.post("/state/:roomSlug", async (c) => {
       mode: "playlist",
       visualStatus: "idle",
       audioStatus: "idle",
-      audioVolume: 100,
+      audioVolume: 0,
       audioLoopMode: "all",
       audioShuffle: false,
       currentAudioIndex: 0,
@@ -449,7 +449,7 @@ api.post("/control/:roomSlug", async (c) => {
       mode: "playlist",
       visualStatus: "idle",
       audioStatus: "idle",
-      audioVolume: 100,
+      audioVolume: 0,
       audioLoopMode: "all",
       audioShuffle: false,
       currentAudioIndex: 0,
@@ -473,7 +473,7 @@ api.post("/control/:roomSlug", async (c) => {
     } else if (body.command === "pause") {
       state[room].audioStatus = "paused";
     } else if (body.command === "setVolume") {
-      state[room].audioVolume = Math.max(0, Math.min(100, Number(body.value ?? 100)));
+      state[room].audioVolume = Math.max(0, Math.min(100, Number(body.value ?? 0)));
     } else if (body.command === "setLoopMode") {
       state[room].audioLoopMode = body.value;
     } else if (body.command === "setShuffle") {

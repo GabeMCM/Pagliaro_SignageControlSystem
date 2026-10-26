@@ -158,6 +158,276 @@ function toLocalDatetimeString(date: Date): string {
 }
 
 /**
+ * Converte data/hora local para ISO string UTC segura para envio ao servidor.
+ */
+function toUtcIsoString(localDateTimeStr: string): string {
+  if (!localDateTimeStr) return "";
+  try {
+    const d = new Date(localDateTimeStr);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString();
+    }
+  } catch {}
+  return localDateTimeStr;
+}
+
+/**
+ * Campo de Data e Hora Seguro para Mobile / Android Chrome / iOS / Desktop
+ * Separa em input de data e input de hora para acionar os seletores nativos sem travar o teclado virtual.
+ */
+function DateTimePickerField({
+  value,
+  onChange,
+  className,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  className?: string;
+}) {
+  const [datePart, timePart] = useMemo(() => {
+    if (!value) {
+      const now = new Date();
+      const dStr = toLocalDatetimeString(now).slice(0, 10);
+      const tStr = toLocalDatetimeString(now).slice(11, 16);
+      return [dStr, tStr];
+    }
+    try {
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) {
+        const local = toLocalDatetimeString(d);
+        return [local.slice(0, 10), local.slice(11, 16)];
+      }
+    } catch {}
+    const parts = value.split("T");
+    return [parts[0] || "", (parts[1] || "").slice(0, 5)];
+  }, [value]);
+
+  const handleDateChange = (newDate: string) => {
+    if (!newDate) return;
+    onChange(`${newDate}T${timePart || "08:00"}`);
+  };
+
+  const handleTimeChange = (newTime: string) => {
+    if (!newTime) return;
+    const d = datePart || toLocalDatetimeString(new Date()).slice(0, 10);
+    onChange(`${d}T${newTime}`);
+  };
+
+  const addMinutes = (mins: number) => {
+    try {
+      const dStr = datePart || toLocalDatetimeString(new Date()).slice(0, 10);
+      const tStr = timePart || "08:00";
+      const base = new Date(`${dStr}T${tStr}:00`);
+      const target = isNaN(base.getTime()) ? new Date() : base;
+      target.setMinutes(target.getMinutes() + mins);
+      onChange(toLocalDatetimeString(target));
+    } catch {}
+  };
+
+  const setTodayTomorrow = (isTomorrow: boolean) => {
+    try {
+      const target = new Date();
+      if (isTomorrow) target.setDate(target.getDate() + 1);
+      const dStr = toLocalDatetimeString(target).slice(0, 10);
+      onChange(`${dStr}T${timePart || "08:00"}`);
+    } catch {}
+  };
+
+  return (
+    <div className={`space-y-1.5 ${className || ""}`}>
+      <div className="grid grid-cols-2 gap-1.5">
+        <div>
+          <span className="text-[10px] text-neutral-400 block mb-0.5">Data:</span>
+          <input
+            type="date"
+            value={datePart}
+            onChange={(e) => handleDateChange(e.target.value)}
+            onClick={(e) => {
+              try {
+                (e.currentTarget as any).showPicker?.();
+              } catch {}
+            }}
+            className="w-full rounded-[2px] border border-neutral-800 bg-black px-2 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600 cursor-pointer"
+          />
+        </div>
+        <div>
+          <span className="text-[10px] text-neutral-400 block mb-0.5">Horário:</span>
+          <input
+            type="time"
+            value={timePart}
+            onChange={(e) => handleTimeChange(e.target.value)}
+            onClick={(e) => {
+              try {
+                (e.currentTarget as any).showPicker?.();
+              } catch {}
+            }}
+            className="w-full rounded-[2px] border border-neutral-800 bg-black px-2 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600 cursor-pointer"
+          />
+        </div>
+      </div>
+
+      {/* Botões Rápidos de Ajuste para Celular */}
+      <div className="flex items-center gap-1 flex-wrap text-[10px] text-neutral-400 font-mono">
+        <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-0.5">Ajustes:</span>
+        <button
+          type="button"
+          onClick={() => setTodayTomorrow(false)}
+          className="px-1.5 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
+        >
+          Hoje
+        </button>
+        <button
+          type="button"
+          onClick={() => setTodayTomorrow(true)}
+          className="px-1.5 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
+        >
+          Amanhã
+        </button>
+        <button
+          type="button"
+          onClick={() => addMinutes(15)}
+          className="px-1.5 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
+        >
+          +15m
+        </button>
+        <button
+          type="button"
+          onClick={() => addMinutes(30)}
+          className="px-1.5 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
+        >
+          +30m
+        </button>
+        <button
+          type="button"
+          onClick={() => addMinutes(60)}
+          className="px-1.5 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
+        >
+          +1h
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Modal para Gestão e Exclusão de Filas e Playlists Salvas
+ */
+function ManagePlaylistsModal({
+  isOpen,
+  onClose,
+  playlists,
+  activePlaylistId,
+  onSelect,
+  onDelete,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  playlists: Playlist[];
+  activePlaylistId?: string | null;
+  onSelect: (id: string) => void;
+  onDelete: (id: string, name: string) => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="w-full max-w-lg rounded-[2px] border border-neutral-800 bg-neutral-950 p-4 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+          <div className="flex items-center gap-2">
+            <ListMusic className="h-4 w-4 text-white" />
+            <h3 className="font-bold text-sm text-white">Gerenciar Listas de Músicas</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-[2px] text-neutral-400 hover:text-white hover:bg-neutral-900 transition"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="text-xs text-neutral-400">
+          Aqui você pode ver todas as filas e playlists salvas, selecionar para a sala ou excluir as que não for usar.
+        </p>
+
+        <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 min-h-[150px]">
+          {playlists.length === 0 ? (
+            <div className="py-8 text-center text-xs text-neutral-500">
+              Nenhuma playlist encontrada.
+            </div>
+          ) : (
+            playlists.map((pl) => {
+              const isActive = pl.id === activePlaylistId;
+              return (
+                <div
+                  key={pl.id}
+                  className={`flex items-center justify-between gap-2 p-2.5 rounded-[2px] border transition ${
+                    isActive
+                      ? "bg-neutral-900 border-white/40 shadow-xs"
+                      : "bg-neutral-900/60 border-neutral-800 hover:border-neutral-700"
+                  }`}
+                >
+                  <div
+                    onClick={() => {
+                      onSelect(pl.id);
+                      onClose();
+                    }}
+                    className="flex-1 min-w-0 cursor-pointer"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-white truncate">
+                        {pl.name}
+                      </span>
+                      {isActive && (
+                        <span className="px-1.5 py-0.2 rounded-[2px] text-[9px] font-bold bg-white text-black uppercase">
+                          Ativa
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-neutral-400 font-mono">
+                      {pl.items?.length || 0} faixa{(pl.items?.length || 0) !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {!isActive && (
+                      <button
+                        onClick={() => {
+                          onSelect(pl.id);
+                          onClose();
+                        }}
+                        className="px-2 py-1 rounded-[2px] bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition"
+                      >
+                        Usar
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onDelete(pl.id, pl.name)}
+                      className="p-1.5 rounded-[2px] text-neutral-400 hover:text-red-400 hover:bg-red-500/10 transition"
+                      title="Excluir playlist permanentemente"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="pt-2 border-t border-neutral-800 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 rounded-[2px] bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-semibold text-white transition"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Presets Rápidos de Volume de 0 a 100 em passos de 12,5%
  */
 const VOLUME_PRESETS = [
@@ -350,6 +620,7 @@ function RoomOperator() {
   const [saveQueueName, setSaveQueueName] = useState("");
   const [saveQueueMode, setSaveQueueMode] = useState<"new" | "update">("new");
   const [isSavingQueue, setIsSavingQueue] = useState(false);
+  const [isManagingPlaylistsOpen, setIsManagingPlaylistsOpen] = useState(false);
 
   // Consultas de dados com intervalos mais suaves para poupar celulares antigos
   // O WebSocket já realiza invalidação em tempo real para mudanças instantâneas!
@@ -745,21 +1016,36 @@ function RoomOperator() {
       }
     } else {
       const playlistName = `Áudio - ${currentRoom?.name || slug}`;
-      const res = await signageApi.createPlaylist({
-        name: playlistName,
-        type: "audio",
-        items: [newItem],
-        loop: true,
-        loopMode: "all",
-        shuffle: false,
-      });
-      targetPlaylistId = res.playlist?.id;
-      if (targetPlaylistId) {
+      const existingQueue = audioPlaylists.find((p) => p.name === playlistName);
+      if (existingQueue) {
+        targetPlaylistId = existingQueue.id;
+        targetItems = [...(existingQueue.items || []), newItem];
+        await signageApi.updatePlaylist(targetPlaylistId, {
+          ...existingQueue,
+          items: targetItems,
+        });
         await signageApi.setState(slug, {
           audioPlaylist: targetPlaylistId,
           audioStreamUrl: null,
           audioStatus: "playing",
         });
+      } else {
+        const res = await signageApi.createPlaylist({
+          name: playlistName,
+          type: "audio",
+          items: [newItem],
+          loop: true,
+          loopMode: "all",
+          shuffle: false,
+        });
+        targetPlaylistId = res.playlist?.id;
+        if (targetPlaylistId) {
+          await signageApi.setState(slug, {
+            audioPlaylist: targetPlaylistId,
+            audioStreamUrl: null,
+            audioStatus: "playing",
+          });
+        }
       }
     }
 
@@ -921,20 +1207,34 @@ function RoomOperator() {
       }
     } else {
       const playlistName = `Áudio - ${currentRoom?.name || slug}`;
-      const res = await signageApi.createPlaylist({
-        name: playlistName,
-        type: "audio",
-        items: [newItem],
-        loop: true,
-        loopMode: "all",
-        shuffle: false,
-      });
-      if (res.playlist?.id) {
+      const existingQueue = audioPlaylists.find((p) => p.name === playlistName);
+      if (existingQueue) {
+        const targetItems = [...(existingQueue.items || []), newItem];
+        await signageApi.updatePlaylist(existingQueue.id, {
+          ...existingQueue,
+          items: targetItems,
+        });
         await signageApi.setState(slug, {
-          audioPlaylist: res.playlist.id,
+          audioPlaylist: existingQueue.id,
           audioStreamUrl: null,
           audioStatus: "playing",
         });
+      } else {
+        const res = await signageApi.createPlaylist({
+          name: playlistName,
+          type: "audio",
+          items: [newItem],
+          loop: true,
+          loopMode: "all",
+          shuffle: false,
+        });
+        if (res.playlist?.id) {
+          await signageApi.setState(slug, {
+            audioPlaylist: res.playlist.id,
+            audioStreamUrl: null,
+            audioStatus: "playing",
+          });
+        }
       }
     }
 
@@ -971,20 +1271,34 @@ function RoomOperator() {
       }
     } else {
       const playlistName = `Áudio - ${currentRoom?.name || slug}`;
-      const res = await signageApi.createPlaylist({
-        name: playlistName,
-        type: "audio",
-        items: newItems,
-        loop: true,
-        loopMode: "all",
-        shuffle: false,
-      });
-      if (res.playlist?.id) {
+      const existingQueue = audioPlaylists.find((p) => p.name === playlistName);
+      if (existingQueue) {
+        const targetItems = [...(existingQueue.items || []), ...newItems];
+        await signageApi.updatePlaylist(existingQueue.id, {
+          ...existingQueue,
+          items: targetItems,
+        });
         await signageApi.setState(slug, {
-          audioPlaylist: res.playlist.id,
+          audioPlaylist: existingQueue.id,
           audioStreamUrl: null,
           audioStatus: "playing",
         });
+      } else {
+        const res = await signageApi.createPlaylist({
+          name: playlistName,
+          type: "audio",
+          items: newItems,
+          loop: true,
+          loopMode: "all",
+          shuffle: false,
+        });
+        if (res.playlist?.id) {
+          await signageApi.setState(slug, {
+            audioPlaylist: res.playlist.id,
+            audioStreamUrl: null,
+            audioStatus: "playing",
+          });
+        }
       }
     }
 
@@ -1932,6 +2246,14 @@ function RoomOperator() {
                         <Plus className="h-3 w-3 flex-shrink-0" />
                         <span className="truncate">Nova Lista</span>
                       </button>
+                      <button
+                        onClick={() => setIsManagingPlaylistsOpen(true)}
+                        className="min-h-[32px] px-2.5 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 text-xs font-semibold transition flex items-center justify-center gap-1 truncate text-center"
+                        title="Ver todas as listas salvas, selecionar ou excluir"
+                      >
+                        <ListMusic className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="truncate">Gerenciar ({audioPlaylists.length})</span>
+                      </button>
                       {activeAudio && activeAudio.items && activeAudio.items.length > 0 && (
                         <button
                           onClick={handleOpenSaveQueue}
@@ -1951,7 +2273,7 @@ function RoomOperator() {
                           Limpar Fila
                         </button>
                       )}
-                      {activeAudio && !activeAudio.name.startsWith("Áudio -") && (
+                      {activeAudio && (
                         <button
                           onClick={handleDeleteCurrentPlaylist}
                           className="min-h-[32px] px-2.5 py-1 rounded-[2px] border border-neutral-800 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs transition flex items-center justify-center gap-1"
@@ -2461,6 +2783,26 @@ function RoomOperator() {
         audioPlaylists={audioPlaylists}
         onSuccess={() => {
           qc.invalidateQueries({ queryKey: ["schedules", slug] });
+        }}
+      />
+
+      {/* ============================================================ */}
+      {/* MODAL DE GERENCIAR TODAS AS PLAYLISTS / FILAS                */}
+      {/* ============================================================ */}
+      <ManagePlaylistsModal
+        isOpen={isManagingPlaylistsOpen}
+        onClose={() => setIsManagingPlaylistsOpen(false)}
+        playlists={audioPlaylists}
+        activePlaylistId={activeAudio?.id || null}
+        onSelect={(id) => handleSelectAudioPlaylist(id)}
+        onDelete={async (id, name) => {
+          if (confirm(`Deseja realmente excluir a lista "${name}"?`)) {
+            await signageApi.deletePlaylist(id);
+            qc.invalidateQueries({ queryKey: ["playlists"] });
+            if (activeAudio?.id === id) {
+              qc.invalidateQueries({ queryKey: ["state", slug] });
+            }
+          }
         }}
       />
     </div>
@@ -2982,15 +3324,15 @@ function CeremonyWizardModal({
   const [startTime, setStartTime] = useState(defaultStartTime);
   const [memorialUrl, setMemorialUrl] = useState(currentSiteUrl || "");
   const [startPlaylist, setStartPlaylist] = useState(audioPlaylists[0]?.id || "");
-  const [startVolume, setStartVolume] = useState(37.5);
+  const [startVolume, setStartVolume] = useState(0);
 
   const [farewellTime, setFarewellTime] = useState(defaultFarewellTime);
   const [farewellPlaylist, setFarewellPlaylist] = useState(audioPlaylists[0]?.id || "");
-  const [farewellVolume, setFarewellVolume] = useState(50);
+  const [farewellVolume, setFarewellVolume] = useState(0);
 
   const [endTime, setEndTime] = useState(defaultEndTime);
   const [endPlaylist, setEndPlaylist] = useState("");
-  const [endVolume, setEndVolume] = useState(12.5);
+  const [endVolume, setEndVolume] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
@@ -3000,7 +3342,7 @@ function CeremonyWizardModal({
       await signageApi.createSchedule({
         roomSlug: slug,
         title: "Recepção & Abertura da Cerimônia",
-        scheduledAt: startTime,
+        scheduledAt: toUtcIsoString(startTime),
         enabled: true,
         actions: {
           standby: false, // Liga TV / sai do modo suspenso
@@ -3016,7 +3358,7 @@ function CeremonyWizardModal({
       await signageApi.createSchedule({
         roomSlug: slug,
         title: "Despedida da Família (Fechamento do Caixão)",
-        scheduledAt: farewellTime,
+        scheduledAt: toUtcIsoString(farewellTime),
         enabled: true,
         actions: {
           audioPlaylist: farewellPlaylist || undefined,
@@ -3029,7 +3371,7 @@ function CeremonyWizardModal({
       await signageApi.createSchedule({
         roomSlug: slug,
         title: "Encerramento da Cerimônia (Standby)",
-        scheduledAt: endTime,
+        scheduledAt: toUtcIsoString(endTime),
         enabled: true,
         actions: {
           standby: true, // Volta para modo suspenso (relógio, clima, blackout suave)
@@ -3090,12 +3432,7 @@ function CeremonyWizardModal({
                 <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
                   Data e Horário de Início:
                 </label>
-                <input
-                  type="datetime-local"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600"
-                />
+                <DateTimePickerField value={startTime} onChange={setStartTime} />
               </div>
 
               <div>
@@ -3184,12 +3521,7 @@ function CeremonyWizardModal({
                 <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
                   Data e Horário da Despedida:
                 </label>
-                <input
-                  type="datetime-local"
-                  value={farewellTime}
-                  onChange={(e) => setFarewellTime(e.target.value)}
-                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600"
-                />
+                <DateTimePickerField value={farewellTime} onChange={setFarewellTime} />
               </div>
 
               <div>
@@ -3265,12 +3597,7 @@ function CeremonyWizardModal({
                 <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
                   Data e Horário de Saída:
                 </label>
-                <input
-                  type="datetime-local"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600"
-                />
+                <DateTimePickerField value={endTime} onChange={setEndTime} />
               </div>
 
               <div>
@@ -3401,7 +3728,7 @@ function ScheduleModal({
 
   const [siteUrl, setSiteUrl] = useState(initialData?.actions.siteUrl || "");
   const [audioPlaylist, setAudioPlaylist] = useState(initialData?.actions.audioPlaylist || "");
-  const [audioVolume, setAudioVolume] = useState<number>(initialData?.actions.audioVolume ?? 50);
+  const [audioVolume, setAudioVolume] = useState<number>(initialData?.actions.audioVolume ?? 0);
   const [audioStatus, setAudioStatus] = useState<"playing" | "paused" | "none">(() => {
     if (initialData?.actions.audioStatus === "playing") return "playing";
     if (initialData?.actions.audioStatus === "paused") return "paused";
@@ -3439,7 +3766,7 @@ function ScheduleModal({
     onSave({
       roomSlug: slug,
       title: title.trim(),
-      scheduledAt,
+      scheduledAt: toUtcIsoString(scheduledAt),
       enabled: true,
       executed: false,
       executedAt: null,
@@ -3505,12 +3832,7 @@ function ScheduleModal({
             <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
               Data e Horário de Execução:
             </label>
-            <input
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600"
-            />
+            <DateTimePickerField value={scheduledAt} onChange={setScheduledAt} />
           </div>
 
           {/* Tela da TV / Standby */}

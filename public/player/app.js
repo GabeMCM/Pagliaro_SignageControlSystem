@@ -488,6 +488,8 @@ function syncAudioVolume() {
   }
 }
 
+let consecutiveYtErrors = 0;
+
 function playYoutubeAudio(ytId) {
   currentPlayingAudioType = 'yt';
   // Pausa o bgmPlayer HTML5 para não sobrepor áudios
@@ -506,15 +508,15 @@ function playYoutubeAudio(ytId) {
     if (!container) {
       const c = document.createElement('div');
       c.id = 'yt-audio-container';
-      c.style = 'position:fixed;bottom:-200px;left:-200px;width:10px;height:10px;opacity:0.001;pointer-events:none;z-index:-10;';
+      c.style = 'position:fixed;bottom:0;right:0;width:240px;height:180px;opacity:0.005;pointer-events:none;z-index:0;overflow:hidden;';
       c.innerHTML = '<div id="yt-audio-player"></div>';
       document.body.appendChild(c);
     }
 
     try {
       ytAudioPlayer = new YT.Player('yt-audio-player', {
-        height: '10',
-        width: '10',
+        height: '180',
+        width: '240',
         videoId: ytId,
         playerVars: {
           'autoplay': 1,
@@ -523,6 +525,7 @@ function playYoutubeAudio(ytId) {
           'fs': 0,
           'rel': 0,
           'playsinline': 1,
+          'origin': window.location.origin,
         },
         events: {
           'onReady': (event) => {
@@ -532,7 +535,10 @@ function playYoutubeAudio(ytId) {
             }
           },
           'onStateChange': (event) => {
-            if (event.data === YT.PlayerState.ENDED) {
+            if (event.data === YT.PlayerState.PLAYING) {
+              consecutiveYtErrors = 0;
+            } else if (event.data === YT.PlayerState.ENDED) {
+              consecutiveYtErrors = 0;
               if (!currentRoomState.audioStreamUrl) {
                 handleAudioEnded();
               } else {
@@ -541,12 +547,33 @@ function playYoutubeAudio(ytId) {
             }
           },
           'onError': (event) => {
-            console.warn("[YT Audio] Erro no vídeo do YouTube:", event.data);
-            setTimeout(() => {
-              if (!currentRoomState.audioStreamUrl) {
-                handleAudioEnded();
-              }
-            }, 1500);
+            consecutiveYtErrors++;
+            console.warn(`[YT Audio] Erro ${event.data} no vídeo ${ytId} (Falhas consecutivas: ${consecutiveYtErrors})`);
+
+            if (consecutiveYtErrors >= 3) {
+              console.error("[YT Audio] 3 falhas consecutivas. Pausando para evitar avanço infinito.");
+              pauseCurrentAudio();
+              consecutiveYtErrors = 0;
+              return;
+            }
+
+            // Tenta fallback via stream de áudio do backend antes de pular a música
+            const fallbackUrl = `${API_BASE}/api/youtube/stream/${ytId}`;
+            console.log(`[YT Audio] Tentando fallback para ${ytId}...`);
+            currentPlayingAudioType = 'html5';
+            bgmPlayer.src = fallbackUrl;
+            bgmPlayer.volume = calculateTargetAudioVolume();
+            if (!aIsPaused) {
+              bgmPlayer.play().then(() => {
+                consecutiveYtErrors = 0;
+              }).catch(() => {
+                setTimeout(() => {
+                  if (!currentRoomState.audioStreamUrl) {
+                    handleAudioEnded();
+                  }
+                }, 3500);
+              });
+            }
           }
         }
       });

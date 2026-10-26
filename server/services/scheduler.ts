@@ -29,6 +29,31 @@ let tickerTimer: any = null;
 let isChecking = false;
 
 /**
+ * Converte qualquer formato de data/hora de agendamento para timestamp UTC com proteção de timezone.
+ * Evita que servidores em nuvem rodando em UTC (como o Render) interpretem horários do Brasil como UTC.
+ */
+export function parseScheduledTime(scheduledAt: string | number | undefined | null): number {
+  if (typeof scheduledAt === "number") return scheduledAt;
+  if (!scheduledAt) return NaN;
+  const str = String(scheduledAt).trim();
+  // Se for timestamp numérico em string
+  if (/^\d{10,13}$/.test(str)) {
+    const num = Number(str);
+    return str.length === 10 ? num * 1000 : num;
+  }
+  // Se já tiver indicação de timezone ('Z' ou '+HH:MM' ou '-HH:MM')
+  if (str.endsWith("Z") || /[+-]\d{2}(:?\d{2})?$/.test(str)) {
+    return new Date(str).getTime();
+  }
+  // Se for "YYYY-MM-DDTHH:mm" sem fuso explícito, o servidor pode estar em UTC (Render).
+  // Assume o fuso de Brasília (UTC-3 / -03:00) para evitar que o Render interprete como UTC
+  const safeStr = str.length === 16 ? `${str}:00-03:00` : `${str}-03:00`;
+  const parsed = new Date(safeStr).getTime();
+  if (!isNaN(parsed)) return parsed;
+  return new Date(str).getTime();
+}
+
+/**
  * Executa uma ação agendada no estado da sala e notifica os players via WebSocket
  */
 export async function executeSchedule(task: ScheduleTask, markExecuted = true): Promise<boolean> {
@@ -49,7 +74,7 @@ export async function executeSchedule(task: ScheduleTask, markExecuted = true): 
         mode: "playlist",
         visualStatus: "idle",
         audioStatus: "idle",
-        audioVolume: 100,
+        audioVolume: 0,
         audioLoopMode: "all",
         audioShuffle: false,
         currentAudioIndex: 0,
@@ -161,8 +186,8 @@ async function checkPendingSchedules() {
 
     for (const task of schedules) {
       if (task.enabled && !task.executed) {
-        const targetTime = new Date(task.scheduledAt).getTime();
-        // Se a hora do agendamento já chegou (com tolerância de 2 horas retroativas)
+        const targetTime = parseScheduledTime(task.scheduledAt);
+        // Se a hora do agendamento já chegou
         if (!isNaN(targetTime) && targetTime <= now) {
           // Se já passou mais de 24h e o servidor estava desligado, marca como expirado para não disparar sustos
           if (now - targetTime > 24 * 60 * 60 * 1000) {
