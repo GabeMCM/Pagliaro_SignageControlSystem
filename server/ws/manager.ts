@@ -48,10 +48,12 @@ const deviceSessions = new Map<string, DeviceSession>();
 const adminDevicesListeners = new Set<WSContext>();
 
 export function detectDeviceType(userAgent: string): string {
+  if (/aft|silk|vega|amazon/i.test(userAgent)) return "Amazon Fire Stick (Vega OS / Silk)";
+  if (/vidaa|hisense/i.test(userAgent)) return "Smart TV Hisense (VIDAA)";
   if (/tizen/i.test(userAgent)) return "Smart TV Samsung (Tizen)";
-  if (/webos|netcast/i.test(userAgent)) return "Smart TV LG (webOS)";
+  if (/webos|web0s|netcast/i.test(userAgent)) return "Smart TV LG (webOS)";
   if (/android.*tv|google.*tv|bravia/i.test(userAgent)) return "Android TV";
-  if (/smart-tv|viera|vidaa|roku/i.test(userAgent)) return "Smart TV";
+  if (/smart-tv|smarttv|hbbtv|viera|philips|opera tv|roku/i.test(userAgent)) return "Smart TV";
   if (/android/i.test(userAgent)) return "Dispositivo Android";
   if (/ipad/i.test(userAgent)) return "Apple iPad";
   if (/iphone/i.test(userAgent)) return "Apple iPhone";
@@ -64,7 +66,8 @@ export function detectDeviceType(userAgent: string): string {
 function getFriendlyDeviceLabel(userAgent: string, currentCount: number): string {
   const base = detectDeviceType(userAgent);
   let browser = "";
-  if (/edg/i.test(userAgent)) browser = " (Edge)";
+  if (/silk/i.test(userAgent)) browser = " (Silk)";
+  else if (/edg/i.test(userAgent)) browser = " (Edge)";
   else if (/chrome/i.test(userAgent)) browser = " (Chrome)";
   else if (/firefox/i.test(userAgent)) browser = " (Firefox)";
   else if (/safari/i.test(userAgent)) browser = " (Safari)";

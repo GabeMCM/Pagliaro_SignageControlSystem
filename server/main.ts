@@ -5,7 +5,8 @@ import { api } from "./routes/api.ts";
 import { mediaRoute } from "./routes/media.ts";
 import { wsRoute } from "./ws/index.ts";
 import { initScheduler } from "./services/scheduler.ts";
-import { tryConnectMongo } from "./services/db.ts";
+import { db, tryConnectMongo } from "./services/db.ts";
+import { warmAdiauUrl } from "./services/adiau.ts";
 
 const app = new Hono();
 
@@ -32,6 +33,13 @@ app.route("/ws", wsRoute);
 
 // Rota estática para servir a mídia (vídeos e imagens) para os Players
 app.use("/media/*", serveStatic({ root: "./" }));
+
+// Atalhos rápidos para Smart TVs / Fire Stick (/tv e /tv/:room -> ativa Modo TV Leve sem áudio)
+app.get("/tv", (c) => c.redirect("/player/index.html?tv=1"));
+app.get("/tv/:room", (c) => {
+  const room = encodeURIComponent(c.req.param("room") || "");
+  return c.redirect(`/player/index.html?room=${room}&tv=1`);
+});
 
 // Rota estática para o Kiosk Player (sem cache para garantir atualização imediata nas Smart TVs)
 app.get("/player", (c) => c.redirect("/player/index.html"));
@@ -63,6 +71,16 @@ console.log(`Server running on port ${PORT} (env: ${Deno.env.get("NODE_ENV") || 
 await tryConnectMongo().catch((err) => {
   console.error("⚠️ [Server] Aviso ao conectar ao MongoDB Atlas:", err);
 });
+
+// Pré-aquece o cache do Adiaŭ para salas que já possuem link configurado
+try {
+  const initialState = await db.getState();
+  for (const roomState of Object.values<any>(initialState || {})) {
+    if (roomState?.siteUrl) {
+      warmAdiauUrl(roomState.siteUrl);
+    }
+  }
+} catch (_e) {}
 
 initScheduler();
 

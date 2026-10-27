@@ -4,6 +4,13 @@ import { wsManager, detectDeviceType } from "../ws/manager.ts";
 import { youtubeService } from "../services/youtube.ts";
 import { executeSchedule, type ScheduleTask } from "../services/scheduler.ts";
 import { roomEventQueue } from "../services/event-queue.ts";
+import {
+  getAdiauAsset,
+  getAdiauData,
+  parseAdiauParams,
+  renderAdiauHtmlPage,
+  warmAdiauUrl,
+} from "../services/adiau.ts";
 
 export const api = new Hono();
 
@@ -292,6 +299,7 @@ api.get("/state", async (c) => {
 api.get("/state/:roomSlug", async (c) => {
   const room = c.req.param("roomSlug");
   const roomState = await roomEventQueue.getAuthoritativeRoomState(room);
+  if (roomState?.siteUrl) warmAdiauUrl(roomState.siteUrl);
   return c.json(roomState);
 });
 
@@ -299,6 +307,7 @@ api.post("/state/:roomSlug", async (c) => {
   const room = c.req.param("roomSlug");
   const body = await c.req.json();
   const updatedState = await roomEventQueue.enqueueSetState(room, body);
+  if (updatedState?.siteUrl) warmAdiauUrl(updatedState.siteUrl);
   return c.json({ success: true, state: updatedState, version: updatedState.version });
 });
 
@@ -806,6 +815,57 @@ api.post("/schedules/:id/run", async (c) => {
   const executed = await executeSchedule(schedule, false);
   return c.json({ success: executed, message: "Ação executada na tela da sala com sucesso!" });
 });
+
+// ========================
+// PROXY E RENDERIZADOR ULTRA-LEVE ADIAŬ (Para TVs simples / Fire Stick / Hisense)
+// ========================
+api.get("/adiau/render", async (c) => {
+  const query = c.req.query();
+  const params = parseAdiauParams(query);
+  if (!params) {
+    return c.html(
+      `<!DOCTYPE html><html><body style="background:#000;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;"><h2>Parâmetros da cerimônia inválidos (hash ausente).</h2></body></html>`,
+      400,
+    );
+  }
+
+  // Tenta obter do cache em até 1.5s; se ainda estiver baixando do Adiaŭ, entrega o HTML imediatamente e faz poll
+  const res = await getAdiauData(params, 1500);
+  const html = renderAdiauHtmlPage(params, res.ready ? res.data : { pending: true });
+  c.header("Cache-Control", "no-store, no-cache, must-revalidate");
+  return c.html(html);
+});
+
+api.get("/adiau/data", async (c) => {
+  const query = c.req.query();
+  const params = parseAdiauParams(query);
+  if (!params) {
+    return c.json({ status: false, error: "Parâmetros inválidos" }, 400);
+  }
+
+  const res = await getAdiauData(params, 6000);
+  c.header("Cache-Control", "no-store, no-cache, must-revalidate");
+  if (!res.ready) {
+    return c.json({ pending: true });
+  }
+  return c.json(res.data);
+});
+
+api.get("/adiau/asset/:id", (c) => {
+  const id = c.req.param("id");
+  const asset = getAdiauAsset(id);
+  if (!asset) {
+    return c.text("Asset not found", 404);
+  }
+  return new Response(asset.bytes as unknown as BodyInit, {
+    status: 200,
+    headers: {
+      "Content-Type": asset.mimeType,
+      "Cache-Control": "public, max-age=86400, immutable",
+    },
+  });
+});
+
 
 
 

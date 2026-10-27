@@ -2,49 +2,55 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Signage Player</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Signage Player - TV</title>
   <script>
-    window.addEventListener('error', function(e) {
-      console.error("Player Error:", e.message, e.filename, e.lineno);
+    window.onerror = function(msg, url, line) {
+      if (window.console && console.error) {
+        console.error("Player Error:", msg, url, line);
+      }
       var b = document.getElementById('player-error-banner');
       if (!b) {
         b = document.createElement('div');
         b.id = 'player-error-banner';
-        b.style = 'position:fixed;bottom:16px;left:16px;right:16px;max-width:600px;margin:0 auto;background:#7f1d1d;color:#fecaca;padding:12px 18px;z-index:999999;font-size:13px;font-family:sans-serif;border-radius:8px;border:1px solid #b91c1c;box-shadow:0 8px 30px rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:space-between;gap:12px;';
+        b.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;max-width:600px;margin:0 auto;background:#7f1d1d;color:#fecaca;padding:12px 18px;z-index:999999;font-size:13px;font-family:sans-serif;border-radius:8px;border:1px solid #b91c1c;display:flex;align-items:center;justify-content:space-between;';
         (document.body || document.documentElement).appendChild(b);
       }
-      b.innerHTML = '<span>Falha no Player: ' + (e.message || 'Erro inesperado') + '</span><button onclick="window.location.reload()" style="background:#fff;color:#000;border:none;padding:5px 10px;border-radius:4px;font-weight:bold;cursor:pointer;">Recarregar</button>';
-    });
-    window.addEventListener('unhandledrejection', function(e) {
-      console.error("Player Rejection:", e.reason);
-    });
+      b.innerHTML = '<span>Aviso do Player: ' + (msg || 'Erro inesperado') + '</span><button onclick="window.location.reload()" style="background:#fff;color:#000;border:none;padding:6px 12px;border-radius:4px;font-weight:bold;cursor:pointer;margin-left:12px;">Recarregar</button>';
+      return false;
+    };
   </script>
   <style>
+    * {
+      box-sizing: border-box;
+    }
     body, html {
       margin: 0;
       padding: 0;
-      width: 100vw;
-      height: 100vh;
-      background: #000;
+      width: 100%;
+      height: 100%;
+      background: #000000;
       overflow: hidden;
+      display: -webkit-flex;
       display: flex;
+      -webkit-justify-content: center;
       justify-content: center;
+      -webkit-align-items: center;
       align-items: center;
-      color: white;
-      font-family: monospace;
+      color: #ffffff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
     }
-    
+
     #media-container {
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
       position: absolute;
       top: 0;
       left: 0;
       z-index: 2;
     }
 
-    video, img, #yt-player {
+    video, img, #yt-player, #media-container iframe {
       width: 100%;
       height: 100%;
       object-fit: contain;
@@ -52,27 +58,30 @@
       top: 0;
       left: 0;
       opacity: 0;
-      transition: opacity 0.5s;
+      -webkit-transition: opacity 0.4s;
+      transition: opacity 0.4s;
       border: none;
       pointer-events: none;
     }
-    
+
     .active {
       opacity: 1 !important;
       pointer-events: auto !important;
     }
 
-    /* Iframe para sites e dashboards */
+    /* Iframe para sites e homenagens (Adiaŭ) */
     #site-frame {
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
       position: absolute;
       top: 0;
       left: 0;
+      right: 0;
+      bottom: 0;
       border: none;
       z-index: 5;
       display: none;
-      background: #000;
+      background: #000000;
     }
     #site-frame.visible {
       display: block;
@@ -81,79 +90,142 @@
     #status {
       z-index: 20;
       position: absolute;
-      background: rgba(0,0,0,0.8);
-      padding: 12px 24px;
+      background: #111111;
+      padding: 14px 28px;
       border-radius: 8px;
-      font-size: 1.25rem;
-      border: 1px solid #333;
+      font-size: 20px;
+      border: 1px solid #333333;
       pointer-events: none;
+      text-align: center;
     }
-    
-    /* Menu de Salas */
+
+    /* Menu de Salas (Lobby com suporte a Controle Remoto / D-Pad) */
     .room-menu {
       z-index: 30;
-      background: #111;
-      border: 1px solid #333;
-      padding: 40px;
-      border-radius: 12px;
+      background: #111111;
+      border: 1px solid #333333;
+      padding: 32px 36px;
+      border-radius: 14px;
       text-align: center;
-      max-width: 90vw;
-      max-height: 80vh;
+      width: 90%;
+      max-width: 680px;
+      max-height: 88%;
       overflow-y: auto;
     }
-    .room-menu h1 { margin-top: 0; font-size: 24px; margin-bottom: 20px; }
-    .room-list { display: flex; flex-direction: column; gap: 12px; }
+    .room-menu h1 {
+      margin-top: 0;
+      font-size: 24px;
+      margin-bottom: 18px;
+      color: #ffffff;
+    }
+    .room-list {
+      display: -webkit-flex;
+      display: flex;
+      -webkit-flex-direction: column;
+      flex-direction: column;
+    }
     .room-btn {
       background: #10b981;
-      color: black;
-      border: none;
-      padding: 16px 24px;
-      font-size: 16px;
+      color: #000000;
+      border: 3px solid transparent;
+      padding: 16px 22px;
+      margin-bottom: 12px;
+      font-size: 17px;
       font-weight: bold;
       cursor: pointer;
-      border-radius: 6px;
+      border-radius: 8px;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      transition: background 0.2s;
+      letter-spacing: 0.04em;
+      width: 100%;
+      text-align: left;
+      outline: none;
     }
-    .room-btn:hover { background: #34d399; }
+    .room-btn:hover,
+    .room-btn:focus,
+    .room-btn.dpad-focus {
+      background: #34d399 !important;
+      color: #000000 !important;
+      border-color: #ffffff !important;
+      box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.55);
+    }
+
+    .lobby-action-btn {
+      outline: none;
+      border: 2px solid transparent;
+    }
+    .lobby-action-btn:focus,
+    .lobby-action-btn.dpad-focus {
+      border-color: #ffffff !important;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.6);
+    }
 
     #remote-overlay {
       position: absolute;
-      bottom: 30px;
+      bottom: 28px;
       left: 50%;
+      -webkit-transform: translateX(-50%);
       transform: translateX(-50%);
-      background: rgba(15, 15, 15, 0.92);
-      border: 1px solid #333;
-      padding: 10px 24px;
+      background: #111111;
+      border: 1px solid #333333;
+      padding: 10px 22px;
       border-radius: 50px;
+      display: -webkit-flex;
       display: flex;
-      gap: 24px;
+      -webkit-align-items: center;
       align-items: center;
       opacity: 0;
-      transition: opacity 0.3s;
+      pointer-events: none;
+      -webkit-transition: opacity 0.25s;
+      transition: opacity 0.25s;
       z-index: 10000;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.6);
-      backdrop-filter: blur(8px);
     }
-    #remote-overlay.visible { opacity: 1; }
-    .control-group { display: flex; align-items: center; gap: 8px; }
-    .control-divider { width: 1px; height: 28px; background: #333; }
-    .group-icon { color: #666; display: flex; align-items: center; }
+    #remote-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .control-group {
+      display: -webkit-flex;
+      display: flex;
+      -webkit-align-items: center;
+      align-items: center;
+    }
+    .control-divider {
+      width: 1px;
+      height: 28px;
+      background: #333333;
+      margin: 0 16px;
+    }
+    .group-icon {
+      color: #666666;
+      display: -webkit-flex;
+      display: flex;
+      -webkit-align-items: center;
+      align-items: center;
+      margin-right: 6px;
+    }
     .group-icon svg { width: 22px; height: 22px; }
     .remote-btn {
       background: none;
-      border: none;
+      border: 2px solid transparent;
       color: #a3a3a3;
       cursor: pointer;
       padding: 8px;
+      margin: 0 2px;
       border-radius: 50%;
-      transition: all 0.2s;
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
+      -webkit-justify-content: center;
       justify-content: center;
+      outline: none;
     }
-    .remote-btn:hover { background: rgba(255,255,255,0.15); color: white; }
+    .remote-btn:hover,
+    .remote-btn:focus {
+      background: #262626;
+      color: #ffffff;
+      border-color: #10b981;
+    }
     .remote-btn svg {
       width: 20px;
       height: 20px;
@@ -165,58 +237,55 @@
     }
     .remote-btn.play-btn svg { fill: currentColor; }
 
-    @media (max-width: 600px) {
-      #remote-overlay {
-        padding: 6px 14px;
-        gap: 12px;
-        bottom: 16px;
-        max-width: 95vw;
-        box-sizing: border-box;
-      }
-      .control-group {
-        gap: 4px;
-      }
-    }
-
-    /* Modo Standby Elegante com Relógio, Data e Clima Uberaba-MG */
+    /* Modo Standby Elegante com Relógio, Data e Clima Uberaba-MG (Compatível com TVs Simples) */
     #standby-blackout-overlay {
       position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
       background: #000000;
       z-index: 99990;
       display: none;
+      -webkit-align-items: center;
       align-items: center;
+      -webkit-justify-content: center;
       justify-content: center;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       color: #f4f4f5;
-      text-rendering: optimizeLegibility;
-      -webkit-font-smoothing: antialiased;
       user-select: none;
       overflow: hidden;
       opacity: 0;
-      transition: opacity 0.6s ease;
+      -webkit-transition: opacity 0.4s ease;
+      transition: opacity 0.4s ease;
     }
     #standby-blackout-overlay.standby-visible {
+      display: -webkit-flex;
       display: flex;
       opacity: 1;
     }
     #standby-content {
+      display: -webkit-flex;
       display: flex;
+      -webkit-flex-direction: column;
       flex-direction: column;
+      -webkit-align-items: center;
       align-items: center;
+      -webkit-justify-content: center;
       justify-content: center;
       text-align: center;
-      max-width: 92vw;
+      width: 92%;
+      max-width: 900px;
       padding: 24px;
-      transition: transform 3s cubic-bezier(0.4, 0, 0.2, 1);
-      will-change: transform;
     }
     .standby-location {
+      display: -webkit-inline-flex;
       display: inline-flex;
+      -webkit-align-items: center;
       align-items: center;
-      gap: 7px;
+      font-size: 14px;
       font-size: clamp(12px, 1.4vw, 15px);
       font-weight: 600;
       letter-spacing: 0.24em;
@@ -224,174 +293,202 @@
       color: #71717a;
       margin-bottom: 12px;
     }
+    .standby-location span {
+      margin-left: 7px;
+    }
     .standby-clock {
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: baseline;
       align-items: baseline;
+      -webkit-justify-content: center;
       justify-content: center;
       line-height: 0.95;
       margin: 4px 0 12px 0;
     }
     .standby-clock-hm {
+      font-size: 112px;
       font-size: clamp(76px, 13vw, 150px);
       font-weight: 200;
       letter-spacing: -0.03em;
       color: #ffffff;
-      font-variant-numeric: tabular-nums;
-      text-shadow: 0 4px 30px rgba(0, 0, 0, 0.8);
     }
     .standby-clock-sec {
+      font-size: 34px;
       font-size: clamp(24px, 3.8vw, 44px);
       font-weight: 300;
       color: #71717a;
-      font-variant-numeric: tabular-nums;
       margin-left: 6px;
     }
     .standby-date {
+      font-size: 22px;
       font-size: clamp(17px, 2.3vw, 26px);
       font-weight: 400;
       color: #e4e4e7;
-      letter-spacing: 0.01em;
-      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
     }
     .standby-divider {
-      width: min(320px, 60vw);
+      width: 280px;
+      max-width: 60%;
       height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-      margin: 28px 0 24px 0;
+      background: #27272a;
+      margin: 26px 0 22px 0;
     }
     .standby-weather-card {
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
+      -webkit-justify-content: center;
       justify-content: center;
+      -webkit-flex-wrap: wrap;
       flex-wrap: wrap;
-      gap: 16px 28px;
-      background: rgba(24, 24, 27, 0.55);
-      border: 1px solid rgba(255, 255, 255, 0.09);
+      background: #141417;
+      border: 1px solid #27272a;
       padding: 14px 28px;
-      border-radius: 9999px;
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.7);
+      border-radius: 999px;
     }
     .standby-weather-main {
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
-      gap: 12px;
     }
     .standby-weather-icon {
       width: 44px;
       height: 44px;
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
+      -webkit-justify-content: center;
       justify-content: center;
-      flex-shrink: 0;
+      margin-right: 12px;
     }
     .standby-weather-temp {
+      font-size: 32px;
       font-size: clamp(28px, 4vw, 38px);
       font-weight: 600;
       color: #ffffff;
       line-height: 1;
-      font-variant-numeric: tabular-nums;
     }
     .standby-weather-vdiv {
       width: 1px;
       height: 32px;
-      background: rgba(255, 255, 255, 0.12);
+      background: #27272a;
+      margin: 0 22px;
     }
     .standby-weather-info {
+      display: -webkit-flex;
       display: flex;
+      -webkit-flex-direction: column;
       flex-direction: column;
+      -webkit-align-items: flex-start;
       align-items: flex-start;
       text-align: left;
     }
     .standby-weather-desc {
-      font-size: clamp(13px, 1.6vw, 16px);
+      font-size: 15px;
       font-weight: 500;
       color: #f4f4f5;
     }
     .standby-weather-feels {
-      font-size: clamp(11px, 1.3vw, 13px);
+      font-size: 12px;
       color: #a1a1aa;
     }
     .standby-weather-stats {
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
-      gap: 16px;
     }
     .standby-stat-item {
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
-      gap: 6px;
-      font-size: clamp(12px, 1.4vw, 14px);
+      font-size: 13px;
+      margin-right: 14px;
+    }
+    .standby-stat-item:last-child {
+      margin-right: 0;
+    }
+    .standby-stat-item span {
+      margin-left: 5px;
     }
     .standby-footer-badge {
       position: absolute;
       bottom: 24px;
+      display: -webkit-flex;
       display: flex;
+      -webkit-align-items: center;
       align-items: center;
-      gap: 8px;
-      opacity: 0.35;
+      opacity: 0.4;
       color: #a1a1aa;
       font-size: 11px;
       font-weight: 600;
-      letter-spacing: 0.26em;
+      letter-spacing: 0.24em;
       text-transform: uppercase;
+    }
+    .standby-footer-badge span {
+      margin-left: 8px;
     }
 
     /* Overlay de Identificação Remota do Aparelho */
     #device-identify-overlay {
       position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.88);
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
       z-index: 999999;
       display: none;
+      -webkit-align-items: center;
       align-items: center;
+      -webkit-justify-content: center;
       justify-content: center;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       padding: 20px;
-      box-sizing: border-box;
       opacity: 0;
-      transition: opacity 0.3s ease;
     }
     #device-identify-overlay.visible {
+      display: -webkit-flex;
       display: flex;
       opacity: 1;
     }
     .identify-card {
       background: #111827;
       border: 3px solid #10b981;
-      box-shadow: 0 0 50px rgba(16, 185, 129, 0.5), inset 0 0 20px rgba(16, 185, 129, 0.2);
-      border-radius: 24px;
-      padding: 36px 44px;
+      border-radius: 20px;
+      padding: 32px 38px;
       text-align: center;
       max-width: 680px;
-      width: 90vw;
-      color: white;
-      animation: identifyCardPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-    @keyframes identifyCardPop {
-      0% { transform: scale(0.85); opacity: 0; }
-      100% { transform: scale(1); opacity: 1; }
+      width: 90%;
+      color: #ffffff;
     }
     .identify-badge {
+      display: -webkit-inline-flex;
       display: inline-flex;
+      -webkit-align-items: center;
       align-items: center;
-      gap: 10px;
       background: rgba(16, 185, 129, 0.15);
       border: 1px solid rgba(16, 185, 129, 0.4);
       color: #34d399;
       font-size: 13px;
       font-weight: 700;
-      letter-spacing: 0.2em;
+      letter-spacing: 0.18em;
       text-transform: uppercase;
       padding: 8px 18px;
-      border-radius: 9999px;
-      margin-bottom: 20px;
+      border-radius: 999px;
+      margin-bottom: 18px;
+    }
+    .identify-badge span {
+      margin-left: 8px;
     }
     .identify-title {
-      font-size: clamp(26px, 4vw, 42px);
+      font-size: 32px;
       font-weight: 800;
       color: #ffffff;
       margin: 0 0 10px 0;
@@ -399,27 +496,33 @@
     }
     .identify-id {
       font-family: monospace;
-      font-size: clamp(16px, 2.2vw, 22px);
+      font-size: 19px;
       color: #10b981;
-      background: rgba(0, 0, 0, 0.6);
+      background: #000000;
       padding: 8px 16px;
       border-radius: 8px;
       display: inline-block;
-      margin-bottom: 24px;
+      margin-bottom: 22px;
       border: 1px solid rgba(16, 185, 129, 0.3);
     }
     .identify-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 12px;
-      margin-bottom: 24px;
+      display: -webkit-flex;
+      display: flex;
+      -webkit-flex-wrap: wrap;
+      flex-wrap: wrap;
+      -webkit-justify-content: space-between;
+      justify-content: space-between;
+      margin-bottom: 20px;
       text-align: left;
     }
     .identify-item {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      padding: 12px 16px;
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 10px;
+      padding: 12px 14px;
+      width: 31%;
+      min-width: 160px;
+      margin-bottom: 8px;
     }
     .identify-item-label {
       font-size: 11px;
@@ -432,29 +535,29 @@
       font-size: 14px;
       font-weight: 600;
       color: #f3f4f6;
+      word-break: break-all;
     }
     .identify-countdown {
       font-size: 13px;
       color: #9ca3af;
-      margin-top: 10px;
+      margin-top: 8px;
     }
   </style>
 </head>
 <body>
   <div id="status">Conectando...</div>
   <div id="media-container"></div>
-  
-  <!-- Frame do Site Remoto -->
+
+  <!-- Frame do Site Remoto / Homenagem Adiaŭ (Sem sandbox restritivo para total compatibilidade em Smart TVs) -->
   <iframe
     id="site-frame"
-    allow="autoplay; fullscreen; encrypted-media; accelerometer; gyroscope; picture-in-picture"
-    sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
+    allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
   ></iframe>
 
   <div id="remote-overlay">
     <!-- Visual / Site Controls -->
     <div class="control-group" id="visual-controls-group">
-      <div class="group-icon" title="Visual Controls">
+      <div class="group-icon" title="Controles Visuais">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>
       </div>
       <button class="remote-btn" id="btn-v-prev" title="Anterior">
@@ -471,10 +574,10 @@
       </button>
     </div>
 
-    <div class="control-divider"></div>
+    <div class="control-divider" id="audio-controls-divider" style="display: none;"></div>
 
-    <!-- Audio Controls -->
-    <div class="control-group">
+    <!-- Audio Controls (Exibidos apenas quando ?audio=1 estiver ativo) -->
+    <div class="control-group" id="audio-controls-group" style="display: none;">
       <div class="group-icon" title="Audio Controls">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
       </div>
@@ -493,27 +596,21 @@
   <!-- Modo Standby / Blackout Virtual (Relógio, Data e Clima Uberaba-MG) -->
   <div id="standby-blackout-overlay" aria-hidden="true">
     <div id="standby-content">
-      <!-- Localização -->
       <div class="standby-location">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
         <span>Uberaba • MG</span>
       </div>
 
-      <!-- Relógio Digital -->
       <div class="standby-clock">
         <span id="standby-clock-hm" class="standby-clock-hm">--:--</span>
         <span id="standby-clock-sec" class="standby-clock-sec">:00</span>
       </div>
 
-      <!-- Data Completa em Português -->
       <div id="standby-date" class="standby-date">Carregando data...</div>
 
-      <!-- Divisória Sutil -->
       <div class="standby-divider"></div>
 
-      <!-- Card de Clima Local -->
       <div id="standby-weather-card" class="standby-weather-card">
-        <!-- Ícone e Temperatura Principal -->
         <div class="standby-weather-main">
           <div id="standby-weather-icon" class="standby-weather-icon">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
@@ -523,7 +620,6 @@
 
         <div class="standby-weather-vdiv"></div>
 
-        <!-- Descrição e Sensação -->
         <div class="standby-weather-info">
           <span id="standby-weather-desc" class="standby-weather-desc">Consultando clima...</span>
           <span id="standby-weather-feels" class="standby-weather-feels">Uberaba - MG</span>
@@ -531,12 +627,11 @@
 
         <div class="standby-weather-vdiv"></div>
 
-        <!-- Estatísticas (Mín/Máx e Umidade) -->
         <div class="standby-weather-stats">
           <div class="standby-stat-item" style="color: #cbd5e1;" title="Máxima e Mínima">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
             <span id="standby-temp-max">--°</span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 2px;"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 6px;"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
             <span id="standby-temp-min">--°</span>
           </div>
           <div class="standby-stat-item" style="color: #38bdf8;" title="Umidade Relativa do Ar">
@@ -547,7 +642,6 @@
       </div>
     </div>
 
-    <!-- Indicador de Standby / Rodapé Discreto -->
     <div class="standby-footer-badge">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
       <span>Standby • Sala em Pausa</span>
@@ -563,7 +657,7 @@
       </div>
       <h2 id="identify-modal-title" class="identify-title">Identificando Aparelho...</h2>
       <div id="identify-modal-id" class="identify-id">dev_00000000</div>
-      
+
       <div class="identify-grid">
         <div class="identify-item">
           <div class="identify-item-label">Sala Vinculada</div>
@@ -580,15 +674,12 @@
       </div>
 
       <div id="identify-modal-countdown" class="identify-countdown">
-        Fechando automaticamente em <strong id="identify-timer-sec">15</strong>s • Clique na tela para dispensar
+        Fechando automaticamente em <strong id="identify-timer-sec">15</strong>s • Pressione OK ou clique para dispensar
       </div>
     </div>
   </div>
-  
-  <!-- Player de Áudio Centralizado em DOM -->
-  <audio id="bgm-player" preload="auto" playsinline crossorigin="anonymous" style="display:none;"></audio>
-  <!-- Player de Áudio YouTube Invisível (Dimensões válidas para evitar erro 150/rejeição pelo embed) -->
-  <div id="yt-audio-container" style="position:fixed;bottom:0;right:0;width:240px;height:180px;opacity:0.005;pointer-events:none;z-index:0;overflow:hidden;"><div id="yt-audio-player"></div></div>
-  <script src="/player/app.js?v=20261026_6"></script>
+
+  <audio id="bgm-player" preload="none" playsinline style="display:none;"></audio>
+  <script src="/player/app.js?v=20261027_tv1"></script>
 </body>
 </html>
