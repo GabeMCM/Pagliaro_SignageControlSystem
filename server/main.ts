@@ -7,6 +7,7 @@ import { wsRoute } from "./ws/index.ts";
 import { initScheduler } from "./services/scheduler.ts";
 import { db, tryConnectMongo } from "./services/db.ts";
 import { warmAdiauUrl } from "./services/adiau.ts";
+import { prefetchRoomAudio } from "./services/audio-cache.ts";
 
 const app = new Hono();
 
@@ -34,11 +35,12 @@ app.route("/ws", wsRoute);
 // Rota estática para servir a mídia (vídeos e imagens) para os Players
 app.use("/media/*", serveStatic({ root: "./" }));
 
-// Atalhos rápidos para Smart TVs / Fire Stick (/tv e /tv/:room -> ativa Modo TV Leve sem áudio)
-app.get("/tv", (c) => c.redirect("/player/index.html?tv=1"));
+// Atalhos rápidos para Smart TVs / Fire Stick (/tv e /tv/:room). Áudio fica ATIVO.
+// Para desativar o som num aparelho específico use ?audio=0.
+app.get("/tv", (c) => c.redirect("/player/index.html"));
 app.get("/tv/:room", (c) => {
   const room = encodeURIComponent(c.req.param("room") || "");
-  return c.redirect(`/player/index.html?room=${room}&tv=1`);
+  return c.redirect(`/player/index.html?room=${room}`);
 });
 
 // Rota estática para o Kiosk Player (sem cache para garantir atualização imediata nas Smart TVs)
@@ -72,12 +74,15 @@ await tryConnectMongo().catch((err) => {
   console.error("⚠️ [Server] Aviso ao conectar ao MongoDB Atlas:", err);
 });
 
-// Pré-aquece o cache do Adiaŭ para salas que já possuem link configurado
+// Pré-aquece o cache do Adiaŭ e o cache de áudio em disco para as salas já configuradas
 try {
   const initialState = await db.getState();
   for (const roomState of Object.values<any>(initialState || {})) {
     if (roomState?.siteUrl) {
       warmAdiauUrl(roomState.siteUrl);
+    }
+    if (roomState && typeof roomState === "object") {
+      prefetchRoomAudio(roomState);
     }
   }
 } catch (_e) {}

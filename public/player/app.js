@@ -213,23 +213,19 @@ var roomSlug = getQueryParam('room');
 var FORCE_DIRECT_IFRAME = getQueryParam('direct') === '1';
 var API_BASE = window.location.origin || (window.location.protocol + '//' + window.location.host);
 
-// Determina se o áudio deve ficar ativo ou em Modo TV Leve (Sem Áudio)
+// Determina se o áudio deve ficar ativo (padrão ATIVO em todas as TVs e aparelhos;
+// só desativa se ?audio=0 ou se o usuário desativar manualmente no botão do Lobby)
 function resolveAudioEnabled() {
   var qAudio = getQueryParam('audio');
-  var qTv = getQueryParam('tv');
   if (qAudio === '1') {
-    safeSetStorage('signage_tv_lite_mode', '0');
+    safeSetStorage('signage_audio_disabled', '0');
     return true;
   }
-  if (qAudio === '0' || qTv === '1') {
-    safeSetStorage('signage_tv_lite_mode', '1');
+  if (qAudio === '0') {
+    safeSetStorage('signage_audio_disabled', '1');
     return false;
   }
-  var storedLite = safeGetStorage('signage_tv_lite_mode');
-  if (storedLite === '1') return false;
-  if (storedLite === '0') return true;
-  // Em Smart TVs e Fire Stick, desativa o motor de áudio por padrão para máxima leveza
-  if (detectSmartTvBrowser()) return false;
+  if (safeGetStorage('signage_audio_disabled') === '1') return false;
   return true;
 }
 
@@ -375,21 +371,64 @@ function extractYtId(url) {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// --- MOTOR DE ÁUDIO OPCIONAL (100% ES5 - DESATIVADO EM SMART TVS / FIRE STICK) ---
+// --- MOTOR DE ÁUDIO ROBUSTO (100% ES5 - MODELO DE RECONCILIAÇÃO) ---
+// O servidor define o ESTADO DESEJADO (faixa, play/pause, volume) e este motor
+// garante continuamente que o elemento <audio> real corresponda a ele:
+//  - Desbloqueio de autoplay por QUALQUER interação (toque, clique, tecla OK do controle)
+//  - Aviso visível na tela quando o navegador da TV bloquear o som inicial
+//  - Não abre conexão de stream enquanto pausado (evita stream "morto" ao dar Play depois)
+//  - Watchdog: detecta travamento/silêncio e reconecta o stream na MESMA posição
+//  - Repetição automática em erros de rede com backoff (sem pular faixas indevidamente)
+//  - Reporta o estado REAL (playing / paused / loading / blocked / error) ao painel Admin
 var audioPlaylist = null;
 var audioItems = [];
 var aIndex = 0;
-var aIsPaused = false;
+var aIsPaused = true;
 var masterVolume = 0;
-var ytAudioPlayer = null;
-var currentPlayingAudioType = null;
+var currentPlayingAudioType = 'html5';
 var bgmPlayer = document.getElementById('bgm-player');
+var audioCtx = null;
+var SILENT_WAV_URI = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
+var AE = {
+  key: '',            // faixa atualmente carregada no elemento <audio>
+  lastKey: '',        // última faixa carregada (para diferenciar retry de troca)
+  src: '',
+  desiredKey: '',     // faixa que o servidor quer tocando
+  desiredSrc: '',
+  primed: false,      // elemento <audio> já foi desbloqueado por gesto do usuário
+  blocked: false,     // navegador bloqueou autoplay (aguardando interação)
+  errorCount: 0,
+  retryTimer: null,
+  pendingResume: 0,   // posição para retomar após reconexão
+  resumeAt: 0,
+  lastPlayAttempt: 0,
+  playAttemptsNoProgress: 0,
+  lastTime: 0,
+  lastProgressAt: 0,
+  localAdvanceAt: 0,  // avanço local de faixa ainda não confirmado pelo servidor
+  localAdvanceFrom: -1,
+  localAdvanceTo: -1,
+  reported: '',
+  prefetchedKey: ''
+};
+
+function nowMs() { return new Date().getTime(); }
+
+if (bgmPlayer) {
+  try {
+    bgmPlayer.preload = 'auto';
+    bgmPlayer.setAttribute('playsinline', '');
+    bgmPlayer.setAttribute('webkit-playsinline', '');
+  } catch (e) {}
+}
 
 function calculateTargetAudioVolume() {
   if (!ENABLE_AUDIO) return 0;
   var itemVol = 1;
   if (!currentRoomState.audioStreamUrl && audioItems[aIndex] && audioItems[aIndex].volume !== undefined) {
-    itemVol = audioItems[aIndex].volume / 100;
+    itemVol = Number(audioItems[aIndex].volume) / 100;
+    if (isNaN(itemVol)) itemVol = 1;
   }
   var finalVol = itemVol * (masterVolume / 100);
   if (finalVol < 0) finalVol = 0;
@@ -398,12 +437,8 @@ function calculateTargetAudioVolume() {
 }
 
 function syncAudioVolume() {
-  if (!ENABLE_AUDIO) return;
-  var targetRatio = calculateTargetAudioVolume();
-  if (bgmPlayer) bgmPlayer.volume = targetRatio;
-  if (ytAudioPlayer && ytAudioPlayer.setVolume) {
-    try { ytAudioPlayer.setVolume(Math.round(targetRatio * 100)); } catch (e) {}
-  }
+  if (!ENABLE_AUDIO || !bgmPlayer) return;
+  try { bgmPlayer.volume = calculateTargetAudioVolume(); } catch (e) {}
 }
 
 function setMasterVolume(vol) {
@@ -414,12 +449,9 @@ function setMasterVolume(vol) {
 }
 
 function pauseCurrentAudio() {
-  if (!ENABLE_AUDIO) return;
-  if (bgmPlayer && !bgmPlayer.paused) {
+  if (!ENABLE_AUDIO || !bgmPlayer) return;
+  if (!bgmPlayer.paused) {
     try { bgmPlayer.pause(); } catch (e) {}
-  }
-  if (ytAudioPlayer && ytAudioPlayer.pauseVideo) {
-    try { ytAudioPlayer.pauseVideo(); } catch (e) {}
   }
 }
 
@@ -430,15 +462,14 @@ function getAudioYoutubeId(url) {
     var id = clean.replace('youtube:', '').replace(/^\s+|\s+$/g, '');
     return id.length === 11 ? id : null;
   }
+  var m = clean.match(/\/api\/youtube\/stream\/([a-zA-Z0-9_-]{11})/);
+  if (m) return m[1];
   return extractYtId(clean);
 }
 
 function normalizeAudioUrl(url) {
   if (!url) return url;
   var clean = String(url).replace(/^\s+|\s+$/g, '');
-  if (clean.indexOf('/api/youtube/stream/') !== -1) {
-    return clean.indexOf('http') === 0 ? clean : (API_BASE + clean);
-  }
   var gdriveMatch = clean.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (gdriveMatch) {
     return 'https://drive.google.com/uc?export=download&id=' + gdriveMatch[1];
@@ -446,130 +477,445 @@ function normalizeAudioUrl(url) {
   return clean;
 }
 
-function playYoutubeAudio(ytId) {
+// Converte qualquer URL de faixa no endereço final servido por ESTE servidor
+function resolveAudioSrc(raw) {
+  if (!raw) return '';
+  var ytId = getAudioYoutubeId(raw);
+  if (ytId) return API_BASE + '/api/youtube/stream/' + ytId;
+  var s = String(raw).replace(/^\s+|\s+$/g, '');
+  if (s.indexOf('http') !== 0) {
+    s = API_BASE + (s.charAt(0) === '/' ? '' : '/') + s;
+  }
+  return normalizeAudioUrl(s);
+}
+
+function computeDesiredAudio() {
+  var raw = null;
+  var key = '';
+  if (currentRoomState.audioStreamUrl) {
+    raw = currentRoomState.audioStreamUrl;
+    key = 'stream|' + raw;
+  } else if (audioItems && audioItems.length > 0) {
+    if (aIndex < 0 || aIndex >= audioItems.length) aIndex = 0;
+    var it = audioItems[aIndex];
+    var itUrl = it ? (typeof it === 'string' ? it : it.url) : null;
+    if (itUrl) {
+      raw = itUrl;
+      key = 'pl|' + (audioPlaylist ? audioPlaylist.id : '') + '|' + aIndex + '|' + itUrl;
+    }
+  }
+  AE.desiredSrc = raw ? resolveAudioSrc(raw) : '';
+  AE.desiredKey = raw ? key : '';
+}
+
+// --- Relatório do estado REAL do áudio para o painel ---
+function sendRoomWsMessage(obj) {
+  try {
+    if (activeRoomWs && activeRoomWs.readyState === 1) {
+      activeRoomWs.send(JSON.stringify(obj));
+    }
+  } catch (e) {}
+}
+
+function setAudioReport(state, detail) {
+  var sig = state + '|' + (detail || '') + '|' + aIndex;
+  if (sig === AE.reported) return;
+  AE.reported = sig;
+  sendRoomWsMessage({ type: 'audioState', state: state, detail: detail || '', track: aIndex });
+}
+
+function reportCurrentAudioState(force) {
+  if (force) AE.reported = '';
+  if (!ENABLE_AUDIO) { setAudioReport('disabled', 'Som desativado nesta tela'); return; }
+  if (!AE.desiredKey) { setAudioReport('idle'); return; }
+  if (aIsPaused) { setAudioReport('paused'); return; }
+  if (AE.blocked) { setAudioReport('blocked', 'Toque na tela ou pressione OK no controle da TV'); return; }
+  if (bgmPlayer && !bgmPlayer.paused) { setAudioReport('playing'); return; }
+  setAudioReport('loading');
+}
+
+// --- Aviso de desbloqueio na tela ---
+function showAudioUnlockOverlay() {
+  var el = document.getElementById('audio-unlock-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'audio-unlock-overlay';
+    el.setAttribute('tabindex', '0');
+    el.style.cssText = 'position:fixed;left:0;right:0;bottom:6%;z-index:1000001;text-align:center;cursor:pointer;';
+    el.innerHTML =
+      '<div style="display:inline-block;max-width:90%;background:rgba(0,0,0,0.92);border:3px solid #facc15;color:#fff;padding:18px 32px;border-radius:16px;font-family:sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.75);">' +
+        '<div style="font-size:24px;font-weight:bold;margin-bottom:6px;">&#128266; Toque aqui ou pressione OK no controle</div>' +
+        '<div style="font-size:16px;color:#fde047;">para liberar o som desta tela</div>' +
+      '</div>';
+    el.onclick = function() { unlockAudioFromGesture(); };
+    if (document.body) document.body.appendChild(el);
+  }
+  el.style.display = 'block';
+  try { el.focus(); } catch (e) {}
+}
+
+function hideAudioUnlockOverlay() {
+  var el = document.getElementById('audio-unlock-overlay');
+  if (el) el.style.display = 'none';
+}
+
+function setAudioBlocked(flag) {
+  AE.blocked = Boolean(flag);
+  if (AE.blocked && !aIsPaused && AE.desiredKey) {
+    showAudioUnlockOverlay();
+  } else {
+    hideAudioUnlockOverlay();
+  }
+  reportCurrentAudioState();
+}
+
+// Qualquer interação do usuário (toque, clique, tecla do controle remoto) libera o som.
+// IMPORTANTE: play() é chamado de forma SÍNCRONA dentro do evento para valer como gesto.
+function unlockAudioFromGesture() {
   if (!ENABLE_AUDIO || !bgmPlayer) return;
-  if (ytAudioPlayer && ytAudioPlayer.pauseVideo) {
-    try { ytAudioPlayer.pauseVideo(); } catch (e) {}
-  }
-  currentPlayingAudioType = 'html5';
-  var streamUrl = API_BASE + '/api/youtube/stream/' + ytId;
-  if (bgmPlayer.src !== streamUrl) {
-    bgmPlayer.src = streamUrl;
-  }
-  bgmPlayer.volume = calculateTargetAudioVolume();
-  if (!aIsPaused) {
+  try {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) {
+      if (!audioCtx) audioCtx = new Ctx();
+      if (audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume();
+    }
+  } catch (e) {}
+
+  computeDesiredAudio();
+
+  if (AE.desiredKey && !aIsPaused) {
+    AE.primed = true;
+    if (bgmPlayer.paused || AE.blocked || !AE.key) {
+      AE.blocked = false;
+      hideAudioUnlockOverlay();
+      if (AE.key !== AE.desiredKey) {
+        audioLoad();
+      }
+      audioTryPlay();
+    }
+  } else if (!AE.primed && !AE.key) {
+    // Destrava o elemento <audio> com um WAV silencioso de 44 bytes (necessário em TVs / Safari / Silk / Android)
+    AE.primed = true;
     try {
-      var p = bgmPlayer.play();
-      if (p && p.catch) p.catch(function() {});
+      bgmPlayer.volume = 0;
+      bgmPlayer.src = SILENT_WAV_URI;
+      var pp = bgmPlayer.play();
+      var restorePrime = function() {
+        if (!AE.key) {
+          try { bgmPlayer.pause(); } catch (e2) {}
+        }
+        syncAudioVolume();
+      };
+      if (pp && typeof pp.then === 'function') {
+        pp.then(restorePrime, restorePrime);
+      } else {
+        setTimeout(restorePrime, 60);
+      }
     } catch (e) {}
   }
 }
 
-function playNextAudio() {
-  if (!ENABLE_AUDIO) return;
-  if (currentRoomState.audioStreamUrl) {
-    startAudioPlayback();
+(function bindAudioUnlockGestures() {
+  var evts = ['click', 'touchstart', 'touchend', 'mousedown', 'pointerdown', 'keydown'];
+  for (var i = 0; i < evts.length; i++) {
+    try {
+      document.addEventListener(evts[i], unlockAudioFromGesture, true);
+    } catch (e) {}
+  }
+})();
+
+// --- Carregamento / reprodução ---
+function audioLoad() {
+  var isRetry = AE.lastKey === AE.desiredKey;
+  if (!isRetry) {
+    AE.errorCount = 0;
+    AE.pendingResume = 0;
+  }
+  AE.key = AE.desiredKey;
+  AE.lastKey = AE.desiredKey;
+  AE.src = AE.desiredSrc;
+  AE.resumeAt = isRetry ? AE.pendingResume : 0;
+  AE.pendingResume = 0;
+  AE.lastTime = 0;
+  AE.lastProgressAt = nowMs();
+  AE.playAttemptsNoProgress = 0;
+
+  var url = AE.src;
+  if (isRetry && AE.errorCount > 0) {
+    url += (url.indexOf('?') === -1 ? '?' : '&') + 'r=' + AE.errorCount + '_' + nowMs();
+  }
+  try {
+    bgmPlayer.src = url;
+    bgmPlayer.load();
+  } catch (e) {}
+  syncAudioVolume();
+  setAudioReport('loading', isRetry && AE.errorCount > 0 ? 'Reconectando (tentativa ' + AE.errorCount + ')' : '');
+}
+
+function handlePlayRejection(err) {
+  var name = err && err.name ? err.name : '';
+  if (name === 'NotAllowedError') {
+    setAudioBlocked(true);
     return;
   }
-  if (!audioItems || audioItems.length === 0) {
+  if (name === 'AbortError') return;
+  if (!aIsPaused && AE.desiredKey) {
+    audioHandleFailure(name || 'Falha ao iniciar áudio');
+  }
+}
+
+function audioTryPlay() {
+  if (!bgmPlayer || !AE.key) return;
+  AE.lastPlayAttempt = nowMs();
+  AE.playAttemptsNoProgress++;
+  syncAudioVolume();
+  var p;
+  try {
+    p = bgmPlayer.play();
+  } catch (e) {
+    handlePlayRejection(e);
+    return;
+  }
+  if (p && typeof p.then === 'function') {
+    p.then(function() {
+      AE.primed = true;
+      if (AE.blocked) setAudioBlocked(false);
+    }, handlePlayRejection);
+  }
+}
+
+function audioHandleFailure(reason) {
+  if (!AE.desiredKey || !bgmPlayer) return;
+  if (AE.retryTimer) return; // já existe uma reconexão agendada
+  AE.errorCount++;
+  var pos = 0;
+  try { pos = bgmPlayer.currentTime || 0; } catch (e) {}
+  if (AE.lastTime > pos) pos = AE.lastTime;
+  AE.pendingResume = pos;
+  setAudioReport('error', reason + ' (tentativa ' + AE.errorCount + ')');
+
+  // Após 5 falhas seguidas NA MESMA faixa de playlist, avança para a próxima
+  if (AE.errorCount >= 5 && !currentRoomState.audioStreamUrl && audioItems.length > 1) {
+    AE.errorCount = 0;
+    AE.pendingResume = 0;
+    advanceToNextTrack(true);
+    return;
+  }
+  var delay = Math.min(12000, 1200 * Math.pow(2, AE.errorCount - 1));
+  AE.retryTimer = setTimeout(function() {
+    AE.retryTimer = null;
+    if (!AE.desiredKey) return;
+    AE.key = ''; // força recarregar a mesma faixa
+    reconcileAudio();
+  }, delay);
+}
+
+function computeNextAudioIndex(ignoreLoopNone) {
+  if (!audioItems || audioItems.length === 0) return -1;
+  var loopMode = currentRoomState.audioLoopMode || (audioPlaylist && audioPlaylist.loopMode) || 'all';
+  if (currentRoomState.audioShuffle && audioItems.length > 1) {
+    var r = aIndex;
+    while (r === aIndex) r = Math.floor(Math.random() * audioItems.length);
+    return r;
+  }
+  var next = aIndex + 1;
+  if (next >= audioItems.length) {
+    if (loopMode === 'none' && !ignoreLoopNone) return -1;
+    next = 0;
+  }
+  return next;
+}
+
+function advanceToNextTrack(fromError) {
+  var next = computeNextAudioIndex(fromError);
+  if (next < 0) {
     pauseCurrentAudio();
+    setAudioReport('idle', 'Fim da playlist');
     return;
   }
-  if (aIndex >= audioItems.length || aIndex < 0) {
-    if (audioPlaylist && audioPlaylist.loop !== false) {
-      aIndex = 0;
-    } else {
-      pauseCurrentAudio();
-      return;
-    }
-  }
-  var item = audioItems[aIndex];
-  if (!item || !item.url) return;
-  var rawSrc = item.url.indexOf('http') === 0 ? item.url : (API_BASE + item.url);
-  var ytId = getAudioYoutubeId(rawSrc);
+  AE.localAdvanceAt = nowMs();
+  AE.localAdvanceFrom = aIndex;
+  AE.localAdvanceTo = next;
+  aIndex = next;
+  currentRoomState.currentAudioIndex = next;
+  reconcileAudio();
+  emitCommand('audio', 'trackChanged', next);
+}
+
+function prefetchNextAudioTrack() {
+  if (currentRoomState.audioStreamUrl || !audioItems || audioItems.length < 2) return;
+  if (AE.prefetchedKey === AE.key) return;
+  AE.prefetchedKey = AE.key;
+  var nextIdx = (aIndex + 1) % audioItems.length;
+  var it = audioItems[nextIdx];
+  var u = it ? (typeof it === 'string' ? it : it.url) : null;
+  var ytId = getAudioYoutubeId(u);
   if (ytId) {
-    playYoutubeAudio(ytId);
+    httpJson('GET', API_BASE + '/api/youtube/prefetch/' + ytId, null, function() {});
+  }
+}
+
+/**
+ * Faz o <audio> real corresponder ao estado desejado. Idempotente: pode (e deve)
+ * ser chamado a qualquer momento — mudanças de estado, comando remoto, polling, watchdog.
+ */
+function reconcileAudio() {
+  if (!ENABLE_AUDIO || !bgmPlayer) {
+    reportCurrentAudioState();
     return;
   }
-  currentPlayingAudioType = 'html5';
-  var src = normalizeAudioUrl(rawSrc);
-  if (bgmPlayer && bgmPlayer.src !== src) {
-    bgmPlayer.src = src;
-  }
+  computeDesiredAudio();
   syncAudioVolume();
-  if (!aIsPaused && bgmPlayer) {
-    try {
-      var p = bgmPlayer.play();
-      if (p && p.catch) p.catch(function() {});
-    } catch (e) {}
+
+  if (!AE.desiredKey) {
+    if (AE.retryTimer) { clearTimeout(AE.retryTimer); AE.retryTimer = null; }
+    if (AE.key) {
+      try { bgmPlayer.pause(); } catch (e) {}
+      try { bgmPlayer.removeAttribute('src'); bgmPlayer.load(); } catch (e) {}
+      AE.key = '';
+      AE.src = '';
+    }
+    AE.blocked = false;
+    hideAudioUnlockOverlay();
+    reportCurrentAudioState();
+    return;
   }
+
+  // Enquanto estiver PAUSADO, não inicia carregamento de novo stream para não deixar
+  // conexão HTTP pendurada/expirada antes do usuário apertar Play.
+  if (aIsPaused) {
+    if (AE.retryTimer) { clearTimeout(AE.retryTimer); AE.retryTimer = null; }
+    if (!bgmPlayer.paused) {
+      try { bgmPlayer.pause(); } catch (e) {}
+    }
+    if (AE.key && AE.key !== AE.desiredKey) {
+      AE.key = '';
+      AE.lastKey = '';
+      AE.lastTime = 0;
+      AE.pendingResume = 0;
+    }
+    if (AE.blocked) {
+      AE.blocked = false;
+      hideAudioUnlockOverlay();
+    }
+    reportCurrentAudioState();
+    return;
+  }
+
+  // Quando DEVE TOCAR (!aIsPaused):
+  var mediaBroken = Boolean(bgmPlayer.error || bgmPlayer.networkState === 3);
+  if (AE.key !== AE.desiredKey || mediaBroken) {
+    if (AE.retryTimer && AE.lastKey !== AE.desiredKey) {
+      clearTimeout(AE.retryTimer);
+      AE.retryTimer = null;
+    }
+    if (!AE.retryTimer) {
+      if (mediaBroken && AE.key === AE.desiredKey) {
+        AE.pendingResume = AE.lastTime;
+      }
+      audioLoad();
+    }
+  }
+
+  if (bgmPlayer.paused && !AE.retryTimer && AE.key) {
+    audioTryPlay();
+  }
+  reportCurrentAudioState();
 }
 
-function startAudioPlayback() {
-  if (!ENABLE_AUDIO) return;
-  if (currentRoomState.audioStreamUrl) {
-    var rawSrc = currentRoomState.audioStreamUrl;
-    var ytId = getAudioYoutubeId(rawSrc);
-    if (ytId) {
-      playYoutubeAudio(ytId);
-      return;
-    }
-    currentPlayingAudioType = 'html5';
-    var src = normalizeAudioUrl(rawSrc);
-    if (bgmPlayer && bgmPlayer.src !== src) {
-      bgmPlayer.src = src;
-    }
-    syncAudioVolume();
-    if (!aIsPaused && bgmPlayer) {
-      try {
-        var p = bgmPlayer.play();
-        if (p && p.catch) p.catch(function() {});
-      } catch (e) {}
-    }
-  } else {
-    playNextAudio();
-  }
-}
-
-function resumeCurrentAudio() {
-  if (!ENABLE_AUDIO) return;
-  syncAudioVolume();
-  if (bgmPlayer && bgmPlayer.src && bgmPlayer.src !== window.location.href) {
-    try {
-      var p = bgmPlayer.play();
-      if (p && p.catch) p.catch(function() { startAudioPlayback(); });
-    } catch (e) {
-      startAudioPlayback();
-    }
-  } else {
-    startAudioPlayback();
-  }
-}
+// Compatibilidade com chamadas antigas
+function playNextAudio() { reconcileAudio(); }
+function startAudioPlayback() { reconcileAudio(); }
+function resumeCurrentAudio() { reconcileAudio(); }
 
 if (ENABLE_AUDIO && bgmPlayer) {
-  bgmPlayer.onended = function() {
-    if (aIsPaused || currentPlayingAudioType !== 'html5') return;
-    if (bgmPlayer.currentTime < 3) return;
-    if (!currentRoomState.audioStreamUrl && audioItems.length > 0) {
-      var loopMode = currentRoomState.audioLoopMode || (audioPlaylist && audioPlaylist.loopMode) || 'all';
-      if (loopMode === 'one') {
-        bgmPlayer.currentTime = 0;
-        try { bgmPlayer.play(); } catch (e) {}
-        return;
+  bgmPlayer.addEventListener('loadedmetadata', function() {
+    if (AE.resumeAt > 1) {
+      var d = bgmPlayer.duration;
+      if (!d || !isFinite(d) || d > AE.resumeAt + 2) {
+        try { bgmPlayer.currentTime = AE.resumeAt; } catch (e) {}
       }
-      aIndex++;
-      if (aIndex >= audioItems.length) {
-        if (loopMode === 'none') {
-          pauseCurrentAudio();
-          return;
-        }
-        aIndex = 0;
-      }
-      currentRoomState.currentAudioIndex = aIndex;
-      playNextAudio();
-      emitCommand('audio', 'trackChanged', aIndex);
+      AE.resumeAt = 0;
     }
-  };
+  });
+
+  bgmPlayer.addEventListener('playing', function() {
+    AE.primed = true;
+    AE.lastProgressAt = nowMs();
+    if (AE.blocked) setAudioBlocked(false);
+    if (aIsPaused) {
+      try { bgmPlayer.pause(); } catch (e) {}
+      return;
+    }
+    reportCurrentAudioState();
+    prefetchNextAudioTrack();
+  });
+
+  bgmPlayer.addEventListener('timeupdate', function() {
+    var ct = bgmPlayer.currentTime || 0;
+    if (ct !== AE.lastTime) {
+      AE.lastTime = ct;
+      AE.lastProgressAt = nowMs();
+      AE.playAttemptsNoProgress = 0;
+      if (AE.errorCount > 0 && ct > 20) AE.errorCount = 0;
+    }
+  });
+
+  bgmPlayer.addEventListener('waiting', function() {
+    if (!aIsPaused && AE.key) setAudioReport('loading', 'Carregando...');
+  });
+
+  bgmPlayer.addEventListener('error', function() {
+    if (!AE.key || aIsPaused) return;
+    var code = bgmPlayer.error ? bgmPlayer.error.code : 0;
+    audioHandleFailure('Erro de mídia ' + code);
+  });
+
+  bgmPlayer.addEventListener('ended', function() {
+    if (!AE.desiredKey || !AE.key || aIsPaused) return;
+    var dur = bgmPlayer.duration;
+    var ct = bgmPlayer.currentTime || 0;
+    // Ignora 'ended' prematuro se tocou menos de 3s ou se caiu antes do fim real
+    if (ct < 3 || (dur && isFinite(dur) && dur > 10 && ct < dur - 5)) {
+      audioHandleFailure('Stream interrompido');
+      return;
+    }
+    if (currentRoomState.audioStreamUrl) {
+      AE.key = '';
+      AE.lastKey = '';
+      reconcileAudio();
+      return;
+    }
+    var loopMode = currentRoomState.audioLoopMode || (audioPlaylist && audioPlaylist.loopMode) || 'all';
+    if (loopMode === 'one' || audioItems.length === 1) {
+      try { bgmPlayer.currentTime = 0; } catch (e) {}
+      audioTryPlay();
+      return;
+    }
+    advanceToNextTrack(false);
+  });
+
+  // Watchdog: garante a cada 2s que o som realmente esteja saindo quando deveria
+  setInterval(function() {
+    if (!AE.desiredKey || aIsPaused || AE.retryTimer) return;
+    var t = nowMs();
+    if (AE.key !== AE.desiredKey) { reconcileAudio(); return; }
+    if (bgmPlayer.paused) {
+      if (bgmPlayer.ended || AE.blocked) return;
+      if (t - AE.lastPlayAttempt > 3500) audioTryPlay();
+      if (AE.playAttemptsNoProgress >= 3 && bgmPlayer.readyState >= 2) setAudioBlocked(true);
+      return;
+    }
+    var ct = bgmPlayer.currentTime || 0;
+    if (ct !== AE.lastTime) {
+      AE.lastTime = ct;
+      AE.lastProgressAt = t;
+      return;
+    }
+    if (t - AE.lastProgressAt > 15000) {
+      audioHandleFailure('Áudio travado');
+    }
+  }, 2000);
 }
 
 // --- MOTOR DE SITE & PROXY ADIAŬ ---
@@ -983,29 +1329,39 @@ function handleCommand(target, cmd, value) {
       currentRoomState.audioShuffle = Boolean(value);
     } else if (cmd === 'setTrackIndex' && value !== undefined) {
       var targetIdx = Number(value);
+      AE.localAdvanceAt = 0;
       currentRoomState.currentAudioIndex = targetIdx;
       aIsPaused = false;
       if (targetIdx >= 0 && targetIdx < audioItems.length) {
         aIndex = targetIdx;
-        playNextAudio();
+      }
+      reconcileAudio();
+    } else if (cmd === 'trackChanged' && value !== undefined) {
+      var syncedIdx = Number(value);
+      if (!isNaN(syncedIdx) && syncedIdx >= 0 && syncedIdx < audioItems.length && syncedIdx !== aIndex) {
+        aIndex = syncedIdx;
+        currentRoomState.currentAudioIndex = aIndex;
+        reconcileAudio();
       }
     } else if (cmd === 'next' && audioItems.length > 0) {
+      AE.localAdvanceAt = 0;
       aIsPaused = false;
       aIndex = (aIndex + 1) % audioItems.length;
       currentRoomState.currentAudioIndex = aIndex;
-      playNextAudio();
+      reconcileAudio();
     } else if (cmd === 'prev' && audioItems.length > 0) {
+      AE.localAdvanceAt = 0;
       aIsPaused = false;
       aIndex--;
       if (aIndex < 0) aIndex = audioItems.length - 1;
       currentRoomState.currentAudioIndex = aIndex;
-      playNextAudio();
+      reconcileAudio();
     } else if (cmd === 'pause') {
       aIsPaused = true;
-      pauseCurrentAudio();
+      reconcileAudio();
     } else if (cmd === 'play') {
       aIsPaused = false;
-      resumeCurrentAudio();
+      reconcileAudio();
     }
   } else if (target === 'room') {
     if (cmd === 'setStandby') {
@@ -1089,43 +1445,50 @@ function applyRoomStateData(data, oldState, isInitial, done) {
   var needsPlaylists = Boolean(data.playlist || (ENABLE_AUDIO && data.audioPlaylist));
 
   var finalizeVisualAndAudio = function(allPlaylists) {
-    // 1. Sincroniza Áudio se habilitado neste aparelho
+    // 1. Sincroniza Áudio via Motor de Reconciliação
     if (ENABLE_AUDIO) {
+      if (data.audioLoopMode !== undefined) currentRoomState.audioLoopMode = data.audioLoopMode;
+      if (data.audioShuffle !== undefined) currentRoomState.audioShuffle = Boolean(data.audioShuffle);
+
       if (data.audioStreamUrl) {
         currentRoomState.audioStreamUrl = data.audioStreamUrl;
         aIsPaused = data.audioStatus !== 'playing';
-        if (isInitial || !oldState || oldState.audioStreamUrl !== data.audioStreamUrl) {
-          startAudioPlayback();
-        } else if (aIsPaused) {
-          pauseCurrentAudio();
-        } else {
-          resumeCurrentAudio();
-        }
       } else if (data.audioPlaylist && allPlaylists) {
         currentRoomState.audioStreamUrl = null;
         var ap = findPlaylistById(allPlaylists, data.audioPlaylist);
         if (ap && ap.items && ap.items.length > 0) {
           var savedIdx = data.currentAudioIndex !== undefined && data.currentAudioIndex !== null ? Number(data.currentAudioIndex) : 0;
-          var changedAp = !audioPlaylist || audioPlaylist.id !== ap.id || isInitial || (savedIdx !== aIndex);
+          // Se este aparelho acabou de avançar de faixa nos últimos 10s, evita voltar para a faixa anterior enquanto o servidor processa trackChanged
+          if (
+            !isInitial &&
+            AE.localAdvanceAt > 0 &&
+            (nowMs() - AE.localAdvanceAt) < 10000 &&
+            savedIdx === AE.localAdvanceFrom &&
+            AE.localAdvanceTo >= 0 &&
+            AE.localAdvanceTo < ap.items.length
+          ) {
+            savedIdx = AE.localAdvanceTo;
+          } else if (savedIdx === AE.localAdvanceTo) {
+            AE.localAdvanceAt = 0;
+          }
           audioPlaylist = ap;
           audioItems = ap.items;
           aIndex = (savedIdx >= 0 && savedIdx < ap.items.length) ? savedIdx : 0;
           aIsPaused = data.audioStatus !== 'playing';
-          if (changedAp) {
-            playNextAudio();
-          } else if (aIsPaused) {
-            pauseCurrentAudio();
-          } else {
-            resumeCurrentAudio();
-          }
         } else {
-          pauseCurrentAudio();
+          audioPlaylist = ap || null;
+          audioItems = [];
+          aIsPaused = true;
         }
       } else {
         currentRoomState.audioStreamUrl = null;
+        audioPlaylist = null;
         audioItems = [];
-        pauseCurrentAudio();
+        aIsPaused = true;
       }
+      reconcileAudio();
+    } else {
+      reportCurrentAudioState();
     }
 
     // 2. Sincroniza Modo Site vs Visual
@@ -1248,6 +1611,67 @@ var autoReconnect = true;
 var activeRoomWs = null;
 var isWsConnected = false;
 
+function switchToRoomInPlace(newRoomSlug) {
+  if (!newRoomSlug) return;
+  if (reconnectCountdownTimer) {
+    clearInterval(reconnectCountdownTimer);
+    reconnectCountdownTimer = null;
+  }
+  safeSetStorage('signage_last_room', newRoomSlug);
+  try {
+    if (window.history && window.history.pushState) {
+      window.history.pushState({}, '', '?room=' + encodeURIComponent(newRoomSlug) + (ENABLE_AUDIO ? '' : '&audio=0'));
+    }
+  } catch (e) {}
+
+  if (activeRoomWs) {
+    autoReconnect = false;
+    try { activeRoomWs.close(); } catch (e) {}
+    activeRoomWs = null;
+  }
+  if (hubWs) {
+    try { hubWs.close(); } catch (e) {}
+    hubWs = null;
+  }
+  var lobbyMenu = document.querySelector('.room-menu');
+  if (lobbyMenu && lobbyMenu.parentNode) {
+    lobbyMenu.parentNode.removeChild(lobbyMenu);
+  }
+
+  roomSlug = newRoomSlug;
+  autoReconnect = true;
+  currentStateVersion = 0;
+  AE.key = '';
+  AE.lastKey = '';
+  AE.errorCount = 0;
+  fetchState();
+  connectWebSocket();
+}
+
+function reloadRoomInPlace() {
+  if (!roomSlug) {
+    window.location.reload();
+    return;
+  }
+  // Se o áudio já foi destravado por gesto nesta sessão, recarrega mídia/iframe/estado
+  // sem dar reload completo no documento (preservando a permissão de som do navegador da TV!)
+  if (AE.primed) {
+    currentStateVersion = 0;
+    visualPlaylist = null;
+    audioPlaylist = null;
+    AE.key = '';
+    AE.lastKey = '';
+    AE.errorCount = 0;
+    AE.pendingResume = 0;
+    if (currentRoomState.mode === 'site') {
+      reloadSiteFrame();
+    }
+    fetchState();
+    return;
+  }
+  window.location.reload();
+}
+
 function returnToLobby(noticeMessage) {
   autoReconnect = false;
   isWsConnected = false;
@@ -1256,7 +1680,9 @@ function returnToLobby(noticeMessage) {
     activeRoomWs = null;
   }
   aIsPaused = true;
-  pauseCurrentAudio();
+  currentRoomState.audioStreamUrl = null;
+  audioItems = [];
+  reconcileAudio();
   if (vTimeoutId) { clearTimeout(vTimeoutId); vTimeoutId = null; }
   if (ytPlayer && ytPlayer.destroy) {
     try { ytPlayer.destroy(); } catch (e) {}
@@ -1294,6 +1720,7 @@ function connectWebSocket() {
 
   ws.onopen = function() {
     isWsConnected = true;
+    setTimeout(function() { reportCurrentAudioState(true); }, 250);
     pingTimer = setInterval(function() {
       if (ws.readyState === WebSocket.OPEN) {
         try { ws.send(JSON.stringify({ type: 'ping' })); } catch (e) {}
@@ -1310,11 +1737,10 @@ function connectWebSocket() {
         showDeviceIdentifyOverlay(data);
       } else if (data.type === 'bindRoom') {
         if (data.roomSlug && data.roomSlug !== roomSlug) {
-          safeSetStorage('signage_last_room', data.roomSlug);
-          window.location.replace('/player/index.html?room=' + encodeURIComponent(data.roomSlug));
+          switchToRoomInPlace(data.roomSlug);
         } else if (!data.roomSlug && roomSlug) {
           safeSetStorage('signage_last_room', '');
-          window.location.replace('/player/index.html');
+          returnToLobby('Aparelho desvinculado pelo administrador.');
         }
       } else if (data.type === 'roomFull') {
         autoReconnect = false;
@@ -1326,7 +1752,7 @@ function connectWebSocket() {
         try { ws.close(4001, 'Kicked to lobby'); } catch (e) {}
         returnToLobby(data.reason || 'Você foi retirado da sala pelo administrador.');
       } else if (data.type === 'reload') {
-        window.location.reload();
+        reloadRoomInPlace();
       } else if (data.type === 'reloadSite') {
         reloadSiteFrame();
       } else if (data.type === 'roomDeleted') {
@@ -1335,12 +1761,34 @@ function connectWebSocket() {
       } else if (data.type === 'stateSync' || data.type === 'updateState') {
         updateStateSilently(data.state, data.version);
       } else if (data.type === 'control') {
+        // Se for comando de áudio mas a playlist ainda não estiver carregada na memória, sincroniza o estado completo
+        if (
+          data.target === 'audio' &&
+          data.state &&
+          data.state.audioPlaylist &&
+          (!audioPlaylist || audioPlaylist.id !== data.state.audioPlaylist || audioItems.length === 0)
+        ) {
+          updateStateSilently(data.state, data.version);
+          return;
+        }
         enqueuePlayerEvent(function(done) {
           var ver = Number(data.version || 0);
           if (ver > currentStateVersion) {
             currentStateVersion = ver;
           }
-          handleCommand(data.target, data.command, data.value);
+          if (data.state) {
+            currentRoomState = assignObj(currentRoomState, data.state);
+            if (ENABLE_AUDIO && data.state.audioVolume !== undefined) {
+              setMasterVolume(data.state.audioVolume);
+            }
+          }
+          var cmdValue = data.value;
+          if ((data.command === 'next' || data.command === 'prev') && data.state && data.state.currentAudioIndex !== undefined) {
+            cmdValue = data.state.currentAudioIndex;
+            handleCommand(data.target, 'setTrackIndex', cmdValue);
+          } else {
+            handleCommand(data.target, data.command, cmdValue);
+          }
           done();
         });
       }
@@ -1402,8 +1850,7 @@ function connectHubWebSocket() {
         if (data.type === 'identify') {
           showDeviceIdentifyOverlay(data);
         } else if (data.type === 'bindRoom' && data.roomSlug) {
-          safeSetStorage('signage_last_room', data.roomSlug);
-          window.location.replace('/player/index.html?room=' + encodeURIComponent(data.roomSlug));
+          switchToRoomInPlace(data.roomSlug);
         } else if (data.type === 'reload') {
           window.location.reload();
         }
@@ -1430,8 +1877,7 @@ function registerDeviceWithServer() {
     assignedRoomSlug: roomSlug || null
   }, function(err, data) {
     if (!err && !roomSlug && data && data.device && data.device.assignedRoomSlug) {
-      safeSetStorage('signage_last_room', data.device.assignedRoomSlug);
-      window.location.replace('/player/index.html?room=' + encodeURIComponent(data.device.assignedRoomSlug));
+      switchToRoomInPlace(data.device.assignedRoomSlug);
     }
   });
 }
@@ -1478,6 +1924,12 @@ function setLobbyDpadFocus(idx) {
 document.addEventListener('keydown', function(e) {
   var code = e.keyCode || e.which;
   var key = e.key || '';
+
+  if (AE.blocked) {
+    unlockAudioFromGesture();
+    if (e.preventDefault) e.preventDefault();
+    return;
+  }
 
   if (isIdentifyModalOpen && (key === 'Enter' || code === 13 || code === 27)) {
     dismissIdentifyOverlay();
@@ -1570,7 +2022,7 @@ function showRoomSelection(notice, skipCountdown) {
 
     var modeLabel = ENABLE_AUDIO
       ? 'Modo Completo (Com Áudio)'
-      : 'Modo TV Leve (Sem Áudio • Otimizado Fire Stick / Hisense)';
+      : 'Modo Sem Áudio (Som Desativado nesta Tela)';
 
     menu.innerHTML =
       noticeHtml +
@@ -1588,32 +2040,14 @@ function showRoomSelection(notice, skipCountdown) {
     var toggleLiteBtn = menu.querySelector('#btn-toggle-tv-lite');
     if (toggleLiteBtn) {
       toggleLiteBtn.onclick = function() {
-        var nextLite = ENABLE_AUDIO ? '1' : '0';
-        safeSetStorage('signage_tv_lite_mode', nextLite);
-        window.location.replace('/player/index.html' + (nextLite === '1' ? '?tv=1' : '?audio=1'));
+        var nextDisabled = ENABLE_AUDIO ? '1' : '0';
+        safeSetStorage('signage_audio_disabled', nextDisabled);
+        window.location.replace('/player/index.html' + (nextDisabled === '1' ? '?audio=0' : '?audio=1'));
       };
     }
 
     var enterRoom = function(room) {
-      if (reconnectCountdownTimer) {
-        clearInterval(reconnectCountdownTimer);
-        reconnectCountdownTimer = null;
-      }
-      safeSetStorage('signage_last_room', room.slug);
-      try {
-        if (window.history && window.history.pushState) {
-          window.history.pushState({}, '', '?room=' + encodeURIComponent(room.slug) + (ENABLE_AUDIO ? '' : '&tv=1'));
-        }
-      } catch (e) {}
-      roomSlug = room.slug;
-      autoReconnect = true;
-      if (hubWs) {
-        try { hubWs.close(); } catch (e) {}
-        hubWs = null;
-      }
-      if (menu.parentNode) menu.parentNode.removeChild(menu);
-      fetchState();
-      connectWebSocket();
+      switchToRoomInPlace(room.slug);
     };
 
     if (canAutoReconnect) {

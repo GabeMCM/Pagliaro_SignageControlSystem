@@ -1,6 +1,13 @@
 import { WSContext } from "hono/ws";
 import { db } from "../services/db.ts";
 
+export interface PlayerAudioState {
+  state: string; // playing | paused | loading | blocked | error | idle | disabled
+  detail?: string;
+  track?: number | null;
+  at: number;
+}
+
 export interface ConnectedClient {
   id: string;
   room: string;
@@ -10,6 +17,7 @@ export interface ConnectedClient {
   userAgent: string;
   deviceLabel: string;
   deviceId?: string;
+  audioState?: PlayerAudioState;
 }
 
 export interface DeviceInfo {
@@ -19,6 +27,7 @@ export interface DeviceInfo {
   ip: string;
   userAgent: string;
   deviceLabel: string;
+  audioState?: PlayerAudioState | null;
 }
 
 export interface DeviceSession {
@@ -309,9 +318,33 @@ export const wsManager = {
         ip: client.ip,
         userAgent: client.userAgent,
         deviceLabel: client.deviceLabel,
+        audioState: client.audioState || null,
       });
     }
     return list;
+  },
+
+  /**
+   * Atualiza o estado real de áudio reportado pelo player (tocando, bloqueado, erro...)
+   */
+  setClientAudioState(
+    room: string,
+    ws: WSContext,
+    info: { state: string; detail?: string; track?: number | null }
+  ) {
+    const clients = roomClients.get(room);
+    if (!clients) return;
+    for (const client of clients.values()) {
+      const sameSocket = client.ws === ws || ((client.ws as any).raw && (client.ws as any).raw === (ws as any).raw);
+      if (!sameSocket) continue;
+      const prev = client.audioState;
+      client.audioState = { state: info.state, detail: info.detail || "", track: info.track ?? null, at: Date.now() };
+      if (!prev || prev.state !== info.state || prev.track !== client.audioState.track || prev.detail !== client.audioState.detail) {
+        console.log(`[WS][Áudio] ${client.deviceLabel} @ ${room}: ${info.state}${info.detail ? " (" + info.detail + ")" : ""}`);
+        this.broadcastPresence(room);
+      }
+      return;
+    }
   },
 
   isOnline(room: string): boolean {

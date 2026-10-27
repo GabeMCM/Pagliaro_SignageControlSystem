@@ -5,6 +5,13 @@ export const API_BASE =
   (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE) ||
   (typeof window !== "undefined" ? window.location.origin : "http://localhost:8001");
 
+export interface DeviceAudioState {
+  state: "playing" | "paused" | "loading" | "blocked" | "error" | "idle" | "disabled" | string;
+  detail?: string;
+  track?: number | null;
+  at: number;
+}
+
 export interface DeviceInfo {
   id: string;
   room: string;
@@ -12,6 +19,7 @@ export interface DeviceInfo {
   ip: string;
   userAgent: string;
   deviceLabel: string;
+  audioState?: DeviceAudioState | null;
 }
 
 export interface Room {

@@ -5,6 +5,13 @@ import { youtubeService } from "../services/youtube.ts";
 import { executeSchedule, type ScheduleTask } from "../services/scheduler.ts";
 import { roomEventQueue } from "../services/event-queue.ts";
 import {
+  ensureAudioCached,
+  getAudioCacheStatus,
+  getCachedAudio,
+  prefetchAudio,
+  serveCachedAudio,
+} from "../services/audio-cache.ts";
+import {
   getAdiauAsset,
   getAdiauData,
   parseAdiauParams,
@@ -663,22 +670,43 @@ api.get("/youtube/stream/:videoId", async (c) => {
   }
 
   const range = c.req.header("range");
-  const userAgent = c.req.header("user-agent") || "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
 
+  // 1. Caminho principal: arquivo local em disco (estável em qualquer TV, com Range/206)
+  try {
+    let cached = await getCachedAudio(videoId);
+    if (!cached) {
+      // Aguarda o download em blocos (normalmente 1–4s para uma música). Se demorar demais,
+      // cai no proxy ao vivo enquanto o download continua em segundo plano.
+      cached = await Promise.race([
+        ensureAudioCached(videoId),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000)),
+      ]).catch(() => null);
+    }
+    if (cached) {
+      return await serveCachedAudio(c.req.method, range, cached);
+    }
+  } catch (err: any) {
+    console.warn(`[YouTube Stream] Cache indisponível para ${videoId}: ${err?.message}`);
+  }
+
+  // 2. Fallback: proxy ao vivo do googlevideo (UA fixo de desktop e Range sempre presente)
   const fetchStream = async (bypassCache = false) => {
     const { url, mimeType } = await youtubeService.getAudioStreamUrl(videoId, bypassCache);
     const headers: Record<string, string> = {
-      "User-Agent": userAgent,
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      "Range": range || "bytes=0-",
     };
-    if (range) {
-      headers["Range"] = range;
-    }
     const res = await fetch(url, { headers });
     return { res, mimeType };
   };
 
   try {
-    const { res, mimeType } = await fetchStream(false);
+    let { res, mimeType } = await fetchStream(false);
+    if (res.status === 403 || res.status === 410) {
+      await res.body?.cancel().catch(() => {});
+      youtubeService.invalidateCache(videoId);
+      ({ res, mimeType } = await fetchStream(true));
+    }
 
     if (!res.ok && res.status !== 206) {
       youtubeService.invalidateCache(videoId);
@@ -694,20 +722,22 @@ api.get("/youtube/stream/:videoId", async (c) => {
     responseHeaders.set("Access-Control-Allow-Headers", "Range, User-Agent, Content-Type");
 
     const contentRange = res.headers.get("content-range");
-    if (contentRange) responseHeaders.set("Content-Range", contentRange);
+    const outStatus = !range && res.status === 206 ? 200 : res.status;
+    if (contentRange && outStatus === 206) responseHeaders.set("Content-Range", contentRange);
 
     const contentLength = res.headers.get("content-length");
     if (contentLength) responseHeaders.set("Content-Length", contentLength);
 
     if (c.req.method === "HEAD") {
+      await res.body?.cancel().catch(() => {});
       return new Response(null, {
-        status: res.status,
+        status: outStatus,
         headers: responseHeaders,
       });
     }
 
     return new Response(res.body, {
-      status: res.status,
+      status: outStatus,
       headers: responseHeaders,
     });
   } catch (err: any) {
@@ -718,6 +748,17 @@ api.get("/youtube/stream/:videoId", async (c) => {
     }, 503);
   }
 });
+
+// Pré-download de faixa (o player chama para a PRÓXIMA música enquanto a atual toca)
+api.get("/youtube/prefetch/:videoId", (c) => {
+  const videoId = youtubeService.extractVideoId(c.req.param("videoId"));
+  if (!videoId) return c.json({ ok: false }, 400);
+  prefetchAudio(videoId);
+  return c.json({ ok: true, videoId }, 202);
+});
+
+// Diagnóstico do cache de áudio
+api.get("/youtube/cache-status", (c) => c.json(getAudioCacheStatus()));
 
 // ========================
 // AGENDAMENTOS E AUTOMAÇÕES (Timeline de Cerimônias e Velórios)

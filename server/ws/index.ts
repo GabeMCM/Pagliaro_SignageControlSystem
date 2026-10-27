@@ -150,6 +150,14 @@ wsRoute.get(
             roomEventQueue.enqueueSetState(room, data.updates).catch(() => {});
             return;
           }
+          if (data.type === "audioState") {
+            wsManager.setClientAudioState(room, ws, {
+              state: String(data.state || "unknown"),
+              detail: data.detail ? String(data.detail).slice(0, 200) : "",
+              track: data.track !== undefined ? Number(data.track) : null,
+            });
+            return;
+          }
         } catch (_e) {}
         console.log(`[WS][${role}] Mensagem da sala ${room}:`, event.data);
       },

@@ -1,5 +1,6 @@
 import { db } from "./db.ts";
 import { wsManager } from "../ws/manager.ts";
+import { prefetchRoomAudio } from "./audio-cache.ts";
 
 export interface RoomEvent {
   type: "setState" | "control";
@@ -176,6 +177,9 @@ class RoomEventQueueManager {
       // 2. Persiste no banco
       await db.saveRoomState(room, current);
 
+      // 3. Pré-baixa a faixa atual e as próximas no cache de disco (não bloqueia)
+      prefetchRoomAudio(current);
+
       return current;
     });
   }
@@ -198,6 +202,9 @@ class RoomEventQueueManager {
       if (body.target === "audio" && body.command === "trackChanged") {
         if (current.audioStatus !== "playing") {
           return { ignored: true, reason: "Audio is not playing", state: current };
+        }
+        if (Number(body.value) === Number(current.currentAudioIndex || 0)) {
+          return { ignored: true, reason: "Track already current", state: current };
         }
         const now = Date.now();
         const lastChange = this.lastAutoTrackChange.get(room) || 0;
@@ -288,6 +295,10 @@ class RoomEventQueueManager {
 
       // 2. Persiste no banco em ordem estrita da fila
       await db.saveRoomState(room, current);
+
+      if (body.target === "audio") {
+        prefetchRoomAudio(current);
+      }
 
       return { ignored: false, state: current };
     });

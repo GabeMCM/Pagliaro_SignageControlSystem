@@ -1061,6 +1061,16 @@ function RoomOperator() {
             }
 
             if (data.type === "devicesUpdate" || data.type === "presence") {
+              if (Array.isArray(data.devices)) {
+                qc.setQueryData(["roomDevices", slug], (old: any) => ({
+                  ...(old || {}),
+                  success: true,
+                  room: slug,
+                  count: data.devices.length,
+                  max: data.maxClients || old?.max || 2,
+                  devices: data.devices,
+                }));
+              }
               qc.invalidateQueries({ queryKey: ["roomDevices", slug] });
               return;
             }
@@ -2037,6 +2047,46 @@ function RoomOperator() {
                   </div>
                 </div>
               </div>
+
+              {/* Status Real de Áudio por Aparelho Conectado na Sala */}
+              {devicesQ.data?.devices && devicesQ.data.devices.length > 0 && (
+                <div className="pt-2 border-t border-neutral-800/80 space-y-1.5">
+                  <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider block">
+                    Status de Som nas Telas Conectadas ({devicesQ.data.devices.length}):
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {devicesQ.data.devices.map((dev) => {
+                      const st = dev.audioState?.state || "idle";
+                      const detail = dev.audioState?.detail;
+                      const badge =
+                        st === "playing"
+                          ? { label: "Tocando som", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" }
+                          : st === "blocked"
+                          ? { label: "Som bloqueado na TV (aperte OK no controle)", cls: "bg-amber-500/20 text-amber-300 border-amber-500/40" }
+                          : st === "loading"
+                          ? { label: detail || "Carregando áudio...", cls: "bg-sky-500/15 text-sky-300 border-sky-500/30" }
+                          : st === "error"
+                          ? { label: detail || "Reconectando áudio...", cls: "bg-red-500/20 text-red-300 border-red-500/40" }
+                          : st === "disabled"
+                          ? { label: "Modo sem áudio nesta tela", cls: "bg-neutral-900 text-neutral-500 border-neutral-800" }
+                          : st === "paused"
+                          ? { label: "Pausado", cls: "bg-neutral-900 text-neutral-400 border-neutral-800" }
+                          : { label: "Aguardando", cls: "bg-neutral-900 text-neutral-400 border-neutral-800" };
+                      return (
+                        <div
+                          key={dev.id}
+                          className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-[2px] bg-neutral-900/70 border border-neutral-800 text-[11px]"
+                        >
+                          <span className="text-neutral-200 font-medium truncate">{dev.deviceLabel}</span>
+                          <span className={`px-1.5 py-0.5 rounded-[2px] border text-[10px] font-bold flex-shrink-0 ${badge.cls}`}>
+                            {badge.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Seletor de 4 Abas: Buscar, Importar, Fila, Rádio (MOVIDO PARA DEPOIS DO CONTROLE) */}
@@ -3108,8 +3158,18 @@ function RoomDevicesCard({
             </div>
 
             <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-neutral-900">
-              <span className="text-[10px] text-neutral-500">
-                Conectada
+              <span className="text-[10px] text-neutral-400 truncate">
+                {device.audioState?.state === "playing"
+                  ? "🔊 Reproduzindo som"
+                  : device.audioState?.state === "blocked"
+                  ? "⚠️ Som bloqueado (aperte OK na TV)"
+                  : device.audioState?.state === "loading"
+                  ? "⏳ Carregando áudio..."
+                  : device.audioState?.state === "error"
+                  ? `⚠️ ${device.audioState.detail || "Reconectando áudio"}`
+                  : device.audioState?.state === "disabled"
+                  ? "🔇 Som desativado nesta tela"
+                  : "Conectada"}
               </span>
               <button
                 onClick={() => {

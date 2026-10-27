@@ -28,6 +28,7 @@ interface StreamCacheEntry {
   url: string;
   mimeType: string;
   durationSeconds: number;
+  contentLength?: number;
   expiresAt: number;
 }
 
@@ -189,12 +190,20 @@ class YoutubeService {
   /**
    * Obtém a URL do stream direto de áudio AAC com cache em memória
    */
-  public async getAudioStreamUrl(videoId: string, bypassCache = false): Promise<{ url: string; mimeType: string }> {
+  public async getAudioStreamUrl(
+    videoId: string,
+    bypassCache = false
+  ): Promise<{ url: string; mimeType: string; contentLength: number; durationSeconds: number }> {
     const now = Date.now();
     const cached = this.streamCache.get(videoId);
 
     if (!bypassCache && cached && cached.expiresAt > now) {
-      return { url: cached.url, mimeType: cached.mimeType };
+      return {
+        url: cached.url,
+        mimeType: cached.mimeType,
+        contentLength: cached.contentLength || 0,
+        durationSeconds: cached.durationSeconds,
+      };
     }
 
     let info: any;
@@ -208,28 +217,35 @@ class YoutubeService {
       this.streamCache.delete(videoId);
       throw new Error(err.message || "Falha ao resolver áudio do YouTube.");
     }
-    // Prioriza itag 140 (AAC 128k, áudio universal HTML5) ou qualquer formato apenas de áudio
+    // Prioriza itag 140 (AAC 128k, áudio universal HTML5 — suportado por TODAS as TVs),
+    // depois qualquer áudio MP4/AAC, e só então outros formatos (WebM/Opus não toca em TVs antigas)
+    const formats: any[] = Array.isArray(info.formats) ? info.formats.filter((f: any) => f && f.url) : [];
+    const isMp4 = (f: any) => /audio\/mp4|mp4a/i.test(String(f.mimeType || ""));
     const format =
-      info.formats.find((f: any) => f.itag === 140) ||
-      info.formats.find((f: any) => f.hasAudio && !f.hasVideo) ||
-      info.formats.find((f: any) => f.hasAudio);
+      formats.find((f: any) => f.itag === 140) ||
+      formats.find((f: any) => f.hasAudio && !f.hasVideo && isMp4(f)) ||
+      formats.find((f: any) => f.itag === 18) ||
+      formats.find((f: any) => f.hasAudio && !f.hasVideo) ||
+      formats.find((f: any) => f.hasAudio);
 
     if (!format || !format.url) {
       throw new Error("Nenhum formato de áudio disponível para este vídeo.");
     }
 
-    const mimeType = format.mimeType || "audio/mp4";
+    const mimeType = String(format.mimeType || "audio/mp4").split(";")[0].trim() || "audio/mp4";
     const durationSeconds = Number(info.videoDetails.lengthSeconds) || 0;
+    const contentLength = Number(format.contentLength) || 0;
 
     // Cache por 3 horas (URLs do Google expiram em ~6h)
     this.streamCache.set(videoId, {
       url: format.url,
       mimeType,
       durationSeconds,
+      contentLength,
       expiresAt: now + 3 * 60 * 60 * 1000,
     });
 
-    return { url: format.url, mimeType };
+    return { url: format.url, mimeType, contentLength, durationSeconds };
   }
 
   public invalidateCache(videoId: string) {
