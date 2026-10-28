@@ -66,6 +66,7 @@ import {
   AlertCircle,
   Save,
 } from "lucide-react";
+import { AdiauSection } from "@/components/AdiauSection";
 
 export const Route = createFileRoute("/admin/$slug")({
   component: RoomOperator,
@@ -2028,18 +2029,30 @@ function RoomOperator() {
 
             {/* Se o site está ativo, mostra o link atual de forma limpa */}
             {isSiteActive && (
-              <div className="bg-neutral-950 border border-neutral-900 rounded-none p-2 text-xs text-neutral-200 flex items-center justify-between gap-2 overflow-hidden w-full">
+              <div className="bg-neutral-950 border border-neutral-900 rounded-none p-2.5 text-xs text-neutral-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 overflow-hidden w-full">
                 <div className="truncate flex items-center gap-2 min-w-0 flex-1">
-                  <span className="font-semibold text-neutral-400 flex-shrink-0 text-[11px]">Link Atual:</span>
-                  <span className="truncate text-white min-w-0 flex-1 font-mono text-[11px]">{stateQ.data?.siteUrl}</span>
+                  <span className="font-semibold text-neutral-400 flex-shrink-0 text-[11px] uppercase font-mono">No Ar:</span>
+                  <span className="truncate text-white min-w-0 flex-1 font-mono text-[11px]" title={stateQ.data?.siteUrl || ""}>
+                    {stateQ.data?.siteUrl}
+                  </span>
                 </div>
               </div>
             )}
 
-            {/* Campo para Colocar Novo Link */}
-            <div className="space-y-1.5 w-full">
-              <label className="text-xs font-semibold text-neutral-300 block">
-                {isSiteActive ? "Trocar por outro link:" : "Cole o link para exibir na TV:"}
+            {/* SEÇÃO INTEGRADA ADIAŬ: Captura automática de cerimônias ativas */}
+            <AdiauSection
+              currentSiteUrl={stateQ.data?.siteUrl}
+              onApplySiteUrl={(url) => {
+                setSiteInputUrl(url);
+                setState.mutate({ siteUrl: url, mode: "site" });
+              }}
+              isApplying={setState.isPending}
+            />
+
+            {/* Campo Alternativo para Link Manual / Outro Site */}
+            <div className="space-y-1.5 w-full pt-1 border-t border-neutral-900">
+              <label className="text-xs font-semibold text-neutral-400 block font-mono">
+                Ou cole um link manual (YouTube, painel externo ou URL customizada):
               </label>
               <div className="flex flex-col sm:flex-row items-stretch gap-1.5 w-full">
                 <input
@@ -2048,20 +2061,20 @@ function RoomOperator() {
                   value={siteInputUrl}
                   onChange={(e) => setSiteInputUrl(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleApplySite()}
-                  className="w-full flex-1 min-w-0 rounded-none border border-neutral-900 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500 transition"
+                  className="w-full flex-1 min-w-0 rounded-none border border-neutral-900 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500 transition font-mono"
                 />
                 <button
                   onClick={handleApplySite}
                   disabled={!siteInputUrl.trim() || setState.isPending}
-                  className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-none bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow flex-shrink-0"
+                  className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-none bg-neutral-900 hover:bg-neutral-800 border border-neutral-900 text-white font-mono font-bold text-xs uppercase tracking-wider disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-xs flex-shrink-0"
                 >
                   <Tv className="h-3.5 w-3.5" />
                   <span>Exibir na TV</span>
                 </button>
               </div>
-              <p className="text-[10px] text-neutral-500 flex items-center gap-1">
-                <Info className="h-3 w-3 text-neutral-500 flex-shrink-0" />
-                <span>O site abrirá imediatamente em tela cheia na TV conectada.</span>
+              <p className="text-[10px] text-neutral-400 flex items-center gap-1">
+                <Info className="h-3 w-3 text-neutral-400 flex-shrink-0" />
+                <span>O site abrirá imediatamente em tela cheia na TV conectada à sala.</span>
               </p>
             </div>
           </section>
