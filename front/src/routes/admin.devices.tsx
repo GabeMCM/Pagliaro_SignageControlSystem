@@ -497,15 +497,15 @@ function DevicesAdminPage() {
               return (
                 <div
                   key={device.id}
-                  className={`p-3.5 sm:p-4 transition flex flex-col gap-2.5 ${
+                  className={`p-3 sm:p-4 transition flex flex-col gap-2.5 w-full max-w-full min-w-0 overflow-hidden ${
                     device.online
                       ? "hover:bg-neutral-900/40"
                       : "opacity-60 hover:opacity-85"
                   }`}
                 >
                   {/* LINHA 1: Ícone + Identificação + Ações Rápidas */}
-                  <div className="flex items-center justify-between gap-2.5 flex-wrap sm:flex-nowrap">
-                    <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 w-full min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0 w-full sm:w-auto">
                       <div className="relative p-2 bg-neutral-900 border border-neutral-900 flex-shrink-0 text-neutral-200">
                         {getDeviceIcon(device.detectedLabel)}
                         <span
@@ -516,9 +516,9 @@ function DevicesAdminPage() {
                         />
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs sm:text-sm font-bold text-white truncate max-w-[240px] sm:max-w-md font-mono">
+                          <span className="text-xs sm:text-sm font-bold text-white truncate max-w-[180px] sm:max-w-md font-mono">
                             {device.name}
                           </span>
                           <button
@@ -526,13 +526,13 @@ function DevicesAdminPage() {
                               setEditingDevice(device);
                               setEditName(device.name);
                             }}
-                            className="text-neutral-400 hover:text-white transition p-0.5"
+                            className="text-neutral-400 hover:text-white transition p-0.5 flex-shrink-0"
                             title="Renomear aparelho"
                           >
                             <Pencil className="h-3 w-3" />
                           </button>
                           <span
-                            className={`text-[9px] font-bold uppercase font-mono px-1 py-0.2 border ${
+                            className={`text-[9px] font-bold uppercase font-mono px-1 py-0.2 border flex-shrink-0 ${
                               device.online
                                 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"
                                 : "bg-neutral-900 text-neutral-400 border-neutral-900"
@@ -548,11 +548,11 @@ function DevicesAdminPage() {
                     </div>
 
                     {/* Botões de Ação */}
-                    <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto sm:ml-0">
+                    <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap flex-shrink-0 w-full sm:w-auto justify-end pt-1 sm:pt-0 border-t sm:border-t-0 border-neutral-900/50">
                       <button
                         onClick={() => identifyDevice.mutate(device.id)}
                         disabled={!device.online || isIdentifying}
-                        className={`min-h-[30px] px-2.5 py-1 text-xs font-mono font-bold transition flex items-center gap-1.5 ${
+                        className={`min-h-[28px] px-2.5 py-1 text-xs font-mono font-bold transition flex items-center gap-1.5 ${
                           isIdentifying
                             ? "bg-amber-400 text-black font-extrabold"
                             : device.online
@@ -568,7 +568,7 @@ function DevicesAdminPage() {
                       <button
                         onClick={() => reloadDevice.mutate(device.id)}
                         disabled={!device.online}
-                        className={`min-h-[30px] px-2 py-1 text-xs font-mono transition flex items-center gap-1 ${
+                        className={`min-h-[28px] px-2 py-1 text-xs font-mono transition flex items-center gap-1 ${
                           device.online
                             ? "bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-900"
                             : "bg-neutral-900 border border-neutral-900 text-neutral-400 cursor-not-allowed"
@@ -585,7 +585,7 @@ function DevicesAdminPage() {
                             deleteDevice.mutate(device.id);
                           }
                         }}
-                        className="min-h-[30px] px-2 py-1 bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-red-400 hover:border-red-900 text-xs transition flex items-center justify-center"
+                        className="min-h-[28px] px-2 py-1 bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-red-400 hover:border-red-900 text-xs transition flex items-center justify-center"
                         title="Remover aparelho"
                       >
                         <Trash2 className="h-3 w-3 flex-shrink-0" />
@@ -594,13 +594,13 @@ function DevicesAdminPage() {
                   </div>
 
                   {/* LINHA 2: Metadados Técnicos (ID, IP, Local da Tela, Visto por Último) */}
-                  <div className="flex items-center gap-2.5 sm:gap-5 text-[11px] text-neutral-400 flex-wrap bg-black px-2.5 py-1.5 border border-neutral-900">
-                    <div className="flex items-center gap-1 font-mono">
-                      <span className="text-[10px] uppercase text-neutral-400">ID:</span>
-                      <span className="text-neutral-200">{device.id}</span>
+                  <div className="flex items-center gap-2 sm:gap-4 text-[11px] text-neutral-400 flex-wrap bg-black px-2.5 py-1.5 border border-neutral-900 w-full min-w-0 overflow-hidden">
+                    <div className="flex items-center gap-1 font-mono min-w-0">
+                      <span className="text-[10px] uppercase text-neutral-400 flex-shrink-0">ID:</span>
+                      <span className="text-neutral-200 truncate max-w-[100px] sm:max-w-none">{device.id}</span>
                       <button
                         onClick={() => handleCopyId(device.id)}
-                        className="text-neutral-400 hover:text-white p-0.5 transition"
+                        className="text-neutral-400 hover:text-white p-0.5 transition flex-shrink-0"
                         title="Copiar ID"
                       >
                         {copiedId === device.id ? (
@@ -611,14 +611,14 @@ function DevicesAdminPage() {
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-1 font-mono">
+                    <div className="flex items-center gap-1 font-mono flex-shrink-0">
                       <Wifi className="h-3 w-3 text-neutral-400" />
                       <span className="text-neutral-300">{device.ip || "localhost"}</span>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] uppercase text-neutral-400 font-mono">Local:</span>
-                      <span className="text-neutral-300">
+                    <div className="flex items-center gap-1 min-w-0 flex-1 truncate">
+                      <span className="text-[10px] uppercase text-neutral-400 font-mono flex-shrink-0">Local:</span>
+                      <span className="text-neutral-300 truncate">
                         {device.currentPath === "/"
                           ? "Na Raiz (/)"
                           : device.currentPath?.includes("?room=")
@@ -627,15 +627,15 @@ function DevicesAdminPage() {
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1 text-neutral-400 ml-auto font-mono text-[10px]">
+                    <div className="flex items-center gap-1 text-neutral-400 ml-auto font-mono text-[10px] flex-shrink-0">
                       <Clock className="h-2.5 w-2.5 text-neutral-400" />
                       <span>{timeAgo(device.lastSeenAt)}</span>
                     </div>
                   </div>
 
                   {/* LINHA 3: Vinculação de Sala */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-0.5">
-                    <div className="flex items-center gap-2 flex-1 max-w-xl">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-0.5 w-full min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 flex-1 min-w-0 w-full max-w-full sm:max-w-xl">
                       <span className="text-[11px] font-mono text-neutral-400 flex items-center gap-1 flex-shrink-0">
                         <Link2 className="h-3 w-3 text-neutral-400" />
                         <span>Vincular Sala:</span>
@@ -649,7 +649,7 @@ function DevicesAdminPage() {
                             updates: { assignedRoomSlug: val },
                           });
                         }}
-                        className="flex-1 bg-black border border-neutral-900 px-2 py-1 text-xs text-white focus:outline-none focus:border-neutral-600 transition cursor-pointer hover:border-neutral-700 font-sans"
+                        className="w-full sm:flex-1 min-w-0 max-w-full bg-black border border-neutral-900 px-2 py-1 text-xs text-white focus:outline-none focus:border-neutral-600 transition cursor-pointer hover:border-neutral-700 font-sans truncate"
                       >
                         <option value="">Lobby / Nenhuma sala vinculada</option>
                         {rooms.map((room) => {
@@ -668,7 +668,7 @@ function DevicesAdminPage() {
                       <Link
                         to="/admin/$slug"
                         params={{ slug: device.assignedRoomSlug }}
-                        className="text-[11px] text-neutral-300 hover:text-white flex items-center gap-1 font-mono flex-shrink-0"
+                        className="text-[11px] text-neutral-300 hover:text-white flex items-center gap-1 font-mono flex-shrink-0 self-start sm:self-auto"
                       >
                         <span>Ir para a Sala</span>
                         <ExternalLink className="h-3 w-3" />

@@ -58,7 +58,7 @@ function AdminLayout() {
   });
 
   const [creating, setCreating] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
@@ -91,74 +91,38 @@ function AdminLayout() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen h-[100dvh] w-full bg-black text-neutral-100 font-sans antialiased overflow-hidden selection:bg-neutral-800">
-      {/* Mobile Top Header - Ultra-compact, sharp, professional */}
-      <div className="md:hidden flex items-center justify-between border-b border-neutral-900 bg-black px-3 py-2 flex-shrink-0 z-30">
-        <div className="flex items-center gap-2 min-w-0">
-          <Link to="/admin" className="flex items-center gap-1.5 flex-shrink-0">
-            <span className="text-[11px] font-bold tracking-[0.25em] text-white uppercase font-mono">
-              PAGLIARO
+      {/* Mobile Top Header - Ultra-compact, clean brand and active room */}
+      <div className="md:hidden flex items-center justify-between border-b border-neutral-900 bg-black px-3.5 py-2.5 flex-shrink-0 z-30">
+        <Link to="/admin" className="flex items-center gap-1.5 flex-shrink-0">
+          <span className="text-[11px] font-bold tracking-[0.25em] text-white uppercase font-mono">
+            PAGLIARO
+          </span>
+          <span className="text-[9px] uppercase tracking-wider text-neutral-400 font-mono">
+            CMS
+          </span>
+        </Link>
+        {activeRoom && (
+          <div className="flex items-center gap-1.5 pl-2 border-l border-neutral-900 min-w-0">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+            <span className="text-[11px] font-mono text-neutral-300 truncate">
+              {activeRoom.name}
             </span>
-            <span className="text-[9px] uppercase tracking-wider text-neutral-400 font-mono">
-              CMS
-            </span>
-          </Link>
-          {activeRoom && (
-            <div className="flex items-center gap-1.5 pl-2 border-l border-neutral-900 min-w-0">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-              <span className="text-[11px] font-medium text-neutral-300 truncate">
-                {activeRoom.name}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          {/* User / Permissions Indicator */}
-          <button
-            onClick={() => setPermissionsModalOpen(true)}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded-none bg-neutral-950 border border-neutral-900 text-neutral-300 hover:text-white text-[10px] font-mono tracking-tight"
-            title="Usuários & Permissões"
-          >
-            <Shield className="h-2.5 w-2.5 text-neutral-400" />
-            <span>ADMIN</span>
-          </button>
-
-          {/* Menu Drawer Toggle */}
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="flex items-center gap-1 px-2 py-1 rounded-none bg-neutral-950 border border-neutral-900 text-neutral-200 hover:text-white text-[11px] font-medium"
-            aria-label="Menu de Salas"
-          >
-            {sidebarOpen ? <X className="h-3.5 w-3.5" /> : <Menu className="h-3.5 w-3.5" />}
-            <span>Salas</span>
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Mobile Drawer Backdrop Overlay */}
-      {sidebarOpen && (
-        <div
-          onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 bg-black/85 z-40 md:hidden"
-        />
-      )}
-
-      {/* Sidebar / Mobile Drawer */}
+      {/* Sidebar (Desktop only - Mobile uses bottom bar & direct modals) */}
       <aside
-        className={`
-        ${sidebarOpen ? "fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] flex shadow-2xl" : "hidden"} 
-        md:flex md:relative md:z-auto ${collapsed ? "md:w-16" : "md:w-64"} flex-col border-r border-neutral-900 bg-black flex-shrink-0
-        h-full md:h-screen md:h-[100dvh] transition-all duration-200
-      `}
+        className={`hidden md:flex md:relative md:z-auto ${collapsed ? "md:w-16" : "md:w-64"} flex-col border-r border-neutral-900 bg-black flex-shrink-0 h-full md:h-screen md:h-[100dvh] transition-all duration-200`}
       >
         {/* Brand / Header */}
         <div className="flex flex-col border-b border-neutral-900 px-3 py-2.5">
           <div className="flex items-center justify-between gap-2">
-            <Link to="/admin" className="flex items-center gap-1.5 min-w-0" onClick={() => setSidebarOpen(false)}>
+            <Link to="/admin" className="flex items-center gap-1.5 min-w-0">
               <span className="text-xs uppercase tracking-[0.25em] text-white font-bold font-mono">
                 PAGLIARO
               </span>
-              {(!collapsed || sidebarOpen) && (
+              {!collapsed && (
                 <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-mono">
                   SIGNAGE
                 </span>
@@ -172,19 +136,10 @@ function AdminLayout() {
             >
               {collapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
             </button>
-
-            {/* Mobile Close Button */}
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="md:hidden text-neutral-400 hover:text-white p-1"
-              aria-label="Fechar menu"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
 
           {/* Quick Player URL */}
-          {(!collapsed || sidebarOpen) && (
+          {!collapsed && (
             <div className="mt-2 text-[10px] text-neutral-400 flex flex-col gap-1">
               <div className="flex items-center justify-between gap-1 flex-wrap">
                 <span className="text-neutral-400 font-mono text-[9px] uppercase tracking-wider">Acesso das TVs:</span>
@@ -228,7 +183,6 @@ function AdminLayout() {
         <div className="px-2 pt-2 pb-1.5 space-y-0.5 border-b border-neutral-900">
           <Link
             to="/admin"
-            onClick={() => setSidebarOpen(false)}
             className={`group flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs font-medium transition ${
               router.state.location.pathname === "/admin" || router.state.location.pathname === "/admin/"
                 ? "bg-neutral-900 text-white font-semibold"
@@ -244,7 +198,6 @@ function AdminLayout() {
 
           <Link
             to="/admin/devices"
-            onClick={() => setSidebarOpen(false)}
             className={`group flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs font-medium transition ${
               router.state.location.pathname === "/admin/devices"
                 ? "bg-neutral-900 text-white font-semibold"
@@ -277,7 +230,7 @@ function AdminLayout() {
             <div className="px-3 py-2 text-xs text-neutral-400 font-mono">{collapsed ? "..." : "Carregando..."}</div>
           )}
           {rooms.map((r) => (
-            <RoomItem key={r.slug} room={r} active={activeSlug === r.slug} onClick={() => setSidebarOpen(false)} collapsed={collapsed} />
+            <RoomItem key={r.slug} room={r} active={activeSlug === r.slug} collapsed={collapsed} />
           ))}
           {!isLoading && rooms.length === 0 && (
             <div className={`px-3 py-2 text-xs text-neutral-400 ${collapsed ? "text-center" : ""}`}>
@@ -314,7 +267,7 @@ function AdminLayout() {
           )}
 
           {/* User Session Widget (Preparation for Future User/Permissions Feature) */}
-          {(!collapsed || sidebarOpen) && (
+          {!collapsed && (
             <div className="pt-1 border-t border-neutral-900/60 flex items-center justify-between text-xs">
               <button
                 type="button"
@@ -379,10 +332,7 @@ function AdminLayout() {
 
         <button
           type="button"
-          onClick={() => {
-            setSidebarOpen(true);
-            setCreating(true);
-          }}
+          onClick={() => setCreateModalOpen(true)}
           className="flex flex-col items-center justify-center gap-1 py-1 text-neutral-400 hover:text-white transition"
         >
           <Plus className="h-4 w-4" />
@@ -399,7 +349,19 @@ function AdminLayout() {
         </button>
       </nav>
 
-      {/* Modal de Gestão de Usuários & Permissões (Preparação para Distribuição Multi-usuário) */}
+      {/* Modal de Criação de Sala */}
+      <CreateRoomModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onSuccess={(newRoom) => {
+          qc.invalidateQueries({ queryKey: ["rooms"] });
+          if (newRoom?.slug) {
+            router.navigate({ to: "/admin/$slug", params: { slug: newRoom.slug } });
+          }
+        }}
+      />
+
+      {/* Modal de Gestão de Usuários & Permissões */}
       <UsersPermissionsModal
         isOpen={permissionsModalOpen}
         onClose={() => setPermissionsModalOpen(false)}
@@ -531,6 +493,41 @@ function CreateRoomForm({ onSuccess, onCancel }: { onSuccess: (newRoom?: Room) =
         </button>
       </div>
     </form>
+  );
+}
+
+function CreateRoomModal({
+  isOpen,
+  onClose,
+  onSuccess,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (newRoom?: Room) => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+      <div className="w-full max-w-md bg-neutral-950 border border-neutral-900 p-4 space-y-3 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-neutral-900 pb-2">
+          <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-white uppercase">
+            <Plus className="h-3.5 w-3.5" />
+            <span>Cadastrar Nova Sala</span>
+          </div>
+          <button onClick={onClose} className="text-neutral-400 hover:text-white p-1">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <CreateRoomForm
+          onSuccess={(newRoom) => {
+            onSuccess(newRoom);
+            onClose();
+          }}
+          onCancel={onClose}
+        />
+      </div>
+    </div>
   );
 }
 
