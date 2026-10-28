@@ -1177,14 +1177,154 @@ function tickStandbyClock() {
   if (dateEl) dateEl.textContent = formatStandbyDate(now);
 }
 
-function shiftStandbyAntiBurnIn() {
+// --- BANCO DE IMAGENS SERENAS / CONTEMPLATIVAS PARA FUNERÁRIA & PROTETOR OLED ---
+var STANDBY_BG_IMAGES = [
+  'https://images.unsplash.com/photo-1518495973542-4542c06a5843?auto=format&fit=crop&w=1920&q=80', // Luz dourada suave entre folhas
+  'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1920&q=80', // Lago sereno com reflexo calmo e montanhas
+  'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=1920&q=80', // Névoa suave na floresta ao amanhecer
+  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1920&q=80', // Horizonte e praia em crepúsculo acolhedor
+  'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1920&q=80', // Clareira pacífica e solene
+  'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1920&q=80'  // Céu estrelado sereno e montanhas calmas
+];
+
+var standbyBgIndex = 0;
+var standbyActiveLayer = 'a';
+var standbyBgInterval = null;
+
+function rotateStandbyBackground() {
+  var layerA = document.getElementById('standby-bg-layer-a');
+  var layerB = document.getElementById('standby-bg-layer-b');
+  if (!layerA || !layerB) return;
+
+  var nextImg = STANDBY_BG_IMAGES[standbyBgIndex % STANDBY_BG_IMAGES.length];
+  standbyBgIndex++;
+
+  var preload = new Image();
+  preload.onload = function() {
+    if (!isStandbyActive) return;
+    if (standbyActiveLayer === 'a') {
+      layerB.style.backgroundImage = 'url("' + nextImg + '")';
+      layerB.className = 'standby-bg-layer active';
+      layerA.className = 'standby-bg-layer';
+      standbyActiveLayer = 'b';
+    } else {
+      layerA.style.backgroundImage = 'url("' + nextImg + '")';
+      layerA.className = 'standby-bg-layer active';
+      layerB.className = 'standby-bg-layer';
+      standbyActiveLayer = 'a';
+    }
+  };
+  preload.onerror = function() {
+    // Fallback gracioso: gradiente orgânico escuro local
+    var fallback = 'radial-gradient(ellipse at 50% 50%, #16202c 0%, #080c10 100%)';
+    var target = (standbyActiveLayer === 'a') ? layerB : layerA;
+    var other = (standbyActiveLayer === 'a') ? layerA : layerB;
+    target.style.backgroundImage = fallback;
+    target.className = 'standby-bg-layer active';
+    other.className = 'standby-bg-layer';
+    standbyActiveLayer = (standbyActiveLayer === 'a') ? 'b' : 'a';
+  };
+  preload.src = nextImg;
+}
+
+// 5 Posições equilibradas de roaming para proteção total anti-burn-in de TVs OLED
+var STANDBY_POSITIONS = [
+  'pos-center',
+  'pos-bottom-left',
+  'pos-center-right',
+  'pos-top-left',
+  'pos-bottom-right'
+];
+var standbyPosIndex = 0;
+var standbyRoamInterval = null;
+
+function shiftStandbyPosition() {
   var content = document.getElementById('standby-content');
   if (!content) return;
-  var x = Math.floor(Math.random() * 25) - 12;
-  var y = Math.floor(Math.random() * 17) - 8;
-  var t = 'translate(' + x + 'px, ' + y + 'px)';
-  content.style.webkitTransform = t;
-  content.style.transform = t;
+
+  standbyPosIndex = (standbyPosIndex + 1) % STANDBY_POSITIONS.length;
+  var targetPos = STANDBY_POSITIONS[standbyPosIndex];
+
+  content.style.opacity = '0.35';
+  setTimeout(function() {
+    if (!content) return;
+    content.className = targetPos;
+    content.style.opacity = '1';
+  }, 450);
+}
+
+function shiftStandbyMicroJitter() {
+  var content = document.getElementById('standby-content');
+  if (!content) return;
+  // Micro-deslocamento sutil (+/- 4px) para garantir movimento contínuo dos subpixels
+  var jx = Math.floor(Math.random() * 9) - 4;
+  var jy = Math.floor(Math.random() * 7) - 3;
+  content.style.marginLeft = jx + 'px';
+  content.style.marginTop = jy + 'px';
+}
+
+var roomDisplayName = '';
+
+function fetchRoomDetailsIfNeeded() {
+  if (!roomSlug) return;
+  httpJson('GET', API_BASE + '/api/rooms', null, function(err, rooms) {
+    if (!err && Array.isArray(rooms)) {
+      for (var i = 0; i < rooms.length; i++) {
+        if (rooms[i] && rooms[i].slug === roomSlug) {
+          roomDisplayName = rooms[i].name || '';
+          updateStandbyRoomName();
+          break;
+        }
+      }
+    }
+  });
+}
+
+function updateStandbyRoomName() {
+  var el = document.getElementById('standby-room-name');
+  if (!el) return;
+  var name = roomDisplayName;
+  if (!name && roomSlug) {
+    name = roomSlug.replace(/-/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+  }
+  if (!name) name = 'Sala de Homenagem';
+  el.textContent = name;
+}
+
+function resolveRadioDisplayName(url) {
+  if (!url) return 'Transmissão ao Vivo';
+  var u = String(url).toLowerCase();
+  if (u.indexOf('radiomelodia') !== -1 || u.indexOf('melodia') !== -1) return 'Rádio Melodia 97.5 FM';
+  if (u.indexOf('93fm') !== -1) return 'Rádio 93 FM Gospel';
+  if (u.indexOf('novotempo') !== -1) return 'Rádio Novo Tempo';
+  if (u.indexOf('marumby') !== -1) return 'Rádio Marumby';
+  if (u.indexOf('voxpainel') !== -1 || u.indexOf('livemus') !== -1 || u.indexOf('brlogic') !== -1) return 'Web Rádio Gospel 24h';
+  return 'Web Rádio / Som Ambiente';
+}
+
+function updateStandbyNowPlaying() {
+  var el = document.getElementById('standby-now-playing');
+  var titleEl = document.getElementById('standby-now-playing-title');
+  if (!el || !titleEl) return;
+
+  var isAudioActive = ENABLE_AUDIO && !aIsPaused && (currentRoomState.audioStreamUrl || (audioItems && audioItems.length > 0));
+
+  if (isAudioActive) {
+    var title = '';
+    if (currentRoomState.audioStreamUrl) {
+      title = resolveRadioDisplayName(currentRoomState.audioStreamUrl);
+    } else if (audioItems && audioItems.length > 0) {
+      var it = audioItems[aIndex] || audioItems[0];
+      if (it) {
+        title = it.title || (typeof it === 'string' ? it : (it.url ? it.url.split('/').pop().split('?')[0] : ''));
+      }
+    }
+    if (!title) title = 'Música Ambiente';
+    titleEl.textContent = title;
+    el.style.display = 'inline-flex';
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 var lastStandbyWeatherFetch = 0;
@@ -1253,6 +1393,7 @@ var isStandbyActive = false;
 var standbyClockInterval = null;
 var standbyWeatherInterval = null;
 var standbyJitterInterval = null;
+var standbyNowPlayingInterval = null;
 
 function applyStandbyMode(active) {
   isStandbyActive = Boolean(active);
@@ -1260,21 +1401,35 @@ function applyStandbyMode(active) {
 
   if (isStandbyActive) {
     if (overlay) {
-      overlay.style.display = 'flex';
+      overlay.style.display = 'block';
       if (overlay.className.indexOf('standby-visible') === -1) {
         overlay.className += ' standby-visible';
       }
     }
+    fetchRoomDetailsIfNeeded();
+    updateStandbyRoomName();
+    updateStandbyNowPlaying();
     tickStandbyClock();
+    rotateStandbyBackground();
+
     if (standbyClockInterval) clearInterval(standbyClockInterval);
     standbyClockInterval = setInterval(tickStandbyClock, 1000);
+
+    if (standbyNowPlayingInterval) clearInterval(standbyNowPlayingInterval);
+    standbyNowPlayingInterval = setInterval(updateStandbyNowPlaying, 4000);
+
+    if (standbyBgInterval) clearInterval(standbyBgInterval);
+    standbyBgInterval = setInterval(rotateStandbyBackground, 48000);
+
+    if (standbyRoamInterval) clearInterval(standbyRoamInterval);
+    standbyRoamInterval = setInterval(shiftStandbyPosition, 52000);
+
+    if (standbyJitterInterval) clearInterval(standbyJitterInterval);
+    standbyJitterInterval = setInterval(shiftStandbyMicroJitter, 12000);
 
     fetchStandbyWeather(false);
     if (standbyWeatherInterval) clearInterval(standbyWeatherInterval);
     standbyWeatherInterval = setInterval(function() { fetchStandbyWeather(false); }, 10 * 60 * 1000);
-
-    if (standbyJitterInterval) clearInterval(standbyJitterInterval);
-    standbyJitterInterval = setInterval(shiftStandbyAntiBurnIn, 150000);
 
     syncAudioVolume();
   } else {
@@ -1284,11 +1439,14 @@ function applyStandbyMode(active) {
         if (!isStandbyActive && overlay) {
           overlay.style.display = 'none';
         }
-      }, 450);
+      }, 500);
     }
     if (standbyClockInterval) { clearInterval(standbyClockInterval); standbyClockInterval = null; }
-    if (standbyWeatherInterval) { clearInterval(standbyWeatherInterval); standbyWeatherInterval = null; }
+    if (standbyNowPlayingInterval) { clearInterval(standbyNowPlayingInterval); standbyNowPlayingInterval = null; }
+    if (standbyBgInterval) { clearInterval(standbyBgInterval); standbyBgInterval = null; }
+    if (standbyRoamInterval) { clearInterval(standbyRoamInterval); standbyRoamInterval = null; }
     if (standbyJitterInterval) { clearInterval(standbyJitterInterval); standbyJitterInterval = null; }
+    if (standbyWeatherInterval) { clearInterval(standbyWeatherInterval); standbyWeatherInterval = null; }
 
     syncAudioVolume();
     if (ENABLE_AUDIO && !aIsPaused && (currentRoomState.audioStreamUrl || audioItems.length > 0)) {
