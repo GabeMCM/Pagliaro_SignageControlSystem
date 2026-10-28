@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useRouter, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, useEffect, useRef } from "react";
 import {
@@ -67,6 +67,14 @@ import {
   Save,
 } from "lucide-react";
 import { AdiauSection } from "@/components/AdiauSection";
+import { RoutineModal } from "@/components/RoutineModal";
+import {
+  VERIFIED_GOSPEL_PRESETS,
+  DEFAULT_ADIAU_URLS,
+  ROUTINE_DAYS,
+  formatRoutineDaysSummary,
+  VOLUME_PRESETS,
+} from "@/lib/constants";
 
 export const Route = createFileRoute("/admin/$slug")({
   component: RoomOperator,
@@ -994,6 +1002,33 @@ function RoomOperator() {
     },
   });
 
+  // Feedback e mutations para recarregar TV / sala e site
+  const [reloadNotice, setReloadNotice] = useState<string | null>(null);
+
+  const reloadRoomMut = useMutation({
+    mutationFn: () => signageApi.reloadRoom(slug),
+    onSuccess: () => {
+      setReloadNotice("Comando de recarregamento enviado para todas as TVs desta sala!");
+      setTimeout(() => setReloadNotice(null), 3500);
+    },
+    onError: (err: any) => {
+      setReloadNotice("Erro ao emitir recarregamento: " + (err.message || "Falha na rede"));
+      setTimeout(() => setReloadNotice(null), 3500);
+    },
+  });
+
+  const reloadSiteMut = useMutation({
+    mutationFn: () => signageApi.reloadSite(slug),
+    onSuccess: () => {
+      setReloadNotice("Comando para recarregar memorial/site enviado!");
+      setTimeout(() => setReloadNotice(null), 3500);
+    },
+    onError: (err: any) => {
+      setReloadNotice("Erro ao recarregar site: " + (err.message || "Falha"));
+      setTimeout(() => setReloadNotice(null), 3500);
+    },
+  });
+
   const handleDeleteRoom = () => {
     if (!currentRoom?.id) return;
     if (confirm(`Tem certeza que deseja apagar a sala "${currentRoom.name}"?`)) {
@@ -1822,14 +1857,15 @@ function RoomOperator() {
             <button
               onClick={() => {
                 if (confirm("Deseja recarregar a tela da TV conectada?")) {
-                  signageApi.reloadRoom(slug);
+                  reloadRoomMut.mutate();
                 }
               }}
-              className="min-h-[28px] px-2 py-0.5 bg-neutral-950 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-900 text-xs font-mono transition flex items-center justify-center gap-1"
+              disabled={reloadRoomMut.isPending}
+              className="min-h-[28px] px-2 py-0.5 bg-neutral-950 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-900 text-xs font-mono transition flex items-center justify-center gap-1 disabled:opacity-50"
               title="Recarregar tela"
             >
-              <RefreshCw className="h-3 w-3 flex-shrink-0" />
-              <span className="hidden sm:inline">Recarregar</span>
+              <RefreshCw className={`h-3 w-3 flex-shrink-0 ${reloadRoomMut.isPending ? "animate-spin text-white" : ""}`} />
+              <span className="hidden sm:inline">{reloadRoomMut.isPending ? "Recarregando..." : "Recarregar"}</span>
             </button>
 
             {/* Ver TV */}
@@ -1908,6 +1944,19 @@ function RoomOperator() {
           </div>
         </div>
       </header>
+
+      {/* Notificação / Feedback de Recarregamento */}
+      {reloadNotice && (
+        <div className="bg-black border-b border-emerald-500/50 px-3.5 py-1.5 text-xs font-mono text-emerald-300 flex items-center justify-between flex-shrink-0 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <Check className="h-3.5 w-3.5 text-emerald-400 flex-shrink-0" />
+            <span>{reloadNotice}</span>
+          </div>
+          <button onClick={() => setReloadNotice(null)} className="text-neutral-500 hover:text-white p-0.5">
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       {/* Banner de Standby Ativo com controle rápido de som */}
       {stateQ.data?.standby && (
@@ -1999,12 +2048,13 @@ function RoomOperator() {
               {isSiteActive && (
                 <div className="grid grid-cols-3 gap-1.5 w-full sm:w-auto sm:flex sm:items-center">
                   <button
-                    onClick={() => signageApi.reloadSite(slug)}
-                    className="min-h-[32px] px-2.5 py-1 rounded-none border border-neutral-900 bg-neutral-900 hover:bg-neutral-800 text-xs text-neutral-200 transition flex items-center justify-center gap-1 truncate text-center"
+                    onClick={() => reloadSiteMut.mutate()}
+                    disabled={reloadSiteMut.isPending}
+                    className="min-h-[32px] px-2.5 py-1 rounded-none border border-neutral-900 bg-neutral-900 hover:bg-neutral-800 text-xs text-neutral-200 transition flex items-center justify-center gap-1 truncate text-center disabled:opacity-50"
                     title="Recarrega apenas o site na tela"
                   >
-                    <RefreshCw className="h-3 w-3 flex-shrink-0" />
-                    <span className="truncate">Recarregar</span>
+                    <RefreshCw className={`h-3 w-3 flex-shrink-0 ${reloadSiteMut.isPending ? "animate-spin text-white" : ""}`} />
+                    <span className="truncate">{reloadSiteMut.isPending ? "Recarregando..." : "Recarregar"}</span>
                   </button>
                   <a
                     href={stateQ.data?.siteUrl || "#"}
@@ -3375,15 +3425,14 @@ function RoomOperator() {
       {/* ============================================================ */}
       {/* MODAL DE ROTINA BASE (ALARME SEMANAL DA SALA)                */}
       {/* ============================================================ */}
-      <RoomRoutineModal
+      <RoutineModal
         isOpen={routineModalOpen}
         onClose={() => {
           setRoutineModalOpen(false);
           setEditingRoutine(null);
         }}
-        slug={slug}
+        defaultRoomSlug={slug}
         availableRooms={roomsQ.data?.map((r) => ({ slug: r.slug, name: r.name })) || []}
-        currentSiteUrl={stateQ.data?.siteUrl}
         audioPlaylists={audioPlaylists}
         initialData={editingRoutine}
         onSave={(data, targetRooms) => {
@@ -3401,7 +3450,7 @@ function RoomOperator() {
                 createRoutineMut.mutate({ ...data, roomSlug: targetSlug });
               });
             } else {
-              createRoutineMut.mutate(data);
+              createRoutineMut.mutate({ ...data, roomSlug: slug });
             }
           }
         }}
@@ -3644,65 +3693,6 @@ function RoomDevicesCard({
       </div>
     </section>
   );
-}
-
-const ROUTINE_DAYS = [
-  { day: 0, label: "Dom", full: "Domingo" },
-  { day: 1, label: "Seg", full: "Segunda-feira" },
-  { day: 2, label: "Ter", full: "Terça-feira" },
-  { day: 3, label: "Qua", full: "Quarta-feira" },
-  { day: 4, label: "Qui", full: "Quinta-feira" },
-  { day: 5, label: "Sex", full: "Sexta-feira" },
-  { day: 6, label: "Sáb", full: "Sábado" },
-];
-
-const VERIFIED_GOSPEL_PRESETS = [
-  {
-    name: "Rádio Instrumental Gospel 24h",
-    url: "http://live8.livemus.com.br:27142/stream",
-    desc: "Hinos e louvores instrumentais suaves (Ideal para Velório)",
-  },
-  {
-    name: "Rádio Shekinah Só Louvor 24h",
-    url: "https://player.voxpainel.com.br/proxy/7076",
-    desc: "Louvores e adoração contínua sem comerciais",
-  },
-  {
-    name: "Rádio Doce Louvor 24h",
-    url: "https://servidor28-2.brlogic.com:7204/live",
-    desc: "Seleção contínua de reflexão e paz",
-  },
-  {
-    name: "Rádio Novas de Paz 24h",
-    url: "https://radio.saopaulo01.com.br/8304/stream",
-    desc: "Louvores tradicionais em MP3 compatível",
-  },
-  {
-    name: "Rádio Melodia FM 97.5 (RJ)",
-    url: "https://streaming.radiomelodia.com.br/stream",
-    desc: "A rádio de maior audiência do segmento no Brasil",
-  },
-  {
-    name: "Rádio 93 FM Gospel (RJ)",
-    url: "https://icecast.93fm.com.br/stream",
-    desc: "Líder em Louvor & Notícias",
-  },
-];
-
-function formatRoutineDaysSummary(days: number[]): string {
-  if (!days || days.length === 0) return "Nenhum dia selecionado";
-  if (days.length === 7) return "Todos os dias";
-  const sorted = [...days].sort((a, b) => a - b);
-  if (sorted.length === 5 && [1, 2, 3, 4, 5].every((d) => sorted.includes(d))) {
-    return "Segunda a Sexta";
-  }
-  if (sorted.length === 2 && sorted.includes(0) && sorted.includes(6)) {
-    return "Finais de Semana";
-  }
-  if (sorted.length === 1 && sorted[0] === 0) {
-    return "Apenas Domingo";
-  }
-  return sorted.map((d) => ROUTINE_DAYS[d]?.label || `Dia ${d}`).join(", ");
 }
 
 /**
@@ -4118,19 +4108,29 @@ function RoomSchedulesCard({
                 </p>
               </div>
             </div>
-            <button
-              onClick={onRestoreRoutine}
-              disabled={isRestoringRoutine}
-              className="px-2.5 py-1 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-900 text-[11px] font-semibold transition flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap disabled:opacity-50"
-              title="Libera qualquer override de automação ativa e aplica imediatamente a rotina base correspondente ao dia/horário atual"
-            >
-              {isRestoringRoutine ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3 w-3 text-blue-400" />
-              )}
-              <span>Retomar Rotina Base</span>
-            </button>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Link
+                to="/admin/routines"
+                className="px-2.5 py-1 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-900 text-[11px] font-mono transition flex items-center gap-1.5 flex-shrink-0"
+                title="Abrir Central de Rotinas Globais (Agnóstica de Salas)"
+              >
+                <CalendarClock className="h-3 w-3 text-neutral-400" />
+                <span>Central de Rotinas</span>
+              </Link>
+              <button
+                onClick={onRestoreRoutine}
+                disabled={isRestoringRoutine}
+                className="px-2.5 py-1 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-900 text-[11px] font-semibold transition flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap disabled:opacity-50"
+                title="Libera qualquer override de automação ativa e aplica imediatamente a rotina base correspondente ao dia/horário atual"
+              >
+                {isRestoringRoutine ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 text-blue-400" />
+                )}
+                <span>Retomar Rotina Base</span>
+              </button>
+            </div>
           </div>
 
           {/* Lista de Rotinas */}
@@ -4803,12 +4803,44 @@ function ScheduleModal({
   });
 
   const [siteUrl, setSiteUrl] = useState(initialData?.actions.siteUrl || "");
-  const [audioPlaylist, setAudioPlaylist] = useState(initialData?.actions.audioPlaylist || "");
-  const [audioVolume, setAudioVolume] = useState<number>(initialData?.actions.audioVolume ?? 0);
+
+  const [audioType, setAudioType] = useState<"radio" | "playlist" | "none">(() => {
+    if (initialData?.actions.audioStreamUrl) return "radio";
+    if (initialData?.actions.audioPlaylist) return "playlist";
+    if (initialData?.actions.audioStatus === "paused") return "none";
+    return "radio";
+  });
+
+  const [selectedRadioPreset, setSelectedRadioPreset] = useState<string>(() => {
+    if (initialData?.actions.audioStreamUrl) {
+      const match = VERIFIED_GOSPEL_PRESETS.find(
+        (p) => p.url === initialData.actions.audioStreamUrl
+      );
+      return match ? match.url : "custom";
+    }
+    return VERIFIED_GOSPEL_PRESETS[0]?.url || "";
+  });
+
+  const [customRadioUrl, setCustomRadioUrl] = useState<string>(() => {
+    if (initialData?.actions.audioStreamUrl) {
+      const match = VERIFIED_GOSPEL_PRESETS.find(
+        (p) => p.url === initialData.actions.audioStreamUrl
+      );
+      return match ? "" : initialData.actions.audioStreamUrl;
+    }
+    return "";
+  });
+
+  const [audioPlaylist, setAudioPlaylist] = useState(
+    initialData?.actions.audioPlaylist || (audioPlaylists[0]?.id ?? "")
+  );
+  const [audioVolume, setAudioVolume] = useState<number>(
+    initialData?.actions.audioVolume ?? 25
+  );
   const [audioStatus, setAudioStatus] = useState<"playing" | "paused" | "none">(() => {
     if (initialData?.actions.audioStatus === "playing") return "playing";
     if (initialData?.actions.audioStatus === "paused") return "paused";
-    return "none";
+    return "playing";
   });
 
   const handleSave = () => {
@@ -4817,17 +4849,18 @@ function ScheduleModal({
       return;
     }
 
-    const autoTitle = title.trim() || initialData?.title || (() => {
-      if (standbyAction === "wake") return "Ligar TV (Sai do Standby)";
-      if (standbyAction === "standby") return "Suspender TV (Standby)";
-      if (siteUrl.trim()) return "Abrir Memorial / Site";
-      if (audioPlaylist) {
-        const pl = audioPlaylists.find((p) => p.id === audioPlaylist);
-        return pl ? `Tocar: ${pl.name}` : "Tocar Playlist";
-      }
-      if (audioStatus === "paused") return "Pausar Áudio";
-      return "Ação Agendada";
-    })();
+    const autoTitle =
+      title.trim() ||
+      initialData?.title ||
+      (() => {
+        if (standbyAction === "wake") return "Ligar TV (Sai do Standby)";
+        if (standbyAction === "standby") return "Suspender TV (Standby)";
+        if (siteUrl.trim()) return "Abrir Memorial / Site";
+        if (audioType === "radio") return "Tocar Web Rádio";
+        if (audioType === "playlist") return "Tocar Playlist";
+        if (audioStatus === "paused") return "Pausar Áudio";
+        return "Ação Agendada";
+      })();
 
     const actions: ScheduleTask["actions"] = {};
 
@@ -4839,15 +4872,30 @@ function ScheduleModal({
       actions.mode = "site";
     }
 
-    if (audioPlaylist) {
-      actions.audioPlaylist = audioPlaylist;
+    if (audioType === "radio") {
+      const stream = (selectedRadioPreset === "custom" ? customRadioUrl : selectedRadioPreset || "").trim();
+      if (stream) {
+        actions.audioStreamUrl = stream;
+        actions.audioPlaylist = undefined;
+        actions.audioStatus = "playing";
+      }
+    } else if (audioType === "playlist") {
+      if (audioPlaylist) {
+        actions.audioPlaylist = audioPlaylist;
+        actions.audioStreamUrl = undefined;
+        actions.audioStatus = "playing";
+      }
+    } else {
+      actions.audioStatus = "paused";
+      actions.audioStreamUrl = null;
+      actions.audioPlaylist = null;
     }
 
     if (audioVolume !== undefined) {
       actions.audioVolume = audioVolume;
     }
 
-    if (audioStatus !== "none") {
+    if (audioStatus !== "none" && audioType !== "none") {
       actions.audioStatus = audioStatus;
     }
 
@@ -4865,13 +4913,13 @@ function ScheduleModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-lg rounded-none border border-neutral-900 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto">
+      <div className="w-full max-w-lg rounded-none border border-neutral-900 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto font-sans">
         <div className="flex items-center justify-between pb-2.5 border-b border-neutral-900">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-900">
               <CalendarClock className="h-4 w-4" />
             </div>
-            <h3 className="text-sm sm:text-base font-bold text-white">
+            <h3 className="text-sm sm:text-base font-bold text-white font-mono uppercase tracking-wide">
               {isEditing ? "Editar Agendamento" : "Novo Agendamento na TV"}
             </h3>
           </div>
@@ -4880,11 +4928,24 @@ function ScheduleModal({
           </button>
         </div>
 
-        <div className="space-y-2.5 text-xs">
+        <div className="space-y-3 text-xs">
+          {/* Identificação / Título */}
+          <div>
+            <label className="text-[11px] font-semibold text-neutral-300 block mb-1 font-mono">
+              Identificação / Título do Agendamento:
+            </label>
+            <input
+              type="text"
+              placeholder="Ex: Recepção da Família, Início Cerimônia, Encerramento..."
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
+            />
+          </div>
 
           {/* Data e Hora */}
           <div>
-            <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+            <label className="text-[11px] font-semibold text-neutral-300 block mb-1 font-mono">
               Data e Horário de Execução:
             </label>
             <DateTimePickerField value={scheduledAt} onChange={setScheduledAt} />
@@ -4892,10 +4953,10 @@ function ScheduleModal({
 
           {/* Tela da TV / Standby */}
           <div className="space-y-1">
-            <label className="text-[11px] font-semibold text-neutral-300 block">
+            <label className="text-[11px] font-semibold text-neutral-300 block font-mono">
               Ação na Tela da TV:
             </label>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-3 gap-1.5 font-mono">
               <button
                 type="button"
                 onClick={() => setStandbyAction("wake")}
@@ -4938,131 +4999,185 @@ function ScheduleModal({
           </div>
 
           {/* Link do Memorial */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-[11px] font-semibold text-neutral-300">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-neutral-300 font-mono">
                 Link do Memorial / Site (Opcional):
               </label>
-              {currentSiteUrl && (
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setSiteUrl(currentSiteUrl)}
-                  className="text-[10px] text-neutral-400 hover:text-white underline"
+                  onClick={() => setSiteUrl(DEFAULT_ADIAU_URLS[0].url)}
+                  className="text-[9px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white"
                 >
-                  Usar link atual da sala
+                  Adiaŭ Flores
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setSiteUrl(DEFAULT_ADIAU_URLS[1].url)}
+                  className="text-[9px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white"
+                >
+                  Adiaŭ Info
+                </button>
+                {currentSiteUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setSiteUrl(currentSiteUrl)}
+                    className="text-[9px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white"
+                  >
+                    Atual
+                  </button>
+                )}
+              </div>
             </div>
             <input
               type="url"
-              placeholder="https://exemplo.com.br/homenagem"
+              placeholder="https://www.adiau.com.br/v2/messages/..."
               value={siteUrl}
               onChange={(e) => setSiteUrl(e.target.value)}
-              className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+              className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
             />
           </div>
 
-          {/* Playlist de Áudio */}
-          <div>
-            <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-              Músicas / Playlist de Áudio:
-            </label>
-            <select
-              value={audioPlaylist}
-              onChange={(e) => setAudioPlaylist(e.target.value)}
-              className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
-            >
-              <option value="">Manter playlist atual</option>
-              {audioPlaylists.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.items?.length || 0} faixas)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Volume de Áudio Livre (Wheel Picker) */}
+          {/* Áudio & Web Rádio */}
           <div className="space-y-1.5 pt-1 border-t border-neutral-900">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-neutral-300">
-                Volume Livre do Áudio:
-              </span>
-              <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-900">
-                {audioVolume}%
-              </span>
-            </div>
-            <VolumeWheelPicker
-              value={audioVolume}
-              onChange={setAudioVolume}
-              compact
-            />
-            <div className="flex items-center gap-1 flex-wrap pt-0.5">
-              <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-1 font-mono">Atalhos:</span>
-              {VOLUME_PRESETS.map((p) => (
-                <button
-                  key={p.val}
-                  type="button"
-                  onClick={() => setAudioVolume(p.val)}
-                  className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
-                    audioVolume === p.val
-                      ? "bg-white text-black border-white font-bold"
-                      : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Ação de Som */}
-          <div>
-            <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-              Ação do Som:
+            <label className="text-[11px] font-semibold text-neutral-300 block font-mono">
+              Ação de Áudio & Rádio:
             </label>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-3 gap-1.5 font-mono">
               <button
                 type="button"
-                onClick={() => setAudioStatus("playing")}
-                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-1 ${
-                  audioStatus === "playing"
-                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
+                onClick={() => setAudioType("radio")}
+                className={`p-2 border text-center transition flex flex-col items-center gap-1 ${
+                  audioType === "radio"
+                    ? "bg-white text-black border-white font-bold"
+                    : "bg-black border-neutral-900 text-neutral-400 hover:text-white"
                 }`}
               >
-                <Play className="h-3.5 w-3.5" />
-                <span>Tocar</span>
+                <Radio className="h-3.5 w-3.5" />
+                <span className="text-[10px]">Web Rádio 24h</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setAudioStatus("paused")}
-                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-1 ${
-                  audioStatus === "paused"
-                    ? "bg-amber-500/20 border-amber-500/40 text-amber-300 font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
+                onClick={() => setAudioType("playlist")}
+                className={`p-2 border text-center transition flex flex-col items-center gap-1 ${
+                  audioType === "playlist"
+                    ? "bg-white text-black border-white font-bold"
+                    : "bg-black border-neutral-900 text-neutral-400 hover:text-white"
                 }`}
               >
-                <Pause className="h-3.5 w-3.5" />
-                <span>Pausar</span>
+                <Music className="h-3.5 w-3.5" />
+                <span className="text-[10px]">Playlist Áudio</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setAudioStatus("none")}
-                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-1 ${
-                  audioStatus === "none"
-                    ? "bg-neutral-800 border-neutral-900 text-white font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
+                onClick={() => setAudioType("none")}
+                className={`p-2 border text-center transition flex flex-col items-center gap-1 ${
+                  audioType === "none"
+                    ? "bg-white text-black border-white font-bold"
+                    : "bg-black border-neutral-900 text-neutral-400 hover:text-white"
                 }`}
               >
-                <span>Não Mudar</span>
+                <Volume2 className="h-3.5 w-3.5" />
+                <span className="text-[10px]">Silenciar / Pausa</span>
               </button>
             </div>
+
+            {/* Configuração de Rádio */}
+            {audioType === "radio" && (
+              <div className="space-y-1.5 p-2 border border-neutral-900 bg-neutral-900/30">
+                <label className="text-[10px] text-neutral-400 font-mono block">
+                  Selecione a Emissora Gospel / Instrumental:
+                </label>
+                <select
+                  value={selectedRadioPreset}
+                  onChange={(e) => setSelectedRadioPreset(e.target.value)}
+                  className="w-full rounded-none border border-neutral-900 bg-black px-2 py-1 text-white text-xs font-mono outline-none focus:border-neutral-600"
+                >
+                  {VERIFIED_GOSPEL_PRESETS.map((p) => (
+                    <option key={p.url} value={p.url}>
+                      {p.name}
+                    </option>
+                  ))}
+                  <option value="custom">-- Link Personalizado de Rádio --</option>
+                </select>
+                {selectedRadioPreset === "custom" && (
+                  <input
+                    type="url"
+                    placeholder="https://link-da-radio.com/stream"
+                    value={customRadioUrl}
+                    onChange={(e) => setCustomRadioUrl(e.target.value)}
+                    className="w-full rounded-none border border-neutral-900 bg-black px-2 py-1 text-white text-xs font-mono outline-none focus:border-neutral-600 mt-1"
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Configuração de Playlist */}
+            {audioType === "playlist" && (
+              <div className="space-y-1.5 p-2 border border-neutral-900 bg-neutral-900/30">
+                <label className="text-[10px] text-neutral-400 font-mono block">
+                  Músicas / Playlist de Áudio:
+                </label>
+                <select
+                  value={audioPlaylist}
+                  onChange={(e) => setAudioPlaylist(e.target.value)}
+                  className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
+                >
+                  <option value="">Manter playlist atual</option>
+                  {audioPlaylists.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.items?.length || 0} faixas)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Volume de Áudio */}
+            {audioType !== "none" && (
+              <div className="space-y-1.5 pt-1 border-t border-neutral-900">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-neutral-300 font-mono">
+                    Volume Livre do Áudio:
+                  </span>
+                  <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-900">
+                    {audioVolume}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={audioVolume}
+                  onChange={(e) => setAudioVolume(Number(e.target.value))}
+                  className="w-full accent-white h-1.5 bg-neutral-900 cursor-pointer"
+                />
+                <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                  <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-1 font-mono">Atalhos:</span>
+                  {VOLUME_PRESETS.map((p) => (
+                    <button
+                      key={p.val}
+                      type="button"
+                      onClick={() => setAudioVolume(p.val)}
+                      className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
+                        audioVolume === p.val
+                          ? "bg-white text-black border-white font-bold"
+                          : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-900">
+        <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-900 font-mono">
           <button
             type="button"
             onClick={onClose}
@@ -5084,648 +5199,3 @@ function ScheduleModal({
   );
 }
 
-/**
- * Modal de Criação / Edição de Rotina Base da Sala (Estilo Alarme de Smartphone)
- */
-function RoomRoutineModal({
-  isOpen,
-  onClose,
-  slug,
-  availableRooms = [],
-  currentSiteUrl,
-  audioPlaylists,
-  initialData,
-  onSave,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  slug: string;
-  availableRooms?: { slug: string; name: string }[];
-  currentSiteUrl?: string | null;
-  audioPlaylists: Playlist[];
-  initialData?: RoomRoutine | null;
-  onSave: (data: Partial<RoomRoutine>, targetRooms?: string[]) => void;
-}) {
-  if (!isOpen) return null;
-
-  const isEditing = Boolean(initialData);
-
-  const [selectedRooms, setSelectedRooms] = useState<string[]>(() => {
-    if (initialData?.roomSlug) return [initialData.roomSlug];
-    return [slug];
-  });
-
-  const [title, setTitle] = useState(initialData?.title || "");
-  const [daysOfWeek, setDaysOfWeek] = useState<number[]>(
-    initialData?.daysOfWeek && initialData.daysOfWeek.length > 0
-      ? initialData.daysOfWeek
-      : [0, 1, 2, 3, 4, 5, 6]
-  );
-  const [startTime, setStartTime] = useState(initialData?.startTime || "07:00");
-  const [endTime, setEndTime] = useState(initialData?.endTime || "19:00");
-
-  const [standby, setStandby] = useState<boolean>(initialData?.actions?.standby === true);
-  const [mode, setMode] = useState<"site" | "playlist">(initialData?.actions?.mode || "site");
-  const [siteUrl, setSiteUrl] = useState(initialData?.actions?.siteUrl || currentSiteUrl || "");
-
-  const [audioType, setAudioType] = useState<"radio" | "playlist" | "none">(() => {
-    if (initialData?.actions?.audioStreamUrl) return "radio";
-    if (initialData?.actions?.audioPlaylist) return "playlist";
-    if (initialData?.actions?.audioStatus === "paused") return "none";
-    return "radio";
-  });
-
-  const [selectedRadioPreset, setSelectedRadioPreset] = useState<string>(() => {
-    if (initialData?.actions?.audioStreamUrl) {
-      const match = VERIFIED_GOSPEL_PRESETS.find(
-        (p) => p.url === initialData.actions.audioStreamUrl
-      );
-      return match ? match.url : "custom";
-    }
-    return VERIFIED_GOSPEL_PRESETS[0]?.url || "";
-  });
-
-  const [audioStreamUrl, setAudioStreamUrl] = useState<string>(() => {
-    if (initialData?.actions?.audioStreamUrl) {
-      const match = VERIFIED_GOSPEL_PRESETS.find(
-        (p) => p.url === initialData.actions.audioStreamUrl
-      );
-      return match ? "" : initialData.actions.audioStreamUrl;
-    }
-    return "";
-  });
-
-  const [audioPlaylist, setAudioPlaylist] = useState<string>(
-    initialData?.actions?.audioPlaylist || (audioPlaylists[0]?.id ?? "")
-  );
-
-  const [audioVolume, setAudioVolume] = useState<number>(
-    initialData?.actions?.audioVolume ?? 25
-  );
-
-  const [audioStatus, setAudioStatus] = useState<"playing" | "paused">(
-    initialData?.actions?.audioStatus === "paused" ? "paused" : "playing"
-  );
-
-  const toggleDay = (d: number) => {
-    setDaysOfWeek((prev) =>
-      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort((a, b) => a - b)
-    );
-  };
-
-  const isOvernight = startTime && endTime && startTime > endTime;
-
-  const handleSave = () => {
-    if (!daysOfWeek || daysOfWeek.length === 0) {
-      alert("Por favor, selecione ao menos um dia da semana para esta rotina.");
-      return;
-    }
-    if (!startTime || !endTime) {
-      alert("Por favor, selecione os horários de início e término.");
-      return;
-    }
-
-    const autoTitle = title.trim() || initialData?.title || (() => {
-      if (standby) return `Repouso Noturno (${startTime} às ${endTime})`;
-      return `Rotina Diurna (${startTime} às ${endTime})`;
-    })();
-
-    const actions: RoomRoutine["actions"] = {
-      standby,
-      mode,
-      audioVolume,
-      audioStatus: audioType === "none" ? "paused" : audioStatus,
-    };
-
-    if (mode === "site") {
-      actions.siteUrl = siteUrl.trim() || currentSiteUrl || null;
-    }
-
-    if (audioType === "radio") {
-      const stream = (selectedRadioPreset === "custom" ? audioStreamUrl : selectedRadioPreset || "").trim();
-      if (stream) {
-        actions.audioStreamUrl = stream;
-        actions.audioPlaylist = null;
-      }
-    } else if (audioType === "playlist") {
-      if (audioPlaylist) {
-        actions.audioPlaylist = audioPlaylist;
-        actions.audioStreamUrl = null;
-      }
-    } else {
-      actions.audioStreamUrl = null;
-      actions.audioPlaylist = null;
-      actions.audioStatus = "paused";
-    }
-
-    onSave({
-      roomSlug: slug,
-      title: autoTitle,
-      daysOfWeek: [...daysOfWeek].sort((a, b) => a - b),
-      startTime,
-      endTime,
-      enabled: initialData ? initialData.enabled : true,
-      priority: 0,
-      actions,
-    }, selectedRooms);
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-lg rounded-none border border-neutral-900 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto font-sans">
-        {/* Header do Modal */}
-        <div className="flex items-center justify-between pb-2.5 border-b border-neutral-900">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-900">
-              <Clock className="h-4 w-4 text-emerald-400" />
-            </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-white font-mono uppercase">
-                {isEditing ? "Editar Rotina Base" : "Nova Rotina Base (Agnóstica)"}
-              </h3>
-              <p className="text-[10px] text-neutral-400 font-mono">
-                Programação estilo alarme de smartphone para uma ou várias salas
-              </p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-white transition">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Formulário */}
-        <div className="space-y-3 text-xs">
-          {/* Seleção de Salas Alvo (Rotina Agnóstica de Sala) */}
-          <div className="space-y-1.5 bg-neutral-900/40 p-2.5 border border-neutral-900">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-semibold text-neutral-300 flex items-center gap-1.5 font-mono">
-                <Monitor className="h-3.5 w-3.5 text-neutral-400" />
-                <span>Salas que Executarão esta Rotina:</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => {
-                  if (availableRooms.length > 0) {
-                    if (selectedRooms.length === availableRooms.length) {
-                      setSelectedRooms([slug]);
-                    } else {
-                      setSelectedRooms(availableRooms.map((r) => r.slug));
-                    }
-                  }
-                }}
-                className="text-[10px] text-neutral-300 hover:text-white font-mono underline"
-              >
-                {availableRooms.length > 0 && selectedRooms.length === availableRooms.length
-                  ? "Apenas esta sala"
-                  : "Selecionar Todas as Salas"}
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-              {(availableRooms.length > 0 ? availableRooms : [{ slug, name: slug }]).map((r) => {
-                const isSelected = selectedRooms.includes(r.slug);
-                return (
-                  <button
-                    key={r.slug}
-                    type="button"
-                    onClick={() => {
-                      setSelectedRooms((prev) =>
-                        prev.includes(r.slug)
-                          ? prev.length > 1
-                            ? prev.filter((s) => s !== r.slug)
-                            : prev
-                          : [...prev, r.slug]
-                      );
-                    }}
-                    className={`px-2 py-1 text-xs font-mono transition flex items-center gap-1.5 ${
-                      isSelected
-                        ? "bg-white text-black font-bold"
-                        : "bg-black text-neutral-400 hover:text-white border border-neutral-900"
-                    }`}
-                  >
-                    <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-black" : "bg-neutral-600"}`} />
-                    <span>{r.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-[10px] text-neutral-400 font-mono">
-              {selectedRooms.length > 1
-                ? `Esta rotina será aplicada simultaneamente em ${selectedRooms.length} salas cadastradas.`
-                : "Aplicando somente nesta sala."}
-            </p>
-          </div>
-
-          {/* Nome da Rotina */}
-          <div>
-            <label className="text-[11px] font-semibold text-neutral-300 block mb-1 font-mono">
-              Nome da Rotina:
-            </label>
-            <input
-              type="text"
-              placeholder="Ex: Expediente Diurno, Repouso Noturno, Fins de Semana..."
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
-            />
-          </div>
-
-          {/* Dias da Semana (Estilo Alarme de Smartphone) */}
-          <div className="space-y-1.5 bg-neutral-900/40 p-2.5 rounded-none border border-neutral-900">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-semibold text-neutral-300 flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5 text-neutral-400" />
-                <span>Dias de Repetição (Alarme):</span>
-              </label>
-              <span className="text-[10px] text-emerald-400 font-medium">
-                {formatRoutineDaysSummary(daysOfWeek)}
-              </span>
-            </div>
-
-            {/* Pílulas dos 7 Dias */}
-            <div className="grid grid-cols-7 gap-1">
-              {ROUTINE_DAYS.map((opt) => {
-                const isSelected = daysOfWeek.includes(opt.day);
-                return (
-                  <button
-                    key={opt.day}
-                    type="button"
-                    onClick={() => toggleDay(opt.day)}
-                    className={`py-2 px-1 text-center rounded-none border text-xs font-bold transition flex flex-col items-center justify-center gap-1 ${
-                      isSelected
-                        ? "bg-white text-black border-white shadow-xs font-extrabold"
-                        : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700"
-                    }`}
-                    title={opt.full}
-                  >
-                    <span className="text-[11px]">{opt.label}</span>
-                    <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-black" : "bg-neutral-700"}`} />
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Atalhos Rápidos */}
-            <div className="flex items-center gap-1 flex-wrap pt-1 text-[10px]">
-              <span className="text-neutral-500 mr-0.5">Atalhos:</span>
-              <button
-                type="button"
-                onClick={() => setDaysOfWeek([0, 1, 2, 3, 4, 5, 6])}
-                className={`px-2 py-0.5 rounded-none border transition ${
-                  daysOfWeek.length === 7
-                    ? "bg-neutral-800 border-neutral-600 text-white font-semibold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                Todos os dias
-              </button>
-              <button
-                type="button"
-                onClick={() => setDaysOfWeek([1, 2, 3, 4, 5])}
-                className={`px-2 py-0.5 rounded-none border transition ${
-                  daysOfWeek.length === 5 && [1, 2, 3, 4, 5].every((d) => daysOfWeek.includes(d))
-                    ? "bg-neutral-800 border-neutral-600 text-white font-semibold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                Seg a Sex
-              </button>
-              <button
-                type="button"
-                onClick={() => setDaysOfWeek([0, 6])}
-                className={`px-2 py-0.5 rounded-none border transition ${
-                  daysOfWeek.length === 2 && daysOfWeek.includes(0) && daysOfWeek.includes(6)
-                    ? "bg-neutral-800 border-neutral-600 text-white font-semibold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                Fins de semana
-              </button>
-              <button
-                type="button"
-                onClick={() => setDaysOfWeek([0])}
-                className={`px-2 py-0.5 rounded-none border transition ${
-                  daysOfWeek.length === 1 && daysOfWeek.includes(0)
-                    ? "bg-neutral-800 border-neutral-600 text-white font-semibold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                Só Domingo
-              </button>
-              <button
-                type="button"
-                onClick={() => setDaysOfWeek([])}
-                className="px-2 py-0.5 rounded-none border border-neutral-900 bg-neutral-900 text-neutral-500 hover:text-neutral-300"
-              >
-                Limpar
-              </button>
-            </div>
-          </div>
-
-          {/* Horário Slot Início e Fim */}
-          <div className="space-y-1">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-                  Horário de Início (HH:mm):
-                </label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-                  Horário de Fim (HH:mm):
-                </label>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
-                  required
-                />
-              </div>
-            </div>
-            {isOvernight && (
-              <p className="text-[10px] text-amber-400/90 flex items-center gap-1 pt-0.5">
-                <Moon className="h-3 w-3 flex-shrink-0" />
-                <span>Rotina Noturna: atravessa a meia-noite (das {startTime} até às {endTime} do dia seguinte).</span>
-              </p>
-            )}
-          </div>
-
-          {/* Estado da Tela (Standby) */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-semibold text-neutral-300 block">
-              Estado da Tela / TV:
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setStandby(false)}
-                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-2 ${
-                  standby === false
-                    ? "bg-white text-black border-white font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Sun className="h-4 w-4 text-amber-500" />
-                <span className="text-xs">Sala Ativa (TV Ligada)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setStandby(true)}
-                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-2 ${
-                  standby === true
-                    ? "bg-white text-black border-white font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Moon className="h-4 w-4 text-indigo-400" />
-                <span className="text-xs">Modo Repouso (TV em Standby)</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Exibição Visual (quando TV ligada) */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-neutral-300 block">
-              Exibição Visual:
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setMode("site")}
-                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-2 ${
-                  mode === "site"
-                    ? "bg-white text-black border-white font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Globe className="h-3.5 w-3.5" />
-                <span className="text-xs">Memorial / Site (Adiaŭ)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("playlist")}
-                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-2 ${
-                  mode === "playlist"
-                    ? "bg-white text-black border-white font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Tv className="h-3.5 w-3.5" />
-                <span className="text-xs">Carrossel de Mídias</span>
-              </button>
-            </div>
-            {mode === "site" && (
-              <div className="pt-0.5">
-                <input
-                  type="text"
-                  placeholder="URL do Memorial ou deixe vazio para o padrão da sala"
-                  value={siteUrl}
-                  onChange={(e) => setSiteUrl(e.target.value)}
-                  className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Áudio de Fundo */}
-          <div className="space-y-2 border-t border-neutral-900 pt-2.5">
-            <label className="text-[11px] font-semibold text-neutral-300 block">
-              Áudio de Fundo da Rotina:
-            </label>
-            <div className="grid grid-cols-3 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setAudioType("radio")}
-                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
-                  audioType === "radio"
-                    ? "bg-white text-black border-white font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Radio className="h-3.5 w-3.5" />
-                <span className="text-[10px]">Rádio Gospel 24h</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAudioType("playlist")}
-                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
-                  audioType === "playlist"
-                    ? "bg-white text-black border-white font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Music className="h-3.5 w-3.5" />
-                <span className="text-[10px]">Playlist de Áudio</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAudioType("none")}
-                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
-                  audioType === "none"
-                    ? "bg-white text-black border-white font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <VolumeX className="h-3.5 w-3.5" />
-                <span className="text-[10px]">Sem Som / Mudo</span>
-              </button>
-            </div>
-
-            {/* Configuração de Rádio */}
-            {audioType === "radio" && (
-              <div className="space-y-1.5 bg-neutral-900/50 p-2.5 rounded-none border border-neutral-900">
-                <label className="text-[10px] text-neutral-400 font-medium block">
-                  Selecione a Rádio Gospel 24h ou informe URL:
-                </label>
-                <select
-                  value={selectedRadioPreset}
-                  onChange={(e) => {
-                    setSelectedRadioPreset(e.target.value);
-                    if (e.target.value !== "custom") {
-                      setAudioStreamUrl(e.target.value);
-                    }
-                  }}
-                  className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
-                >
-                  {VERIFIED_GOSPEL_PRESETS.map((p) => (
-                    <option key={p.url} value={p.url}>
-                      {p.name} - {p.desc}
-                    </option>
-                  ))}
-                  <option value="custom">Outra URL de Web Rádio personalizada...</option>
-                </select>
-                {selectedRadioPreset === "custom" && (
-                  <input
-                    type="text"
-                    placeholder="https://servidor.radio:porta/stream ou http://..."
-                    value={audioStreamUrl}
-                    onChange={(e) => setAudioStreamUrl(e.target.value)}
-                    className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
-                  />
-                )}
-              </div>
-            )}
-
-            {/* Configuração de Playlist */}
-            {audioType === "playlist" && (
-              <div className="bg-neutral-900/50 p-2.5 rounded-none border border-neutral-900">
-                <label className="text-[10px] text-neutral-400 font-medium block mb-1">
-                  Selecione a Lista de Músicas da Sala:
-                </label>
-                <select
-                  value={audioPlaylist}
-                  onChange={(e) => setAudioPlaylist(e.target.value)}
-                  className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
-                >
-                  <option value="">Selecione uma playlist...</option>
-                  {audioPlaylists.map((pl) => (
-                    <option key={pl.id} value={pl.id}>
-                      {pl.name} ({pl.items?.length || 0} faixas)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Volume Wheel Picker & Presets */}
-            {audioType !== "none" && (
-              <div className="space-y-1.5 pt-1 border-t border-neutral-900">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-neutral-300">
-                    Volume Livre do Áudio:
-                  </span>
-                  <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-900">
-                    {audioVolume}%
-                  </span>
-                </div>
-                <VolumeWheelPicker
-                  value={audioVolume}
-                  onChange={setAudioVolume}
-                  compact
-                />
-                <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                  <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-1 font-mono">Atalhos:</span>
-                  {VOLUME_PRESETS.map((p) => (
-                    <button
-                      key={p.val}
-                      type="button"
-                      onClick={() => setAudioVolume(p.val)}
-                      className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
-                        audioVolume === p.val
-                          ? "bg-white text-black border-white font-bold"
-                          : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700"
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Status do Som */}
-                <div className="pt-1.5">
-                  <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-                    Comportamento do Som:
-                  </label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setAudioStatus("playing")}
-                      className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-1.5 ${
-                        audioStatus === "playing"
-                          ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-bold"
-                          : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                      }`}
-                    >
-                      <Play className="h-3.5 w-3.5" />
-                      <span>Tocar Áudio</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAudioStatus("paused")}
-                      className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-1.5 ${
-                        audioStatus === "paused"
-                          ? "bg-amber-500/20 border-amber-500/40 text-amber-300 font-bold"
-                          : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                      }`}
-                    >
-                      <Pause className="h-3.5 w-3.5" />
-                      <span>Pausar Som</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Rodapé do Modal */}
-        <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-900">
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-[36px] px-3.5 rounded-none border border-neutral-900 bg-neutral-900 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="min-h-[36px] flex items-center gap-2 px-4 rounded-none bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
-          >
-            <Check className="h-4 w-4" />
-            <span>{isEditing ? "Salvar Alterações" : "Criar Rotina Base"}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

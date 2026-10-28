@@ -24,6 +24,7 @@ import {
   LayoutGrid,
   ChevronRight,
   LogOut,
+  CalendarClock,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
@@ -216,6 +217,21 @@ function AdminLayout() {
               </span>
             )}
           </Link>
+
+          <Link
+            to="/admin/routines"
+            className={`group flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs font-medium transition ${
+              router.state.location.pathname.startsWith("/admin/routines")
+                ? "bg-neutral-900 text-white font-semibold"
+                : "text-neutral-400 hover:bg-neutral-950 hover:text-white"
+            } ${collapsed ? "justify-center px-0" : ""}`}
+            title={collapsed ? "Rotinas Globais" : undefined}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <CalendarClock className="h-3.5 w-3.5 flex-shrink-0 text-neutral-400 group-hover:text-white" />
+              {!collapsed && <span>Rotinas Globais</span>}
+            </div>
+          </Link>
         </div>
 
         {/* Salas Header */}
@@ -302,7 +318,7 @@ function AdminLayout() {
       </main>
 
       {/* Mobile Bottom Navigation Bar (High density, sharp, ergonomic) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/95 border-t border-neutral-900 backdrop-blur-md grid grid-cols-4 items-center h-13 px-1 text-[10px]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/95 border-t border-neutral-900 backdrop-blur-md grid grid-cols-5 items-center h-13 px-1 text-[9px]">
         <Link
           to="/admin"
           className={`flex flex-col items-center justify-center gap-1 py-1 transition ${
@@ -316,6 +332,18 @@ function AdminLayout() {
         </Link>
 
         <Link
+          to="/admin/routines"
+          className={`flex flex-col items-center justify-center gap-1 py-1 transition ${
+            router.state.location.pathname.startsWith("/admin/routines")
+              ? "text-white font-bold"
+              : "text-neutral-400 hover:text-white"
+          }`}
+        >
+          <CalendarClock className="h-4 w-4" />
+          <span>Rotinas</span>
+        </Link>
+
+        <Link
           to="/admin/devices"
           className={`flex flex-col items-center justify-center gap-1 py-1 transition relative ${
             router.state.location.pathname === "/admin/devices"
@@ -326,7 +354,7 @@ function AdminLayout() {
           <Monitor className="h-4 w-4" />
           <span>Aparelhos</span>
           {onlineDevicesCount > 0 && (
-            <span className="absolute top-1 right-5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <span className="absolute top-1 right-2 sm:right-5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
           )}
         </Link>
 

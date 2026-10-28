@@ -1004,7 +1004,14 @@ function reloadSiteFrame() {
   if (siteFrame && currentRoomState.siteUrl) {
     var effectiveUrl = resolveEffectiveSiteUrl(currentRoomState.siteUrl);
     var sep = effectiveUrl.indexOf('?') !== -1 ? '&' : '?';
-    siteFrame.src = effectiveUrl + sep + '_r=' + (new Date().getTime());
+    var targetUrl = effectiveUrl + sep + '_r=' + Date.now();
+    try {
+      if (siteFrame.contentWindow && siteFrame.contentWindow.location) {
+        siteFrame.contentWindow.location.replace(targetUrl);
+        return;
+      }
+    } catch (e) {}
+    siteFrame.src = targetUrl;
   }
 }
 
@@ -1920,26 +1927,7 @@ function switchToRoomInPlace(newRoomSlug) {
 }
 
 function reloadRoomInPlace() {
-  if (!roomSlug) {
-    window.location.reload();
-    return;
-  }
-  // Se o áudio já foi destravado por gesto nesta sessão, recarrega mídia/iframe/estado
-  // sem dar reload completo no documento (preservando a permissão de som do navegador da TV!)
-  if (AE.primed) {
-    currentStateVersion = 0;
-    visualPlaylist = null;
-    audioPlaylist = null;
-    AE.key = '';
-    AE.lastKey = '';
-    AE.errorCount = 0;
-    AE.pendingResume = 0;
-    if (currentRoomState.mode === 'site') {
-      reloadSiteFrame();
-    }
-    fetchState();
-    return;
-  }
+  // Força recarregamento completo do navegador da TV para atualizar memória, scripts e conexões
   window.location.reload();
 }
 

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminRoutinesRouteImport } from './routes/admin.routines'
 import { Route as AdminDevicesRouteImport } from './routes/admin.devices'
 import { Route as AdminSlugRouteImport } from './routes/admin.$slug'
 
@@ -30,6 +31,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminRoutinesRoute = AdminRoutinesRouteImport.update({
+  id: '/routines',
+  path: '/routines',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminDevicesRoute = AdminDevicesRouteImport.update({
   id: '/devices',
   path: '/devices',
@@ -46,12 +52,14 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/admin/$slug': typeof AdminSlugRoute
   '/admin/devices': typeof AdminDevicesRoute
+  '/admin/routines': typeof AdminRoutinesRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin/$slug': typeof AdminSlugRoute
   '/admin/devices': typeof AdminDevicesRoute
+  '/admin/routines': typeof AdminRoutinesRoute
   '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
@@ -60,19 +68,27 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/admin/$slug': typeof AdminSlugRoute
   '/admin/devices': typeof AdminDevicesRoute
+  '/admin/routines': typeof AdminRoutinesRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/admin/$slug' | '/admin/devices' | '/admin/'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/admin/$slug'
+    | '/admin/devices'
+    | '/admin/routines'
+    | '/admin/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin/$slug' | '/admin/devices' | '/admin'
+  to: '/' | '/admin/$slug' | '/admin/devices' | '/admin/routines' | '/admin'
   id:
     | '__root__'
     | '/'
     | '/admin'
     | '/admin/$slug'
     | '/admin/devices'
+    | '/admin/routines'
     | '/admin/'
   fileRoutesById: FileRoutesById
 }
@@ -104,6 +120,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/routines': {
+      id: '/admin/routines'
+      path: '/routines'
+      fullPath: '/admin/routines'
+      preLoaderRoute: typeof AdminRoutinesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/devices': {
       id: '/admin/devices'
       path: '/devices'
@@ -124,12 +147,14 @@ declare module '@tanstack/react-router' {
 interface AdminRouteChildren {
   AdminSlugRoute: typeof AdminSlugRoute
   AdminDevicesRoute: typeof AdminDevicesRoute
+  AdminRoutinesRoute: typeof AdminRoutinesRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminSlugRoute: AdminSlugRoute,
   AdminDevicesRoute: AdminDevicesRoute,
+  AdminRoutinesRoute: AdminRoutinesRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 

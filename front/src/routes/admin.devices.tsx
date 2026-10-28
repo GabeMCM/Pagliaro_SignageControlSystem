@@ -565,19 +565,24 @@ function DevicesAdminPage() {
                         <span>{isIdentifying ? "Sinalizando..." : "Identificar"}</span>
                       </button>
 
-                      <button
-                        onClick={() => reloadDevice.mutate(device.id)}
-                        disabled={!device.online}
-                        className={`min-h-[28px] px-2 py-1 text-xs font-mono transition flex items-center gap-1 ${
-                          device.online
-                            ? "bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-900"
-                            : "bg-neutral-900 border border-neutral-900 text-neutral-400 cursor-not-allowed"
-                        }`}
-                        title="Recarregar tela remotamente"
-                      >
-                        <RefreshCw className="h-3 w-3 flex-shrink-0" />
-                        <span className="hidden sm:inline">Recarregar</span>
-                      </button>
+                      {(() => {
+                        const isReloading = reloadDevice.isPending && reloadDevice.variables === device.id;
+                        return (
+                          <button
+                            onClick={() => reloadDevice.mutate(device.id)}
+                            disabled={!device.online || isReloading}
+                            className={`min-h-[28px] px-2 py-1 text-xs font-mono transition flex items-center gap-1 ${
+                              device.online && !isReloading
+                                ? "bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800"
+                                : "bg-neutral-900 border border-neutral-900 text-neutral-500 cursor-not-allowed opacity-60"
+                            }`}
+                            title="Recarregar tela remotamente"
+                          >
+                            <RefreshCw className={`h-3 w-3 flex-shrink-0 ${isReloading ? "animate-spin text-white" : ""}`} />
+                            <span className="hidden sm:inline">{isReloading ? "Recarregando..." : "Recarregar"}</span>
+                          </button>
+                        );
+                      })()}
 
                       <button
                         onClick={() => {
