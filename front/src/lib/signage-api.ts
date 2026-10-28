@@ -106,6 +106,7 @@ export interface ScheduleTask {
   enabled: boolean;
   executed?: boolean;
   executedAt?: number | null;
+  durationMinutes?: number;
   createdAt?: number;
   actions: {
     standby?: boolean; // false = liga tela / sai de suspensão, true = modo suspenso
@@ -120,6 +121,32 @@ export interface ScheduleTask {
     audioLoopMode?: "all" | "one" | "none";
     audioShuffle?: boolean;
   };
+}
+
+export interface RoomRoutine {
+  id: string;
+  roomSlug: string;
+  title: string;
+  daysOfWeek: number[]; // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb
+  startTime: string;    // "HH:mm" (ex: "07:00")
+  endTime: string;      // "HH:mm" (ex: "19:00")
+  enabled: boolean;
+  priority?: number;
+  actions: {
+    standby?: boolean;
+    siteUrl?: string | null;
+    mode?: "site" | "playlist";
+    playlist?: string | null;
+    audioPlaylist?: string | null;
+    audioStreamUrl?: string | null;
+    audioVolume?: number;
+    audioStatus?: "playing" | "paused" | "idle";
+    currentAudioIndex?: number;
+    audioLoopMode?: "all" | "one" | "none";
+    audioShuffle?: boolean;
+  };
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
@@ -361,4 +388,43 @@ export const signageApi = {
       stationName?: string;
       error?: string;
     }>(`/api/radio/probe?url=${encodeURIComponent(url)}`),
+
+  // Métodos de Rotinas Base (Programação de fundo estilo alarme)
+  listRoutines: (roomSlug?: string) =>
+    request<RoomRoutine[]>(roomSlug ? `/api/routines?room=${encodeURIComponent(roomSlug)}` : `/api/routines`),
+
+  getRoutine: (id: string) =>
+    request<RoomRoutine>(`/api/routines/${id}`),
+
+  createRoutine: (data: Partial<RoomRoutine>) =>
+    request<{ success: boolean; routine: RoomRoutine }>("/api/routines", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateRoutine: (id: string, data: Partial<RoomRoutine>) =>
+    request<{ success: boolean; routine: RoomRoutine }>(`/api/routines/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  deleteRoutine: (id: string) =>
+    request<{ success: boolean }>(`/api/routines/${id}`, {
+      method: "DELETE",
+    }),
+
+  toggleRoutine: (id: string) =>
+    request<{ success: boolean; enabled: boolean; routine: RoomRoutine }>(`/api/routines/${id}/toggle`, {
+      method: "POST",
+    }),
+
+  runRoutineNow: (id: string) =>
+    request<{ success: boolean; message: string }>(`/api/routines/${id}/run`, {
+      method: "POST",
+    }),
+
+  restoreRoutine: (roomSlug: string) =>
+    request<{ success: boolean; message: string }>(`/api/rooms/${encodeURIComponent(roomSlug)}/restore-routine`, {
+      method: "POST",
+    }),
 };

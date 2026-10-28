@@ -541,6 +541,89 @@ export const db = {
   },
 
   /**
+   * Retorna lista de rotinas base da sala (opcionalmente filtrada por sala)
+   */
+  getRoutines: async (roomSlug?: string): Promise<any[]> => {
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        const query = roomSlug ? { roomSlug } : {};
+        return await mongoDb
+          .collection("routines")
+          .find(query, { projection: { _id: 0 } })
+          .sort({ startTime: 1 })
+          .toArray();
+      } catch (e) {
+        console.error("[MongoDB] Erro ao buscar rotinas:", e);
+      }
+    }
+    const list: any[] = (await readJson("routines.json")) || [];
+    if (!roomSlug) return list;
+    return list.filter((r) => r.roomSlug === roomSlug);
+  },
+
+  /**
+   * Retorna uma rotina específica pelo ID
+   */
+  getRoutine: async (id: string): Promise<any | null> => {
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        return await mongoDb.collection("routines").findOne({ id }, { projection: { _id: 0 } });
+      } catch (e) {
+        console.error("[MongoDB] Erro ao buscar rotina:", e);
+      }
+    }
+    const list: any[] = (await readJson("routines.json")) || [];
+    return list.find((r) => r.id === id) || null;
+  },
+
+  /**
+   * Salva ou atualiza uma rotina base da sala
+   */
+  saveRoutine: async (routine: any): Promise<boolean> => {
+    if (!routine || !routine.id) return false;
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        const { _id, ...rest } = routine;
+        await mongoDb.collection("routines").updateOne(
+          { id: routine.id },
+          { $set: rest },
+          { upsert: true }
+        );
+        return true;
+      } catch (e) {
+        console.error("[MongoDB] Erro ao salvar rotina:", e);
+        return false;
+      }
+    }
+    const list: any[] = (await readJson("routines.json")) || [];
+    const idx = list.findIndex((r) => r.id === routine.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...routine };
+    } else {
+      list.push(routine);
+    }
+    return writeJson("routines.json", list);
+  },
+
+  /**
+   * Remove uma rotina base
+   */
+  deleteRoutine: async (id: string): Promise<boolean> => {
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        await mongoDb.collection("routines").deleteOne({ id });
+        return true;
+      } catch (e) {
+        console.error("[MongoDB] Erro ao deletar rotina:", e);
+        return false;
+      }
+    }
+    let list: any[] = (await readJson("routines.json")) || [];
+    list = list.filter((r) => r.id !== id);
+    return writeJson("routines.json", list);
+  },
+
+  /**
    * Retorna o status da conexão atual com detalhes de diagnóstico
    */
   getStatus: async () => {

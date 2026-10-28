@@ -2,7 +2,13 @@ import { Hono } from "hono";
 import { db } from "../services/db.ts";
 import { wsManager, detectDeviceType } from "../ws/manager.ts";
 import { youtubeService } from "../services/youtube.ts";
-import { executeSchedule, type ScheduleTask } from "../services/scheduler.ts";
+import {
+  clearAutomationOverride,
+  executeRoutine,
+  executeSchedule,
+  type RoomRoutine,
+  type ScheduleTask,
+} from "../services/scheduler.ts";
 import { roomEventQueue } from "../services/event-queue.ts";
 import {
   ensureAudioCached,
@@ -861,6 +867,100 @@ api.post("/schedules/:id/run", async (c) => {
   }
   const executed = await executeSchedule(schedule, false);
   return c.json({ success: executed, message: "Ação executada na tela da sala com sucesso!" });
+});
+
+// ========================
+// ROTINAS BASE DA SALA (Programação contínua estilo alarme de smartphone)
+// ========================
+// 1. Listar rotinas (com filtro opcional ?room=slug)
+api.get("/routines", async (c) => {
+  const roomSlug = c.req.query("room");
+  const routines = await db.getRoutines(roomSlug);
+  return c.json(routines);
+});
+
+// 2. Obter rotina por ID
+api.get("/routines/:id", async (c) => {
+  const id = c.req.param("id");
+  const routine = await db.getRoutine(id);
+  if (!routine) return c.json({ error: "Rotina não encontrada" }, 404);
+  return c.json(routine);
+});
+
+// 3. Criar nova rotina
+api.post("/routines", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body || !body.roomSlug || !body.title) {
+      return c.json({ error: "Sala e título da rotina são obrigatórios." }, 400);
+    }
+    const newRoutine: RoomRoutine = {
+      id: crypto.randomUUID(),
+      roomSlug: String(body.roomSlug).trim(),
+      title: String(body.title).trim(),
+      daysOfWeek: Array.isArray(body.daysOfWeek) && body.daysOfWeek.length > 0 ? body.daysOfWeek : [0, 1, 2, 3, 4, 5, 6],
+      startTime: String(body.startTime || "07:00").trim(),
+      endTime: String(body.endTime || "19:00").trim(),
+      enabled: body.enabled !== false,
+      priority: Number(body.priority || 0),
+      actions: body.actions || {},
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await db.saveRoutine(newRoutine);
+    return c.json({ success: true, routine: newRoutine }, 201);
+  } catch (err: any) {
+    return c.json({ error: err.message || "Erro ao criar rotina" }, 500);
+  }
+});
+
+// 4. Atualizar rotina
+api.put("/routines/:id", async (c) => {
+  const id = c.req.param("id");
+  const existing = await db.getRoutine(id);
+  if (!existing) return c.json({ error: "Rotina não encontrada" }, 404);
+  const body = await c.req.json();
+  const updated: RoomRoutine = {
+    ...existing,
+    ...body,
+    id,
+    updatedAt: Date.now(),
+  };
+  await db.saveRoutine(updated);
+  return c.json({ success: true, routine: updated });
+});
+
+// 5. Excluir rotina
+api.delete("/routines/:id", async (c) => {
+  const id = c.req.param("id");
+  const deleted = await db.deleteRoutine(id);
+  return c.json({ success: deleted });
+});
+
+// 6. Ativar / Desativar rotina
+api.post("/routines/:id/toggle", async (c) => {
+  const id = c.req.param("id");
+  const routine = await db.getRoutine(id);
+  if (!routine) return c.json({ error: "Rotina não encontrada" }, 404);
+  routine.enabled = !routine.enabled;
+  await db.saveRoutine(routine);
+  return c.json({ success: true, enabled: routine.enabled, routine });
+});
+
+// 7. Testar / Executar rotina imediatamente
+api.post("/routines/:id/run", async (c) => {
+  const id = c.req.param("id");
+  const routine = await db.getRoutine(id);
+  if (!routine) return c.json({ error: "Rotina não encontrada" }, 404);
+  const executed = await executeRoutine(routine);
+  return c.json({ success: executed, message: "Rotina ativada na tela da sala com sucesso!" });
+});
+
+// 8. Retomar rotina base imediatamente (limpa qualquer override de automação ativa)
+api.post("/rooms/:slug/restore-routine", (c) => {
+  const slug = c.req.param("slug");
+  clearAutomationOverride(slug);
+  return c.json({ success: true, message: "Override de cerimônia liberado. A sala retomará a rotina base." });
 });
 
 // ========================
