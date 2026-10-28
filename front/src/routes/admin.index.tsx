@@ -63,7 +63,7 @@ function AdminHome() {
                   className="group flex items-center justify-between p-3.5 hover:bg-neutral-900 transition-colors"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="h-8 w-8 bg-neutral-900 text-neutral-300 flex items-center justify-center flex-shrink-0 group-hover:text-white border border-neutral-850">
+                    <div className="h-8 w-8 bg-neutral-900 text-neutral-300 flex items-center justify-center flex-shrink-0 group-hover:text-white border border-neutral-900">
                       <Monitor className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">

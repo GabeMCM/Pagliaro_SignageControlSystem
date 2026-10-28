@@ -275,7 +275,7 @@ function DevicesAdminPage() {
               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 font-mono">
                 DISPOSITIVOS
               </span>
-              <span className="inline-flex items-center gap-1.5 px-1.5 py-0.2 bg-neutral-950 border border-neutral-850 text-[10px] font-mono text-neutral-300">
+              <span className="inline-flex items-center gap-1.5 px-1.5 py-0.2 bg-neutral-950 border border-neutral-900 text-[10px] font-mono text-neutral-300">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 <span>{onlineCount} Online</span>
               </span>
@@ -294,7 +294,7 @@ function DevicesAdminPage() {
                   }
                 }}
                 disabled={cleanOfflineDevices.isPending}
-                className="min-h-[30px] px-2.5 py-1 bg-neutral-950 border border-neutral-850 text-neutral-400 hover:text-red-400 hover:border-red-900 text-xs font-mono transition flex items-center gap-1.5"
+                className="min-h-[30px] px-2.5 py-1 bg-neutral-950 border border-neutral-900 text-neutral-400 hover:text-red-400 hover:border-red-900 text-xs font-mono transition flex items-center gap-1.5"
                 title="Limpar todos os aparelhos offline"
               >
                 <Trash2 className="h-3 w-3" />
@@ -304,7 +304,7 @@ function DevicesAdminPage() {
 
             <button
               onClick={() => qc.invalidateQueries({ queryKey: ["devices"] })}
-              className="min-h-[30px] px-2.5 py-1 bg-neutral-950 border border-neutral-850 text-neutral-300 hover:text-white hover:bg-neutral-900 text-xs font-mono transition flex items-center gap-1.5"
+              className="min-h-[30px] px-2.5 py-1 bg-neutral-950 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-900 text-xs font-mono transition flex items-center gap-1.5"
               title="Atualizar lista agora"
             >
               <RefreshCw className="h-3 w-3" />
@@ -360,7 +360,7 @@ function DevicesAdminPage() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Buscar por nome, ID, sala ou IP..."
-              className="w-full pl-8 pr-3 py-1.5 bg-black border border-neutral-850 text-xs text-white placeholder-neutral-400 focus:outline-none focus:border-neutral-600 transition"
+              className="w-full pl-8 pr-3 py-1.5 bg-black border border-neutral-900 text-xs text-white placeholder-neutral-400 focus:outline-none focus:border-neutral-600 transition"
             />
           </div>
 
@@ -370,7 +370,7 @@ function DevicesAdminPage() {
               className={`px-2.5 py-1 text-xs font-mono transition ${
                 filterMode === "all"
                   ? "bg-white text-black font-bold"
-                  : "bg-black text-neutral-400 hover:text-white border border-neutral-850"
+                  : "bg-black text-neutral-400 hover:text-white border border-neutral-900"
               }`}
             >
               Todos ({totalCount})
@@ -380,7 +380,7 @@ function DevicesAdminPage() {
               className={`px-2.5 py-1 text-xs font-mono transition flex items-center gap-1.5 ${
                 filterMode === "online"
                   ? "bg-white text-black font-bold"
-                  : "bg-black text-neutral-400 hover:text-white border border-neutral-850"
+                  : "bg-black text-neutral-400 hover:text-white border border-neutral-900"
               }`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${filterMode === "online" ? "bg-black" : "bg-emerald-400"}`} />
@@ -391,7 +391,7 @@ function DevicesAdminPage() {
               className={`px-2.5 py-1 text-xs font-mono transition ${
                 filterMode === "unbound"
                   ? "bg-white text-black font-bold"
-                  : "bg-black text-neutral-400 hover:text-white border border-neutral-850"
+                  : "bg-black text-neutral-400 hover:text-white border border-neutral-900"
               }`}
             >
               Sem Sala ({unboundCount})
@@ -401,7 +401,7 @@ function DevicesAdminPage() {
               className={`px-2.5 py-1 text-xs font-mono transition ${
                 filterMode === "offline"
                   ? "bg-white text-black font-bold"
-                  : "bg-black text-neutral-400 hover:text-white border border-neutral-850"
+                  : "bg-black text-neutral-400 hover:text-white border border-neutral-900"
               }`}
             >
               Offline ({totalCount - onlineCount})
@@ -412,7 +412,7 @@ function DevicesAdminPage() {
         {/* Modal de Renomear Aparelho */}
         {editingDevice && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
-            <div className="bg-neutral-950 border border-neutral-850 p-4 max-w-md w-full shadow-2xl space-y-3">
+            <div className="bg-neutral-950 border border-neutral-900 p-4 max-w-md w-full shadow-2xl space-y-3">
               <div className="flex items-center justify-between border-b border-neutral-900 pb-2">
                 <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-neutral-300 uppercase">
                   <Pencil className="h-3.5 w-3.5" />
@@ -432,7 +432,7 @@ function DevicesAdminPage() {
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   placeholder="Ex: TV Principal - Sala 01"
-                  className="w-full px-3 py-1.5 bg-black border border-neutral-800 text-xs text-white focus:outline-none focus:border-neutral-500"
+                  className="w-full px-3 py-1.5 bg-black border border-neutral-900 text-xs text-white focus:outline-none focus:border-neutral-500"
                   autoFocus
                 />
                 <span className="text-[10px] text-neutral-400 mt-1 block font-mono">ID: {editingDevice.id}</span>
@@ -442,7 +442,7 @@ function DevicesAdminPage() {
                 <button
                   type="button"
                   onClick={() => setEditingDevice(null)}
-                  className="px-3 py-1 bg-neutral-900 hover:bg-neutral-850 text-neutral-300 text-xs font-mono border border-neutral-800 transition"
+                  className="px-3 py-1 bg-neutral-900 hover:bg-neutral-900 text-neutral-300 text-xs font-mono border border-neutral-900 transition"
                 >
                   Cancelar
                 </button>
@@ -506,7 +506,7 @@ function DevicesAdminPage() {
                   {/* LINHA 1: Ícone + Identificação + Ações Rápidas */}
                   <div className="flex items-center justify-between gap-2.5 flex-wrap sm:flex-nowrap">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="relative p-2 bg-neutral-900 border border-neutral-850 flex-shrink-0 text-neutral-200">
+                      <div className="relative p-2 bg-neutral-900 border border-neutral-900 flex-shrink-0 text-neutral-200">
                         {getDeviceIcon(device.detectedLabel)}
                         <span
                           className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${
@@ -535,7 +535,7 @@ function DevicesAdminPage() {
                             className={`text-[9px] font-bold uppercase font-mono px-1 py-0.2 border ${
                               device.online
                                 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"
-                                : "bg-neutral-900 text-neutral-400 border-neutral-850"
+                                : "bg-neutral-900 text-neutral-400 border-neutral-900"
                             }`}
                           >
                             {device.online ? "Online" : "Offline"}
@@ -557,7 +557,7 @@ function DevicesAdminPage() {
                             ? "bg-amber-400 text-black font-extrabold"
                             : device.online
                             ? "bg-white text-black hover:bg-neutral-200"
-                            : "bg-neutral-900 border border-neutral-850 text-neutral-400 cursor-not-allowed"
+                            : "bg-neutral-900 border border-neutral-900 text-neutral-400 cursor-not-allowed"
                         }`}
                         title="Piscar tela da TV para identificação física"
                       >
@@ -570,8 +570,8 @@ function DevicesAdminPage() {
                         disabled={!device.online}
                         className={`min-h-[30px] px-2 py-1 text-xs font-mono transition flex items-center gap-1 ${
                           device.online
-                            ? "bg-neutral-900 border border-neutral-850 text-neutral-300 hover:text-white hover:bg-neutral-850"
-                            : "bg-neutral-900 border border-neutral-850 text-neutral-400 cursor-not-allowed"
+                            ? "bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-900"
+                            : "bg-neutral-900 border border-neutral-900 text-neutral-400 cursor-not-allowed"
                         }`}
                         title="Recarregar tela remotamente"
                       >
@@ -585,7 +585,7 @@ function DevicesAdminPage() {
                             deleteDevice.mutate(device.id);
                           }
                         }}
-                        className="min-h-[30px] px-2 py-1 bg-neutral-900 border border-neutral-850 text-neutral-400 hover:text-red-400 hover:border-red-900 text-xs transition flex items-center justify-center"
+                        className="min-h-[30px] px-2 py-1 bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-red-400 hover:border-red-900 text-xs transition flex items-center justify-center"
                         title="Remover aparelho"
                       >
                         <Trash2 className="h-3 w-3 flex-shrink-0" />
@@ -649,7 +649,7 @@ function DevicesAdminPage() {
                             updates: { assignedRoomSlug: val },
                           });
                         }}
-                        className="flex-1 bg-black border border-neutral-850 px-2 py-1 text-xs text-white focus:outline-none focus:border-neutral-600 transition cursor-pointer hover:border-neutral-700 font-sans"
+                        className="flex-1 bg-black border border-neutral-900 px-2 py-1 text-xs text-white focus:outline-none focus:border-neutral-600 transition cursor-pointer hover:border-neutral-700 font-sans"
                       >
                         <option value="">Lobby / Nenhuma sala vinculada</option>
                         {rooms.map((room) => {

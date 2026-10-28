@@ -226,7 +226,7 @@ function Index() {
             <div className="mt-2 font-mono text-emerald-400 bg-black/60 px-3 py-1.5 rounded border border-emerald-500/30 text-sm inline-block">
               {identifyModal.deviceId || deviceId}
             </div>
-            <div className="mt-6 grid grid-cols-2 gap-2 text-left text-xs bg-neutral-950/60 p-3 rounded-lg border border-neutral-800">
+            <div className="mt-6 grid grid-cols-2 gap-2 text-left text-xs bg-neutral-950/60 p-3 rounded-lg border border-neutral-900">
               <div>
                 <span className="text-neutral-500 block uppercase">Sala</span>
                 <span className="font-semibold text-neutral-200">{identifyModal.room || "Nenhuma (Na Raiz)"}</span>
@@ -244,7 +244,7 @@ function Index() {
       )}
 
       {/* Conteúdo Principal */}
-      <div className="relative z-10 max-w-md w-full bg-neutral-900/90 border border-neutral-800 p-6 sm:p-8 rounded-2xl shadow-2xl text-center backdrop-blur-md">
+      <div className="relative z-10 max-w-md w-full bg-neutral-900/90 border border-neutral-900 p-6 sm:p-8 rounded-2xl shadow-2xl text-center backdrop-blur-md">
         <div className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-emerald-400 font-bold bg-emerald-950/40 border border-emerald-500/30 px-3 py-1 rounded-full">
           <Monitor className="h-3.5 w-3.5" />
           <span>Signage Control Plane</span>
@@ -258,7 +258,7 @@ function Index() {
         </p>
 
         {/* Card de Identificação do Aparelho */}
-        <div className="mt-6 p-3.5 rounded-xl bg-neutral-950/80 border border-neutral-800 text-left text-xs">
+        <div className="mt-6 p-3.5 rounded-xl bg-neutral-950/80 border border-neutral-900 text-left text-xs">
           <div className="flex items-center justify-between gap-2">
             <span className="text-neutral-400 uppercase tracking-wider text-[10px] font-semibold">Identificador deste Aparelho</span>
             <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
@@ -266,7 +266,7 @@ function Index() {
               Online no Hub
             </span>
           </div>
-          <div className="mt-1.5 font-mono text-emerald-300 bg-neutral-900 px-2.5 py-1.5 rounded border border-neutral-800 text-xs flex items-center justify-between">
+          <div className="mt-1.5 font-mono text-emerald-300 bg-neutral-900 px-2.5 py-1.5 rounded border border-neutral-900 text-xs flex items-center justify-between">
             <span>{deviceId}</span>
             <span className="text-[10px] text-neutral-500">{window.screen.width}x{window.screen.height}</span>
           </div>
@@ -310,7 +310,7 @@ function Index() {
           </Link>
           <a
             href="/player/index.html"
-            className="flex-1 min-h-[44px] rounded-lg border border-neutral-700 hover:border-neutral-500 bg-neutral-800/60 px-4 py-2 text-xs font-bold uppercase tracking-wider text-neutral-200 hover:text-white transition flex items-center justify-center gap-2"
+            className="flex-1 min-h-[44px] rounded-lg border border-neutral-900 hover:border-neutral-500 bg-neutral-800/60 px-4 py-2 text-xs font-bold uppercase tracking-wider text-neutral-200 hover:text-white transition flex items-center justify-center gap-2"
           >
             <span>Abrir Player</span>
             <ExternalLink className="h-3.5 w-3.5" />

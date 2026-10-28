@@ -116,7 +116,7 @@ function AdminLayout() {
           {/* User / Permissions Indicator */}
           <button
             onClick={() => setPermissionsModalOpen(true)}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded-none bg-neutral-950 border border-neutral-850 text-neutral-300 hover:text-white text-[10px] font-mono tracking-tight"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-none bg-neutral-950 border border-neutral-900 text-neutral-300 hover:text-white text-[10px] font-mono tracking-tight"
             title="Usuários & Permissões"
           >
             <Shield className="h-2.5 w-2.5 text-neutral-400" />
@@ -126,7 +126,7 @@ function AdminLayout() {
           {/* Menu Drawer Toggle */}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="flex items-center gap-1 px-2 py-1 rounded-none bg-neutral-950 border border-neutral-850 text-neutral-200 hover:text-white text-[11px] font-medium"
+            className="flex items-center gap-1 px-2 py-1 rounded-none bg-neutral-950 border border-neutral-900 text-neutral-200 hover:text-white text-[11px] font-medium"
             aria-label="Menu de Salas"
           >
             {sidebarOpen ? <X className="h-3.5 w-3.5" /> : <Menu className="h-3.5 w-3.5" />}
@@ -306,7 +306,7 @@ function AdminLayout() {
                 setCreating(true);
               }}
               title={collapsed ? "Nova Sala" : undefined}
-              className="flex w-full items-center justify-center gap-1.5 bg-neutral-950 border border-neutral-850 hover:bg-neutral-900 hover:text-white px-2 py-1.5 text-xs font-semibold text-neutral-300 transition rounded-none"
+              className="flex w-full items-center justify-center gap-1.5 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 hover:text-white px-2 py-1.5 text-xs font-semibold text-neutral-300 transition rounded-none"
             >
               <Plus className="h-3 w-3 flex-shrink-0" />
               {!collapsed && <span>Nova Sala</span>}
@@ -322,7 +322,7 @@ function AdminLayout() {
                 className="flex items-center gap-2 text-left min-w-0 flex-1 hover:opacity-80 transition py-1"
                 title="Visualizar permissões e gestão de usuários"
               >
-                <div className="h-6 w-6 bg-neutral-900 border border-neutral-800 text-neutral-200 flex items-center justify-center font-mono text-[10px] font-bold flex-shrink-0">
+                <div className="h-6 w-6 bg-neutral-900 border border-neutral-900 text-neutral-200 flex items-center justify-center font-mono text-[10px] font-bold flex-shrink-0">
                   AD
                 </div>
                 <div className="min-w-0 truncate">
@@ -489,14 +489,14 @@ function CreateRoomForm({ onSuccess, onCancel }: { onSuccess: (newRoom?: Room) =
         value={form.name}
         onChange={(e) => setForm({ ...form, name: e.target.value })}
         required
-        className="w-full rounded-none border border-neutral-800 bg-black px-2 py-1 text-xs outline-none focus:border-neutral-500 text-white font-sans"
+        className="w-full rounded-none border border-neutral-900 bg-black px-2 py-1 text-xs outline-none focus:border-neutral-500 text-white font-sans"
       />
       <div className="relative">
         <input
           placeholder="URL do Memorial (opcional)"
           value={form.defaultSiteUrl}
           onChange={(e) => setForm({ ...form, defaultSiteUrl: e.target.value })}
-          className="w-full rounded-none border border-neutral-800 bg-black px-2 py-1 text-xs outline-none focus:border-neutral-500 text-white pl-6 font-mono text-[11px]"
+          className="w-full rounded-none border border-neutral-900 bg-black px-2 py-1 text-xs outline-none focus:border-neutral-500 text-white pl-6 font-mono text-[11px]"
         />
         <Globe className="h-3 w-3 text-neutral-400 absolute left-2 top-2" />
       </div>
@@ -505,7 +505,7 @@ function CreateRoomForm({ onSuccess, onCancel }: { onSuccess: (newRoom?: Room) =
           placeholder="URL de Rádio/Stream (opcional)"
           value={form.defaultAudioStreamUrl}
           onChange={(e) => setForm({ ...form, defaultAudioStreamUrl: e.target.value })}
-          className="w-full rounded-none border border-neutral-800 bg-black px-2 py-1 text-xs outline-none focus:border-neutral-500 text-white pl-6 font-mono text-[11px]"
+          className="w-full rounded-none border border-neutral-900 bg-black px-2 py-1 text-xs outline-none focus:border-neutral-500 text-white pl-6 font-mono text-[11px]"
         />
         <RadioIcon className="h-3 w-3 text-neutral-400 absolute left-2 top-2" />
       </div>
@@ -525,7 +525,7 @@ function CreateRoomForm({ onSuccess, onCancel }: { onSuccess: (newRoom?: Room) =
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-none border border-neutral-800 px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-white"
+          className="rounded-none border border-neutral-900 px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-900 hover:text-white"
         >
           Cancelar
         </button>
@@ -542,11 +542,11 @@ function UsersPermissionsModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-lg bg-neutral-950 border border-neutral-850 p-4 sm:p-5 flex flex-col space-y-3.5 my-auto max-h-[92dvh] overflow-y-auto">
+      <div className="w-full max-w-lg bg-neutral-950 border border-neutral-900 p-4 sm:p-5 flex flex-col space-y-3.5 my-auto max-h-[92dvh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between pb-2 border-b border-neutral-900">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-neutral-900 border border-neutral-800 text-white">
+            <div className="p-1.5 bg-neutral-900 border border-neutral-900 text-white">
               <Shield className="h-4 w-4" />
             </div>
             <div>
@@ -630,7 +630,7 @@ function UsersPermissionsModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-850 text-white text-xs font-semibold transition"
+            className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-900 text-white text-xs font-semibold transition"
           >
             Fechar
           </button>
