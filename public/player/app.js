@@ -478,11 +478,23 @@ function normalizeAudioUrl(url) {
 }
 
 // Converte qualquer URL de faixa no endereço final servido por ESTE servidor
-function resolveAudioSrc(raw) {
+function resolveAudioSrc(raw, isLiveStream) {
   if (!raw) return '';
   var ytId = getAudioYoutubeId(raw);
   if (ytId) return API_BASE + '/api/youtube/stream/' + ytId;
   var s = String(raw).replace(/^\s+|\s+$/g, '');
+  if (isLiveStream) {
+    if (s.indexOf('/api/radio/stream') !== -1) {
+      return s.indexOf('http') === 0 ? s : API_BASE + (s.charAt(0) === '/' ? '' : '/') + s;
+    }
+    if (s.indexOf('/media/') === 0) {
+      return API_BASE + s;
+    }
+    if (s.indexOf('http') !== 0) {
+      s = 'https://' + s;
+    }
+    return API_BASE + '/api/radio/stream?url=' + encodeURIComponent(s);
+  }
   if (s.indexOf('http') !== 0) {
     s = API_BASE + (s.charAt(0) === '/' ? '' : '/') + s;
   }
@@ -492,9 +504,11 @@ function resolveAudioSrc(raw) {
 function computeDesiredAudio() {
   var raw = null;
   var key = '';
+  var isLiveStream = false;
   if (currentRoomState.audioStreamUrl) {
     raw = currentRoomState.audioStreamUrl;
     key = 'stream|' + raw;
+    isLiveStream = true;
   } else if (audioItems && audioItems.length > 0) {
     if (aIndex < 0 || aIndex >= audioItems.length) aIndex = 0;
     var it = audioItems[aIndex];
@@ -504,7 +518,7 @@ function computeDesiredAudio() {
       key = 'pl|' + (audioPlaylist ? audioPlaylist.id : '') + '|' + aIndex + '|' + itUrl;
     }
   }
-  AE.desiredSrc = raw ? resolveAudioSrc(raw) : '';
+  AE.desiredSrc = raw ? resolveAudioSrc(raw, isLiveStream) : '';
   AE.desiredKey = raw ? key : '';
 }
 
@@ -626,6 +640,7 @@ function unlockAudioFromGesture() {
 
 // --- Carregamento / reprodução ---
 function audioLoad() {
+  var isLiveRadio = Boolean(currentRoomState.audioStreamUrl);
   var isRetry = AE.lastKey === AE.desiredKey;
   if (!isRetry) {
     AE.errorCount = 0;
@@ -634,14 +649,16 @@ function audioLoad() {
   AE.key = AE.desiredKey;
   AE.lastKey = AE.desiredKey;
   AE.src = AE.desiredSrc;
-  AE.resumeAt = isRetry ? AE.pendingResume : 0;
+  AE.resumeAt = (!isLiveRadio && isRetry) ? AE.pendingResume : 0;
   AE.pendingResume = 0;
   AE.lastTime = 0;
   AE.lastProgressAt = nowMs();
   AE.playAttemptsNoProgress = 0;
 
   var url = AE.src;
-  if (isRetry && AE.errorCount > 0) {
+  if (isLiveRadio) {
+    url += (url.indexOf('?') === -1 ? '?' : '&') + '_ts=' + nowMs();
+  } else if (isRetry && AE.errorCount > 0) {
     url += (url.indexOf('?') === -1 ? '?' : '&') + 'r=' + AE.errorCount + '_' + nowMs();
   }
   try {
@@ -688,24 +705,29 @@ function audioHandleFailure(reason) {
   if (!AE.desiredKey || !bgmPlayer) return;
   if (AE.retryTimer) return; // já existe uma reconexão agendada
   AE.errorCount++;
-  var pos = 0;
-  try { pos = bgmPlayer.currentTime || 0; } catch (e) {}
-  if (AE.lastTime > pos) pos = AE.lastTime;
-  AE.pendingResume = pos;
+  var isLiveRadio = Boolean(currentRoomState.audioStreamUrl);
+  if (isLiveRadio) {
+    AE.pendingResume = 0;
+  } else {
+    var pos = 0;
+    try { pos = bgmPlayer.currentTime || 0; } catch (e) {}
+    if (AE.lastTime > pos) pos = AE.lastTime;
+    AE.pendingResume = pos;
+  }
   setAudioReport('error', reason + ' (tentativa ' + AE.errorCount + ')');
 
   // Após 5 falhas seguidas NA MESMA faixa de playlist, avança para a próxima
-  if (AE.errorCount >= 5 && !currentRoomState.audioStreamUrl && audioItems.length > 1) {
+  if (AE.errorCount >= 5 && !isLiveRadio && audioItems.length > 1) {
     AE.errorCount = 0;
     AE.pendingResume = 0;
     advanceToNextTrack(true);
     return;
   }
-  var delay = Math.min(12000, 1200 * Math.pow(2, AE.errorCount - 1));
+  var delay = Math.min(isLiveRadio ? 8000 : 12000, 1200 * Math.pow(2, Math.min(4, AE.errorCount - 1)));
   AE.retryTimer = setTimeout(function() {
     AE.retryTimer = null;
     if (!AE.desiredKey) return;
-    AE.key = ''; // força recarregar a mesma faixa
+    AE.key = ''; // força recarregar a mesma faixa / rádio
     reconcileAudio();
   }, delay);
 }
@@ -788,7 +810,14 @@ function reconcileAudio() {
     if (!bgmPlayer.paused) {
       try { bgmPlayer.pause(); } catch (e) {}
     }
-    if (AE.key && AE.key !== AE.desiredKey) {
+    if (currentRoomState.audioStreamUrl && AE.key) {
+      // Em Web Rádio ao vivo, encerrar o socket ao pausar para reconectar ao vivo no próximo Play
+      try { bgmPlayer.removeAttribute('src'); bgmPlayer.load(); } catch (e) {}
+      AE.key = '';
+      AE.lastKey = '';
+      AE.lastTime = 0;
+      AE.pendingResume = 0;
+    } else if (AE.key && AE.key !== AE.desiredKey) {
       AE.key = '';
       AE.lastKey = '';
       AE.lastTime = 0;
@@ -810,7 +839,7 @@ function reconcileAudio() {
       AE.retryTimer = null;
     }
     if (!AE.retryTimer) {
-      if (mediaBroken && AE.key === AE.desiredKey) {
+      if (mediaBroken && AE.key === AE.desiredKey && !currentRoomState.audioStreamUrl) {
         AE.pendingResume = AE.lastTime;
       }
       audioLoad();
@@ -830,13 +859,13 @@ function resumeCurrentAudio() { reconcileAudio(); }
 
 if (ENABLE_AUDIO && bgmPlayer) {
   bgmPlayer.addEventListener('loadedmetadata', function() {
-    if (AE.resumeAt > 1) {
+    if (AE.resumeAt > 1 && !currentRoomState.audioStreamUrl) {
       var d = bgmPlayer.duration;
-      if (!d || !isFinite(d) || d > AE.resumeAt + 2) {
+      if (d && isFinite(d) && d > AE.resumeAt + 2) {
         try { bgmPlayer.currentTime = AE.resumeAt; } catch (e) {}
       }
-      AE.resumeAt = 0;
     }
+    AE.resumeAt = 0;
   });
 
   bgmPlayer.addEventListener('playing', function() {
@@ -853,11 +882,11 @@ if (ENABLE_AUDIO && bgmPlayer) {
 
   bgmPlayer.addEventListener('timeupdate', function() {
     var ct = bgmPlayer.currentTime || 0;
+    AE.lastProgressAt = nowMs();
+    AE.playAttemptsNoProgress = 0;
     if (ct !== AE.lastTime) {
       AE.lastTime = ct;
-      AE.lastProgressAt = nowMs();
-      AE.playAttemptsNoProgress = 0;
-      if (AE.errorCount > 0 && ct > 20) AE.errorCount = 0;
+      if (AE.errorCount > 0 && ct > 15) AE.errorCount = 0;
     }
   });
 
@@ -873,17 +902,15 @@ if (ENABLE_AUDIO && bgmPlayer) {
 
   bgmPlayer.addEventListener('ended', function() {
     if (!AE.desiredKey || !AE.key || aIsPaused) return;
+    if (currentRoomState.audioStreamUrl) {
+      audioHandleFailure('Stream ao vivo reconectando');
+      return;
+    }
     var dur = bgmPlayer.duration;
     var ct = bgmPlayer.currentTime || 0;
     // Ignora 'ended' prematuro se tocou menos de 3s ou se caiu antes do fim real
     if (ct < 3 || (dur && isFinite(dur) && dur > 10 && ct < dur - 5)) {
       audioHandleFailure('Stream interrompido');
-      return;
-    }
-    if (currentRoomState.audioStreamUrl) {
-      AE.key = '';
-      AE.lastKey = '';
-      reconcileAudio();
       return;
     }
     var loopMode = currentRoomState.audioLoopMode || (audioPlaylist && audioPlaylist.loopMode) || 'all';
@@ -912,7 +939,8 @@ if (ENABLE_AUDIO && bgmPlayer) {
       AE.lastProgressAt = t;
       return;
     }
-    if (t - AE.lastProgressAt > 15000) {
+    var stallLimit = currentRoomState.audioStreamUrl ? 25000 : 15000;
+    if (t - AE.lastProgressAt > stallLimit) {
       audioHandleFailure('Áudio travado');
     }
   }, 2000);

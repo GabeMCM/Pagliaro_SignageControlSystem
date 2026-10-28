@@ -70,6 +70,17 @@ export interface YoutubePlaylistResult {
   videos: YoutubeTrackResult[];
 }
 
+export interface RadioStationItem {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  streamUrl: string;
+  codec: string;
+  bitrate: number;
+  country: string;
+}
+
 export interface RoomState {
   playlist: string | null;
   audioPlaylist: string | null;
@@ -333,4 +344,21 @@ export const signageApi = {
     request<{ success: boolean; message: string }>(`/api/schedules/${id}/run`, {
       method: "POST",
     }),
+
+  getRadioPresets: () =>
+    request<{ success: boolean; presets: RadioStationItem[] }>("/api/radio/presets"),
+
+  searchRadios: (query: string, limit = 16) =>
+    request<{ success: boolean; results: RadioStationItem[] }>(
+      `/api/radio/search?q=${encodeURIComponent(query)}&limit=${limit}`
+    ),
+
+  probeRadio: (url: string) =>
+    request<{
+      ok: boolean;
+      resolvedUrl?: string;
+      contentType?: string;
+      stationName?: string;
+      error?: string;
+    }>(`/api/radio/probe?url=${encodeURIComponent(url)}`),
 };

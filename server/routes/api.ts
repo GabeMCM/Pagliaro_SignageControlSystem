@@ -18,6 +18,12 @@ import {
   renderAdiauHtmlPage,
   warmAdiauUrl,
 } from "../services/adiau.ts";
+import {
+  PRESET_GOSPEL_RADIOS,
+  probeRadioStream,
+  proxyRadioStream,
+  searchRadioStations,
+} from "../services/radio.ts";
 
 export const api = new Hono();
 
@@ -907,6 +913,36 @@ api.get("/adiau/asset/:id", (c) => {
   });
 });
 
+// ========================
+// WEB RÁDIO (Proxy Universal + Estações Gospel 24h + Busca Ao Vivo)
+// ========================
+api.get("/radio/presets", (c) => {
+  return c.json({
+    success: true,
+    presets: PRESET_GOSPEL_RADIOS,
+  });
+});
 
+api.get("/radio/search", async (c) => {
+  const q = c.req.query("q") || "gospel";
+  const limit = Number(c.req.query("limit") || 16);
+  const results = await searchRadioStations(q, limit);
+  return c.json({
+    success: true,
+    results,
+  });
+});
 
+api.get("/radio/probe", async (c) => {
+  const url = c.req.query("url") || "";
+  const result = await probeRadioStream(url);
+  return c.json(result);
+});
 
+api.on(["GET", "HEAD"], "/radio/stream", async (c) => {
+  const url = c.req.query("url") || "";
+  if (!url) {
+    return c.json({ error: "Parâmetro 'url' é obrigatório." }, 400);
+  }
+  return await proxyRadioStream(url, c.req.method);
+});

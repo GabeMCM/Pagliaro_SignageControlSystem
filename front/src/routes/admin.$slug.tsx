@@ -8,6 +8,7 @@ import {
   type DeviceInfo,
   type YoutubeTrackResult,
   type YoutubePlaylistResult,
+  type RadioStationItem,
   type ScheduleTask,
   API_BASE,
 } from "@/lib/signage-api";
@@ -959,6 +960,19 @@ function RoomOperator() {
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [importSuccessMsg, setImportSuccessMsg] = useState<string | null>(null);
 
+  // Estados e Presets para Web Rádio 24h
+  const radioPresetsQ = useQuery({
+    queryKey: ["radioPresets"],
+    queryFn: signageApi.getRadioPresets,
+    staleTime: 600000,
+  });
+  const [radioSearchQuery, setRadioSearchQuery] = useState("");
+  const [radioSearchResults, setRadioSearchResults] = useState<RadioStationItem[]>([]);
+  const [isSearchingRadio, setIsSearchingRadio] = useState(false);
+  const [isProbingRadio, setIsProbingRadio] = useState(false);
+  const [radioStatusMsg, setRadioStatusMsg] = useState<string | null>(null);
+  const [radioErrorMsg, setRadioErrorMsg] = useState<string | null>(null);
+
   useEffect(() => {
     if (stateQ.data?.siteUrl) {
       setSiteInputUrl(stateQ.data.siteUrl);
@@ -995,15 +1009,31 @@ function RoomOperator() {
   const currentAudioIndex = stateQ.data?.currentAudioIndex ?? 0;
   const isAudioPlaying = stateQ.data?.audioStatus === "playing";
 
-  // Identificação da faixa tocando agora
+  // Identificação da faixa ou Web Rádio tocando agora
   const currentPlayingTrack = useMemo(() => {
-    if (isAudioStreamActive) return "Transmissão Web Rádio";
+    if (isAudioStreamActive) {
+      const activeStream = (stateQ.data?.audioStreamUrl || "").trim();
+      const presetMatch = radioPresetsQ.data?.presets?.find(
+        (r) => r.streamUrl === activeStream
+      );
+      if (presetMatch) return `Web Rádio: ${presetMatch.name}`;
+      const searchMatch = radioSearchResults.find((r) => r.streamUrl === activeStream);
+      if (searchMatch) return `Web Rádio: ${searchMatch.name}`;
+      return "Transmissão Web Rádio Ao Vivo";
+    }
     if (activeAudio?.items && activeAudio.items.length > 0) {
       const it = activeAudio.items[currentAudioIndex] || activeAudio.items[0];
       return it?.title || extractTrackTitle(it?.url || "");
     }
     return null;
-  }, [isAudioStreamActive, activeAudio, currentAudioIndex]);
+  }, [
+    isAudioStreamActive,
+    stateQ.data?.audioStreamUrl,
+    radioPresetsQ.data?.presets,
+    radioSearchResults,
+    activeAudio,
+    currentAudioIndex,
+  ]);
 
   // Sincronização via WebSocket com Fila de Eventos (FIFO) e Estado Autoritativo do Servidor
   useEffect(() => {
@@ -1102,16 +1132,70 @@ function RoomOperator() {
     setState.mutate({ siteUrl: null, mode: "playlist" });
   };
 
-  // Ações de Stream Único / Web Rádio
-  const handleApplyAudioStream = () => {
+  // Ações de Stream Único / Web Rádio 24h
+  const handleTuneRadioStation = (station: RadioStationItem) => {
+    setRadioErrorMsg(null);
+    setRadioStatusMsg(`Sintonizada: ${station.name}`);
+    setAudioStreamInputUrl(station.streamUrl);
+    setState.mutate({ audioStreamUrl: station.streamUrl, audioStatus: "playing" });
+    setTimeout(() => setRadioStatusMsg(null), 4000);
+  };
+
+  const handleApplyAudioStream = async () => {
     if (!audioStreamInputUrl.trim()) return;
-    const url = cleanAudioUrl(audioStreamInputUrl);
-    setAudioStreamInputUrl(url);
-    setState.mutate({ audioStreamUrl: url, audioStatus: "playing" });
+    const raw = cleanAudioUrl(audioStreamInputUrl);
+    setRadioErrorMsg(null);
+    setRadioStatusMsg(null);
+    setIsProbingRadio(true);
+    try {
+      const probe = await signageApi.probeRadio(raw);
+      if (probe.ok && probe.resolvedUrl) {
+        setAudioStreamInputUrl(probe.resolvedUrl);
+        setState.mutate({ audioStreamUrl: probe.resolvedUrl, audioStatus: "playing" });
+        setRadioStatusMsg(
+          probe.stationName
+            ? `Rádio validada e sintonizada: ${probe.stationName}`
+            : "Transmissão ao vivo verificada e sintonizada!"
+        );
+        setTimeout(() => setRadioStatusMsg(null), 4500);
+      } else {
+        setRadioErrorMsg(
+          probe.error ||
+            "Este link não parece retornar áudio contínuo (MP3/AAC). Verifique o endereço ou escolha uma das rádios 24h abaixo."
+        );
+      }
+    } catch (_e) {
+      // Fallback: sintoniza mesmo se o teste prévio falhar
+      setAudioStreamInputUrl(raw);
+      setState.mutate({ audioStreamUrl: raw, audioStatus: "playing" });
+    } finally {
+      setIsProbingRadio(false);
+    }
   };
 
   const handleClearAudioStream = () => {
+    setRadioErrorMsg(null);
+    setRadioStatusMsg(null);
     setState.mutate({ audioStreamUrl: null });
+  };
+
+  const handleSearchRadios = async (customQuery?: string) => {
+    const q = (customQuery !== undefined ? customQuery : radioSearchQuery).trim();
+    if (!q) return;
+    if (customQuery !== undefined) setRadioSearchQuery(customQuery);
+    setIsSearchingRadio(true);
+    setRadioErrorMsg(null);
+    try {
+      const res = await signageApi.searchRadios(q, 16);
+      setRadioSearchResults(res.results || []);
+      if ((res.results || []).length === 0) {
+        setRadioErrorMsg("Nenhuma estação ao vivo encontrada para esta busca.");
+      }
+    } catch (err: any) {
+      setRadioErrorMsg(err.message || "Erro ao pesquisar estações de rádio.");
+    } finally {
+      setIsSearchingRadio(false);
+    }
   };
 
   // ==========================================
@@ -2721,21 +2805,24 @@ function RoomOperator() {
             )}
 
             {/* ============================================================ */}
-            {/* SUB-ABA 4: SINTONIZAR WEB RÁDIO                              */}
+            {/* SUB-ABA 4: SINTONIZAR WEB RÁDIO 24H                          */}
             {/* ============================================================ */}
             {basicAudioTab === "stream" && (
-              <div className="rounded-[2px] border border-neutral-800 bg-neutral-950/60 p-3 space-y-2.5">
-                <div className="flex items-center justify-between">
+              <div className="rounded-[2px] border border-neutral-800 bg-neutral-950/60 p-3 space-y-3.5">
+                {/* Cabeçalho da Web Rádio */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800/80 pb-2.5">
                   <div className="flex items-center gap-2">
                     <RadioIcon
                       className={`h-4 w-4 ${
-                        isAudioStreamActive ? "text-emerald-400 animate-pulse" : "text-neutral-500"
+                        isAudioStreamActive ? "text-emerald-400 animate-pulse" : "text-neutral-400"
                       }`}
                     />
-                    <span className="text-xs font-bold text-white">Transmissão Direta / Web Rádio</span>
+                    <span className="text-xs font-bold text-white">
+                      Web Rádios Ao Vivo 24h (Gospel, Instrumental & Louvor)
+                    </span>
                     {isAudioStreamActive && (
-                      <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.2 rounded-[2px] font-bold">
-                        Sintonizada
+                      <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-[2px] font-bold uppercase tracking-wider">
+                        No Ar
                       </span>
                     )}
                   </div>
@@ -2743,30 +2830,225 @@ function RoomOperator() {
                   {isAudioStreamActive && (
                     <button
                       onClick={handleClearAudioStream}
-                      className="text-xs text-red-400 hover:underline flex items-center gap-1 font-semibold"
+                      className="px-2.5 py-1 rounded-[2px] bg-red-500/10 border border-red-500/30 text-xs text-red-300 hover:bg-red-500/20 flex items-center gap-1 font-semibold transition"
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-3.5 w-3.5" />
                       <span>Desconectar Rádio</span>
                     </button>
                   )}
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-stretch gap-1.5">
-                  <input
-                    placeholder="Link da rádio (ex: https://stream.zeno.fm/... ou link .mp3 contínuo)"
-                    value={audioStreamInputUrl}
-                    onChange={(e) => setAudioStreamInputUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleApplyAudioStream()}
-                    className="flex-1 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white outline-none focus:border-neutral-500"
-                  />
-                  <button
-                    onClick={handleApplyAudioStream}
-                    disabled={!audioStreamInputUrl.trim() || setState.isPending}
-                    className="min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm"
-                  >
-                    <RadioIcon className="h-3.5 w-3.5" />
-                    <span>Sintonizar</span>
-                  </button>
+                {/* Mensagens de retorno (validação / sintonização) */}
+                {radioStatusMsg && (
+                  <div className="flex items-center gap-2 rounded-[2px] border border-emerald-500/30 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-300 font-semibold">
+                    <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-emerald-400" />
+                    <span>{radioStatusMsg}</span>
+                  </div>
+                )}
+
+                {radioErrorMsg && (
+                  <div className="flex items-center gap-2 rounded-[2px] border border-amber-500/30 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-400" />
+                    <span>{radioErrorMsg}</span>
+                  </div>
+                )}
+
+                {/* 1. ESTAÇÕES GOSPEL 24H VERIFICADAS (SINTONIZAR EM 1 CLIQUE) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300">
+                      Estações Gospel & Instrumental 24h Verificadas (1 Clique)
+                    </span>
+                    <span className="text-[10px] text-neutral-400">
+                      Proxy HTTPS compatível com todas as Smart TVs
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {(radioPresetsQ.data?.presets || []).map((station) => {
+                      const isThisActive =
+                        isAudioStreamActive &&
+                        (stateQ.data?.audioStreamUrl || "").trim() === station.streamUrl;
+
+                      return (
+                        <div
+                          key={station.id}
+                          className={`rounded-[2px] border p-2.5 flex items-center justify-between gap-2.5 transition ${
+                            isThisActive
+                              ? "border-emerald-500/60 bg-emerald-950/25 shadow-xs"
+                              : "border-neutral-800 bg-neutral-900/60 hover:border-neutral-700"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-bold text-white truncate">
+                                {station.name}
+                              </span>
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-[2px] border border-neutral-700 bg-neutral-950 text-neutral-300">
+                                {station.category}
+                              </span>
+                              {isThisActive && (
+                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-[2px] bg-emerald-500 text-black">
+                                  Tocando
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-neutral-400 line-clamp-1">
+                              {station.description}
+                            </p>
+                            <div className="text-[10px] text-neutral-500 font-mono">
+                              {station.codec} • {station.bitrate} kbps • 24h Ao Vivo
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTuneRadioStation(station)}
+                            disabled={setState.isPending}
+                            className={`px-3 py-2 rounded-[2px] text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0 transition ${
+                              isThisActive
+                                ? "bg-emerald-500 text-black hover:bg-emerald-400"
+                                : "bg-white text-black hover:bg-neutral-200"
+                            }`}
+                          >
+                            <RadioIcon className="h-3.5 w-3.5" />
+                            <span>{isThisActive ? "No Ar" : "Sintonizar"}</span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. BUSCAR OUTRAS RÁDIOS AO VIVO NO DIRETÓRIO MUNDIAL */}
+                <div className="border-t border-neutral-800/80 pt-3 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300">
+                      Buscar Outras Web Rádios Ao Vivo (Diretório Online)
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1">
+                      {[
+                        "Gospel",
+                        "Instrumental Gospel",
+                        "Louvor",
+                        "Harpa Cristã",
+                        "Piano Instrumental",
+                      ].map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => handleSearchRadios(chip)}
+                          className="px-2 py-0.5 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-[10px] font-semibold text-neutral-300 hover:text-white transition"
+                        >
+                          {chip}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-stretch gap-1.5">
+                    <input
+                      placeholder="Pesquisar rádio por nome ou estilo (ex: Gospel, Louvor, Melodia, Instrumental...)"
+                      value={radioSearchQuery}
+                      onChange={(e) => setRadioSearchQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearchRadios()}
+                      className="flex-1 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white outline-none focus:border-neutral-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSearchRadios()}
+                      disabled={!radioSearchQuery.trim() || isSearchingRadio}
+                      className="min-h-[36px] px-4 py-2 rounded-[2px] bg-neutral-800 border border-neutral-700 text-white font-bold text-xs uppercase tracking-wider hover:bg-neutral-700 disabled:opacity-40 transition flex items-center justify-center gap-1.5"
+                    >
+                      {isSearchingRadio ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Search className="h-3.5 w-3.5" />
+                      )}
+                      <span>Buscar Rádios</span>
+                    </button>
+                  </div>
+
+                  {radioSearchResults.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-60 overflow-y-auto pr-1 pt-1">
+                      {radioSearchResults.map((station) => {
+                        const isThisActive =
+                          isAudioStreamActive &&
+                          (stateQ.data?.audioStreamUrl || "").trim() === station.streamUrl;
+                        return (
+                          <div
+                            key={station.id}
+                            className={`rounded-[2px] border p-2 flex items-center justify-between gap-2 ${
+                              isThisActive
+                                ? "border-emerald-500/60 bg-emerald-950/25"
+                                : "border-neutral-800 bg-neutral-900/40"
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-semibold text-white truncate">
+                                {station.name}
+                              </div>
+                              <div className="text-[10px] text-neutral-400 truncate">
+                                {station.codec} • {station.bitrate || 128} kbps • {station.country}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleTuneRadioStation(station)}
+                              className="px-2.5 py-1.5 rounded-[2px] bg-white text-black text-[11px] font-bold uppercase hover:bg-neutral-200 flex-shrink-0 transition"
+                            >
+                              {isThisActive ? "No Ar" : "Sintonizar"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. COLAR LINK DIRETO / MANUAL DE STREAM */}
+                <div className="border-t border-neutral-800/80 pt-3 space-y-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300 block">
+                    Ou Sintonizar por Link Direto da Rádio (URL Manual)
+                  </span>
+
+                  <div className="flex flex-col sm:flex-row items-stretch gap-1.5">
+                    <input
+                      placeholder="Link da rádio (ex: https://stream.zeno.fm/..., Icecast/Shoutcast MP3/AAC, .pls ou .m3u)"
+                      value={audioStreamInputUrl}
+                      onChange={(e) => setAudioStreamInputUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleApplyAudioStream()}
+                      className="flex-1 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white outline-none focus:border-neutral-500 font-mono"
+                    />
+                    <button
+                      onClick={handleApplyAudioStream}
+                      disabled={!audioStreamInputUrl.trim() || setState.isPending || isProbingRadio}
+                      className="min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      {isProbingRadio ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RadioIcon className="h-3.5 w-3.5" />
+                      )}
+                      <span>{isProbingRadio ? "Validando..." : "Validar e Sintonizar"}</span>
+                    </button>
+                  </div>
+
+                  <div className="rounded-[2px] border border-neutral-800/90 bg-neutral-900/40 p-2.5 text-[11px] text-neutral-400 space-y-1">
+                    <div className="font-semibold text-neutral-200 flex items-center gap-1.5">
+                      <Info className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
+                      <span>Quais Web Rádios funcionam neste sistema?</span>
+                    </div>
+                    <p>
+                      <strong className="text-emerald-400">Funcionam em todas as TVs:</strong>{" "}
+                      Streams contínuos em formato <strong>MP3</strong> ou <strong>AAC / AAC+</strong>{" "}
+                      (servidores <strong>Zeno.fm</strong>, <strong>Shoutcast</strong>,{" "}
+                      <strong>Icecast</strong>, <strong>SonicPanel</strong>, <strong>BRLive</strong>,{" "}
+                      <strong>MaxCast</strong> e arquivos <code>.pls</code> ou <code>.m3u</code>),
+                      inclusive links <code>http://</code> ou com portas como <code>:7004</code>,{" "}
+                      <code>:8197</code>, <code>:9165</code> — o servidor converte e entrega tudo via proxy seguro para a TV.
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
