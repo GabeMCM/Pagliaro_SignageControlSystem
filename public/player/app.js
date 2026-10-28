@@ -1228,39 +1228,96 @@ function rotateStandbyBackground() {
 }
 
 // 5 Posições equilibradas de roaming para proteção total anti-burn-in de TVs OLED
-var STANDBY_POSITIONS = [
-  'pos-center',
-  'pos-bottom-left',
-  'pos-center-right',
-  'pos-top-left',
-  'pos-bottom-right'
-];
+var STANDBY_POSITIONS_COUNT = 5;
 var standbyPosIndex = 0;
+var standbyCurrentX = 0;
+var standbyCurrentY = 0;
 var standbyRoamInterval = null;
+var standbyFirstRoamTimer = null;
 
-function shiftStandbyPosition() {
+function computeStandbyCoordinates(posIndex) {
+  var content = document.getElementById('standby-content');
+  var screenW = window.innerWidth || document.documentElement.clientWidth || 1920;
+  var screenH = window.innerHeight || document.documentElement.clientHeight || 1080;
+  var cardW = (content && content.offsetWidth) ? content.offsetWidth : 560;
+  var cardH = (content && content.offsetHeight) ? content.offsetHeight : 340;
+
+  var x = 0;
+  var y = 0;
+  var idx = (posIndex >= 0 ? posIndex : 0) % STANDBY_POSITIONS_COUNT;
+
+  switch (idx) {
+    case 0: // Centro
+      x = Math.round((screenW - cardW) / 2);
+      y = Math.round((screenH - cardH) / 2);
+      break;
+    case 1: // Canto Inferior Esquerdo
+      x = Math.round(screenW * 0.05);
+      y = Math.round(screenH * 0.90 - cardH);
+      break;
+    case 2: // Canto Superior Direito
+      x = Math.round(screenW * 0.95 - cardW);
+      y = Math.round(screenH * 0.08);
+      break;
+    case 3: // Canto Superior Esquerdo
+      x = Math.round(screenW * 0.05);
+      y = Math.round(screenH * 0.08);
+      break;
+    case 4: // Canto Inferior Direito
+      x = Math.round(screenW * 0.95 - cardW);
+      y = Math.round(screenH * 0.90 - cardH);
+      break;
+    default:
+      x = Math.round((screenW - cardW) / 2);
+      y = Math.round((screenH - cardH) / 2);
+  }
+
+  // Previne que saia das margens de segurança da tela
+  var padX = Math.round(screenW * 0.03);
+  var padY = Math.round(screenH * 0.04);
+  if (x < padX) x = padX;
+  if (y < padY) y = padY;
+  if (x + cardW > screenW - padX) x = Math.max(padX, screenW - cardW - padX);
+  if (y + cardH > screenH - padY) y = Math.max(padY, screenH - cardH - padY);
+
+  return { x: x, y: y };
+}
+
+function applyStandbyTransform(x, y) {
   var content = document.getElementById('standby-content');
   if (!content) return;
+  standbyCurrentX = x;
+  standbyCurrentY = y;
+  var t = 'translate3d(' + x + 'px, ' + y + 'px, 0)';
+  content.style.webkitTransform = t;
+  content.style.transform = t;
+}
 
-  standbyPosIndex = (standbyPosIndex + 1) % STANDBY_POSITIONS.length;
-  var targetPos = STANDBY_POSITIONS[standbyPosIndex];
+function shiftStandbyPosition(isFirst) {
+  var content = document.getElementById('standby-content');
+  if (!content || !isStandbyActive) return;
 
-  content.style.opacity = '0.35';
+  if (!isFirst) {
+    standbyPosIndex = (standbyPosIndex + 1) % STANDBY_POSITIONS_COUNT;
+  }
+  var coords = computeStandbyCoordinates(standbyPosIndex);
+
+  // Efeito suave: breve esmaecimento para 45%, deslizamento elegante por 3.2s e volta da opacidade
+  content.style.opacity = '0.45';
   setTimeout(function() {
-    if (!content) return;
-    content.className = targetPos;
+    if (!content || !isStandbyActive) return;
+    applyStandbyTransform(coords.x, coords.y);
     content.style.opacity = '1';
-  }, 450);
+  }, 250);
 }
 
 function shiftStandbyMicroJitter() {
   var content = document.getElementById('standby-content');
-  if (!content) return;
-  // Micro-deslocamento sutil (+/- 4px) para garantir movimento contínuo dos subpixels
+  if (!content || !isStandbyActive) return;
+  // Micro-deslocamento sutil (+/- 4px) para refrescar subpixels continuamente
   var jx = Math.floor(Math.random() * 9) - 4;
   var jy = Math.floor(Math.random() * 7) - 3;
-  content.style.marginLeft = jx + 'px';
-  content.style.marginTop = jy + 'px';
+  applyStandbyTransform(standbyCurrentX + jx, standbyCurrentY + jy);
 }
 
 var roomDisplayName = '';
@@ -1412,6 +1469,22 @@ function applyStandbyMode(active) {
     tickStandbyClock();
     rotateStandbyBackground();
 
+    // Posiciona no centro imediatamente no primeiro frame sem transição
+    standbyPosIndex = 0;
+    var content = document.getElementById('standby-content');
+    if (content) {
+      content.style.transition = 'none';
+      content.style.webkitTransition = 'none';
+      var initCoords = computeStandbyCoordinates(0);
+      applyStandbyTransform(initCoords.x, initCoords.y);
+      // Reativa a transição fluida logo após o posicionamento inicial
+      setTimeout(function() {
+        if (!content) return;
+        content.style.transition = 'transform 3.2s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.6s ease';
+        content.style.webkitTransition = '-webkit-transform 3.2s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.6s ease';
+      }, 80);
+    }
+
     if (standbyClockInterval) clearInterval(standbyClockInterval);
     standbyClockInterval = setInterval(tickStandbyClock, 1000);
 
@@ -1421,11 +1494,22 @@ function applyStandbyMode(active) {
     if (standbyBgInterval) clearInterval(standbyBgInterval);
     standbyBgInterval = setInterval(rotateStandbyBackground, 48000);
 
+    // Primeiro roaming aos 10s para ver a movimentação em ação imediatamente
+    if (standbyFirstRoamTimer) clearTimeout(standbyFirstRoamTimer);
+    standbyFirstRoamTimer = setTimeout(function() {
+      if (isStandbyActive) {
+        shiftStandbyPosition(false);
+      }
+    }, 10000);
+
+    // Roaming periódico contínuo a cada 30 segundos
     if (standbyRoamInterval) clearInterval(standbyRoamInterval);
-    standbyRoamInterval = setInterval(shiftStandbyPosition, 52000);
+    standbyRoamInterval = setInterval(function() {
+      shiftStandbyPosition(false);
+    }, 30000);
 
     if (standbyJitterInterval) clearInterval(standbyJitterInterval);
-    standbyJitterInterval = setInterval(shiftStandbyMicroJitter, 12000);
+    standbyJitterInterval = setInterval(shiftStandbyMicroJitter, 8000);
 
     fetchStandbyWeather(false);
     if (standbyWeatherInterval) clearInterval(standbyWeatherInterval);
@@ -1441,6 +1525,7 @@ function applyStandbyMode(active) {
         }
       }, 500);
     }
+    if (standbyFirstRoamTimer) { clearTimeout(standbyFirstRoamTimer); standbyFirstRoamTimer = null; }
     if (standbyClockInterval) { clearInterval(standbyClockInterval); standbyClockInterval = null; }
     if (standbyNowPlayingInterval) { clearInterval(standbyNowPlayingInterval); standbyNowPlayingInterval = null; }
     if (standbyBgInterval) { clearInterval(standbyBgInterval); standbyBgInterval = null; }
