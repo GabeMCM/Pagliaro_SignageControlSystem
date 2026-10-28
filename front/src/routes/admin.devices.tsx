@@ -471,7 +471,7 @@ function DevicesAdminPage() {
           </div>
         )}
 
-        {/* Lista de Aparelhos */}
+        {/* Lista de Aparelhos em Formato de Lista / Tabela */}
         {devicesQ.isLoading ? (
           <div className="p-8 text-center text-xs text-neutral-500">Carregando aparelhos conectados...</div>
         ) : filteredDevices.length === 0 ? (
@@ -483,127 +483,107 @@ function DevicesAdminPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filteredDevices.map((device) => {
-              const isIdentifying = identifyingId === device.id;
-              return (
-                <div
-                  key={device.id}
-                  className={`border rounded-[2px] p-3.5 transition flex flex-col justify-between gap-3 ${
-                    device.online
-                      ? "bg-neutral-900/60 border-neutral-800 hover:border-neutral-700 shadow-xs"
-                      : "bg-neutral-950 border-neutral-900 opacity-70"
-                  }`}
-                >
-                  {/* Cabeçalho do Aparelho */}
-                  <div>
-                    <div className="flex items-start justify-between gap-2.5">
-                      <div className="flex items-center gap-2.5 min-w-0">
+          <div className="rounded-[2px] border border-neutral-800 bg-neutral-950/70 overflow-hidden shadow-sm">
+            {/* Cabeçalho da Lista (visível em telas médias e grandes) */}
+            <div className="hidden lg:grid lg:grid-cols-12 gap-3 px-4 py-2.5 bg-neutral-900/80 border-b border-neutral-800 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+              <div className="lg:col-span-4">Dispositivo / Modelo</div>
+              <div className="lg:col-span-2">ID & Endereço IP</div>
+              <div className="lg:col-span-3">Sala Vinculada</div>
+              <div className="lg:col-span-1">Status / Visto</div>
+              <div className="lg:col-span-2 text-right">Ações Remotas</div>
+            </div>
+
+            {/* Linhas de Aparelhos */}
+            <div className="divide-y divide-neutral-800/80">
+              {filteredDevices.map((device) => {
+                const isIdentifying = identifyingId === device.id;
+                return (
+                  <div
+                    key={device.id}
+                    className={`p-3.5 sm:px-4 sm:py-3 transition flex flex-col lg:grid lg:grid-cols-12 lg:items-center gap-3 ${
+                      device.online
+                        ? "hover:bg-neutral-900/40 bg-neutral-950/50"
+                        : "bg-neutral-950/90 opacity-60 hover:opacity-85"
+                    }`}
+                  >
+                    {/* Coluna 1: Dispositivo, Ícone, Nome e Modelo */}
+                    <div className="lg:col-span-4 flex items-center gap-3 min-w-0">
+                      <div className="relative p-2 rounded-[2px] bg-neutral-900 border border-neutral-800 flex-shrink-0">
                         {getDeviceIcon(device.detectedLabel)}
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <h2 className="text-sm font-bold text-white truncate max-w-[200px] sm:max-w-[280px]">
-                              {device.name}
-                            </h2>
-                            <button
-                              onClick={() => {
-                                setEditingDevice(device);
-                                setEditName(device.name);
-                              }}
-                              className="text-neutral-500 hover:text-white transition p-0.5"
-                              title="Renomear aparelho"
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </button>
-                          </div>
-                          <div className="text-[10px] text-neutral-400 mt-0.5 truncate">
-                            {device.detectedLabel}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Badge de Status Online */}
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2 py-0.2 rounded-[2px] text-[10px] font-semibold flex-shrink-0 ${
-                          device.online
-                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25"
-                            : "bg-neutral-900 text-neutral-500 border border-neutral-800"
-                        }`}
-                      >
                         <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            device.online ? "bg-emerald-400" : "bg-neutral-600"
+                          className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border border-neutral-950 ${
+                            device.online ? "bg-emerald-400 animate-pulse" : "bg-neutral-600"
                           }`}
+                          title={device.online ? "Online agora" : "Desconectado"}
                         />
-                        <span>{device.online ? "Online" : "Offline"}</span>
-                      </span>
-                    </div>
+                      </div>
 
-                    {/* Metadados: ID, IP, Sala, Local */}
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] bg-neutral-950 p-2.5 rounded-[2px] border border-neutral-800">
-                      <div>
-                        <span className="text-neutral-500 block text-[9px] uppercase font-semibold">Identificador (ID)</span>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="font-mono text-white font-medium truncate">{device.id}</span>
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs sm:text-sm font-bold text-white truncate max-w-[220px]">
+                            {device.name}
+                          </span>
                           <button
-                            onClick={() => handleCopyId(device.id)}
-                            className="text-neutral-500 hover:text-white p-0.5 transition"
-                            title="Copiar ID"
+                            onClick={() => {
+                              setEditingDevice(device);
+                              setEditName(device.name);
+                            }}
+                            className="text-neutral-500 hover:text-white transition p-0.5"
+                            title="Renomear aparelho"
                           >
-                            {copiedId === device.id ? (
-                              <Check className="h-3 w-3 text-emerald-400" />
-                            ) : (
-                              <Copy className="h-3 w-3" />
-                            )}
+                            <Pencil className="h-3 w-3" />
                           </button>
+                          <span
+                            className={`text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-[2px] border ${
+                              device.online
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"
+                                : "bg-neutral-900 text-neutral-500 border-neutral-800"
+                            }`}
+                          >
+                            {device.online ? "Online" : "Offline"}
+                          </span>
                         </div>
-                      </div>
-
-                      <div>
-                        <span className="text-neutral-500 block text-[9px] uppercase font-semibold">IP na Rede</span>
-                        <div className="flex items-center gap-1.5 mt-0.5 font-mono text-neutral-300">
-                          <Wifi className="h-3 w-3 text-neutral-500" />
-                          <span>{device.ip || "localhost"}</span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <span className="text-neutral-500 block text-[9px] uppercase font-semibold">Local Atual da Tela</span>
-                        <span className="text-neutral-300 truncate block mt-0.5">
-                          {device.currentPath === "/"
-                            ? "Na Raiz do Site (/)"
-                            : device.currentPath?.includes("?room=")
-                            ? "Reproduzindo TV"
-                            : "No Lobby de Seleção"}
-                        </span>
-                      </div>
-
-                      <div>
-                        <span className="text-neutral-500 block text-[9px] uppercase font-semibold">Última Atividade</span>
-                        <div className="flex items-center gap-1 mt-0.5 text-neutral-400">
-                          <Clock className="h-3 w-3 text-neutral-600" />
-                          <span>{timeAgo(device.lastSeenAt)}</span>
+                        <div className="text-[11px] text-neutral-400 truncate">
+                          {device.detectedLabel}
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Seletor de Vinculação de Sala e Botões de Ação */}
-                  <div className="space-y-2 pt-1 border-t border-neutral-800">
-                    {/* Seletor de Sala */}
-                    <div>
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="font-semibold text-neutral-300 flex items-center gap-1 text-[11px]">
-                          <Link2 className="h-3 w-3 text-neutral-400" />
-                          <span>Sala Vinculada:</span>
+                    {/* Coluna 2: ID & IP */}
+                    <div className="lg:col-span-2 text-xs flex flex-row lg:flex-col items-center lg:items-start justify-between lg:justify-center gap-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-neutral-300 font-semibold text-[11px]">
+                          {device.id}
                         </span>
+                        <button
+                          onClick={() => handleCopyId(device.id)}
+                          className="text-neutral-500 hover:text-white p-0.5 transition"
+                          title="Copiar ID"
+                        >
+                          {copiedId === device.id ? (
+                            <Check className="h-3 w-3 text-emerald-400" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1 text-[11px] text-neutral-500 font-mono">
+                        <Wifi className="h-3 w-3 text-neutral-500 flex-shrink-0" />
+                        <span>{device.ip || "localhost"}</span>
+                      </div>
+                    </div>
+
+                    {/* Coluna 3: Sala Vinculada (Seletor inline) */}
+                    <div className="lg:col-span-3 flex flex-col justify-center gap-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-neutral-400 font-medium lg:hidden">Sala:</span>
                         {device.assignedRoomSlug && (
                           <Link
                             to="/admin/$slug"
                             params={{ slug: device.assignedRoomSlug }}
-                            className="text-[10px] text-neutral-300 hover:text-white hover:underline flex items-center gap-1 font-mono"
+                            className="text-[10px] text-neutral-400 hover:text-white hover:underline flex items-center gap-1 font-mono ml-auto"
                           >
-                            <span>Abrir no Painel</span>
+                            <span>Abrir Painel</span>
                             <ExternalLink className="h-2.5 w-2.5" />
                           </Link>
                         )}
@@ -618,53 +598,68 @@ function DevicesAdminPage() {
                             updates: { assignedRoomSlug: val },
                           });
                         }}
-                        className="w-full bg-neutral-950 border border-neutral-800 rounded-[2px] px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-neutral-500 transition cursor-pointer"
+                        className="w-full bg-neutral-900/80 border border-neutral-800 rounded-[2px] px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-neutral-500 transition cursor-pointer hover:border-neutral-700"
                       >
-                        <option value="">Nenhuma sala vinculada (Lobby / Livre)</option>
+                        <option value="">Lobby / Não vinculado</option>
                         {rooms.map((room) => {
                           const clients = room.clientsCount ?? 0;
                           const max = room.maxClients ?? 2;
                           return (
                             <option key={room.slug} value={room.slug}>
-                              {room.name} ({clients}/{max} telas ativas)
+                              {room.name} ({clients}/{max} telas)
                             </option>
                           );
                         })}
                       </select>
                     </div>
 
-                    {/* Botões de Ação Rápida */}
-                    <div className="grid grid-cols-3 gap-1.5">
+                    {/* Coluna 4: Local da Tela & Tempo */}
+                    <div className="lg:col-span-1 text-xs flex flex-row lg:flex-col items-center lg:items-start justify-between lg:justify-center gap-0.5">
+                      <span className="text-[11px] text-neutral-300 font-medium truncate">
+                        {device.currentPath === "/"
+                          ? "Raiz (/)"
+                          : device.currentPath?.includes("?room=")
+                          ? "Na TV"
+                          : "Lobby"}
+                      </span>
+                      <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                        <Clock className="h-2.5 w-2.5" />
+                        <span>{timeAgo(device.lastSeenAt)}</span>
+                      </span>
+                    </div>
+
+                    {/* Coluna 5: Ações Rápidas */}
+                    <div className="lg:col-span-2 flex items-center justify-end gap-1.5 pt-1 lg:pt-0 border-t lg:border-t-0 border-neutral-900">
                       {/* Botão Identificar */}
                       <button
                         onClick={() => identifyDevice.mutate(device.id)}
                         disabled={!device.online || isIdentifying}
-                        className={`min-h-[32px] px-2 py-1 rounded-[2px] text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs text-center truncate ${
+                        className={`min-h-[30px] px-2.5 py-1 rounded-[2px] text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs truncate ${
                           isIdentifying
                             ? "bg-amber-400 text-black font-extrabold animate-pulse"
                             : device.online
                             ? "bg-white text-black hover:bg-neutral-200"
                             : "bg-neutral-900 border border-neutral-800 text-neutral-600 cursor-not-allowed"
                         }`}
-                        title="Faz a tela deste aparelho piscar com a identificação para você localizá-lo fisicamente"
+                        title="Faz a tela da TV piscar com a identificação remota"
                       >
                         <Radio className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">{isIdentifying ? "Sinalizando..." : "Identificar"}</span>
+                        <span>{isIdentifying ? "Sinalizando..." : "Identificar"}</span>
                       </button>
 
                       {/* Botão Recarregar TV */}
                       <button
                         onClick={() => reloadDevice.mutate(device.id)}
                         disabled={!device.online}
-                        className={`min-h-[32px] px-2 py-1 rounded-[2px] text-xs font-medium transition flex items-center justify-center gap-1 text-center truncate ${
+                        className={`min-h-[30px] px-2 py-1 rounded-[2px] text-xs font-medium transition flex items-center justify-center gap-1 ${
                           device.online
-                            ? "bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800"
+                            ? "bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-850"
                             : "bg-neutral-900 border border-neutral-800 text-neutral-600 cursor-not-allowed"
                         }`}
-                        title="Recarrega a página da TV remotamente"
+                        title="Recarregar tela remotamente"
                       >
                         <RefreshCw className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">Recarregar</span>
+                        <span className="hidden sm:inline">Recarregar</span>
                       </button>
 
                       {/* Botão Excluir */}
@@ -674,17 +669,16 @@ function DevicesAdminPage() {
                             deleteDevice.mutate(device.id);
                           }
                         }}
-                        className="min-h-[32px] px-2 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs font-medium transition flex items-center justify-center gap-1 text-center truncate"
-                        title="Remove o registro deste aparelho do sistema"
+                        className="min-h-[30px] px-2 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs font-medium transition flex items-center justify-center"
+                        title="Remover aparelho"
                       >
                         <Trash2 className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">Excluir</span>
                       </button>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

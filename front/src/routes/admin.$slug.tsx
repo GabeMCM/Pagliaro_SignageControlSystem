@@ -3403,56 +3403,67 @@ function RoomDevicesCard({
         )}
       </div>
 
-      {/* Grid de Telas Conectadas e Vagas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+      {/* Lista de Telas Conectadas e Vagas Disponíveis */}
+      <div className="rounded-[2px] border border-neutral-800 bg-neutral-950/70 overflow-hidden divide-y divide-neutral-800/80">
         {/* Telas Conectadas */}
         {devices.map((device, idx) => (
           <div
             key={device.id}
-            className="flex flex-col justify-between p-3 rounded-[2px] border border-neutral-800 bg-neutral-950 shadow-xs space-y-2.5"
+            className="p-3 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-neutral-900/40 transition"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800 flex-shrink-0">
-                  <Monitor className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs sm:text-sm font-bold text-white truncate">
-                    {device.deviceLabel}
-                  </div>
-                  <div className="text-[10px] text-neutral-400 flex items-center gap-1.5 mt-0.5 flex-wrap">
-                    <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      Vaga #{idx + 1}
-                    </span>
-                    <span>•</span>
-                    <span className="text-neutral-500 font-mono">
-                      IP: {device.ip}
-                    </span>
-                  </div>
-                </div>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="relative p-2 rounded-[2px] bg-neutral-900 border border-neutral-800 flex-shrink-0 text-neutral-200">
+                <Monitor className="h-4 w-4" />
+                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-400 animate-pulse border border-neutral-950" />
               </div>
 
-              <span className="text-[10px] text-neutral-500 flex items-center gap-1 flex-shrink-0 font-mono">
-                <Clock className="h-3 w-3" />
-                {formatConnectedTime(device.connectedAt)}
-              </span>
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs sm:text-sm font-bold text-white truncate">
+                    {device.deviceLabel}
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.2 rounded-[2px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                    Vaga #{idx + 1}
+                  </span>
+                  <span className="text-[10px] text-neutral-500 font-mono">
+                    IP: {device.ip || "localhost"}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 text-[11px] text-neutral-400 flex-wrap">
+                  <span
+                    className={`inline-flex items-center gap-1 font-medium ${
+                      device.audioState?.state === "playing"
+                        ? "text-emerald-400"
+                        : device.audioState?.state === "blocked"
+                        ? "text-amber-400"
+                        : device.audioState?.state === "error"
+                        ? "text-red-400"
+                        : "text-neutral-400"
+                    }`}
+                  >
+                    {device.audioState?.state === "playing"
+                      ? "🔊 Áudio tocando normalmente"
+                      : device.audioState?.state === "blocked"
+                      ? "⚠️ Áudio bloqueado (aperte OK na TV)"
+                      : device.audioState?.state === "loading"
+                      ? "⏳ Carregando áudio..."
+                      : device.audioState?.state === "error"
+                      ? `⚠️ ${device.audioState.detail || "Erro de áudio"}`
+                      : device.audioState?.state === "disabled"
+                      ? "🔇 Som desativado nesta tela"
+                      : "Tela conectada"}
+                  </span>
+                  <span className="text-neutral-600">•</span>
+                  <span className="text-[10px] text-neutral-500 flex items-center gap-1 font-mono">
+                    <Clock className="h-2.5 w-2.5" />
+                    <span>Conectada {formatConnectedTime(device.connectedAt)}</span>
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-neutral-900">
-              <span className="text-[10px] text-neutral-400 truncate">
-                {device.audioState?.state === "playing"
-                  ? "🔊 Reproduzindo som"
-                  : device.audioState?.state === "blocked"
-                  ? "⚠️ Som bloqueado (aperte OK na TV)"
-                  : device.audioState?.state === "loading"
-                  ? "⏳ Carregando áudio..."
-                  : device.audioState?.state === "error"
-                  ? `⚠️ ${device.audioState.detail || "Reconectando áudio"}`
-                  : device.audioState?.state === "disabled"
-                  ? "🔇 Som desativado nesta tela"
-                  : "Conectada"}
-              </span>
+            <div className="flex items-center justify-end gap-2 flex-shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-neutral-900">
               <button
                 onClick={() => {
                   if (confirm(`Desconectar "${device.deviceLabel}" e enviá-la de volta ao lobby?`)) {
@@ -3463,38 +3474,48 @@ function RoomDevicesCard({
                   }
                 }}
                 disabled={isKicking}
-                className="min-h-[28px] px-2.5 py-0.5 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-300 text-neutral-300 text-xs font-semibold transition flex items-center gap-1 disabled:opacity-40"
+                className="min-h-[30px] px-3 py-1 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-300 text-neutral-300 text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-40"
               >
                 <LogOut className="h-3 w-3 flex-shrink-0" />
-                <span>Desconectar</span>
+                <span>Desconectar Tela</span>
               </button>
             </div>
           </div>
         ))}
 
-        {/* Vagas Livres (até o limite) */}
+        {/* Vagas Livres em Formato de Linha */}
         {Array.from({ length: emptySlotsCount }).map((_, i) => {
           const slotNum = count + i + 1;
           return (
             <div
               key={`empty-slot-${slotNum}`}
-              className="flex flex-col items-center justify-center p-3.5 rounded-[2px] border border-dashed border-neutral-800 bg-neutral-950/40 text-center space-y-1 min-h-[96px]"
+              className="p-3 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-neutral-950/40 text-neutral-400 hover:bg-neutral-950/70 transition"
             >
-              <div className="flex items-center gap-1.5 text-xs text-neutral-300 font-semibold">
-                <Tv className="h-3.5 w-3.5 text-neutral-500" />
-                <span>Vaga #{slotNum} Disponível</span>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-[2px] border border-dashed border-neutral-800 bg-neutral-900/40 text-neutral-600 flex-shrink-0">
+                  <Tv className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-neutral-300 flex items-center gap-2">
+                    <span>Vaga #{slotNum} Disponível</span>
+                    <span className="text-[9px] uppercase px-1.5 py-0.2 rounded-[2px] border border-dashed border-neutral-800 text-neutral-500">
+                      Livre
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-500">
+                    Aguardando aparelho conectar ou abra o link do player nesta TV.
+                  </p>
+                </div>
               </div>
-              <p className="text-[11px] text-neutral-500 max-w-xs">
-                Aguardando conexão da TV ou selecione esta sala no menu do player.
-              </p>
+
               <a
                 href={playerUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] text-neutral-300 hover:text-white underline font-semibold pt-0.5"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-850 text-xs font-semibold transition flex-shrink-0"
               >
                 <ExternalLink className="h-3 w-3" />
-                <span>Conectar TV nesta vaga</span>
+                <span>Conectar TV Nesta Vaga</span>
               </a>
             </div>
           );
