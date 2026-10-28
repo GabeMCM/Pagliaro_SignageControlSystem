@@ -19,13 +19,13 @@
  */
 
 @theme inline {
-  --radius-sm: 1px;
-  --radius-md: 2px;
-  --radius-lg: 2px;
-  --radius-xl: 3px;
-  --radius-2xl: 4px;
-  --radius-3xl: 4px;
-  --radius-4xl: 4px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 1px;
+  --radius-xl: 1px;
+  --radius-2xl: 1px;
+  --radius-3xl: 2px;
+  --radius-4xl: 2px;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

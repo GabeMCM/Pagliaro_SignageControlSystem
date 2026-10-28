@@ -249,7 +249,7 @@ function DateTimePickerField({
                 (e.currentTarget as any).showPicker?.();
               } catch {}
             }}
-            className="w-full rounded-[2px] border border-neutral-800 bg-black px-2 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600 cursor-pointer"
+            className="w-full rounded-none border border-neutral-800 bg-black px-2 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600 cursor-pointer"
           />
         </div>
         <div>
@@ -263,7 +263,7 @@ function DateTimePickerField({
                 (e.currentTarget as any).showPicker?.();
               } catch {}
             }}
-            className="w-full rounded-[2px] border border-neutral-800 bg-black px-2 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600 cursor-pointer"
+            className="w-full rounded-none border border-neutral-800 bg-black px-2 py-1.5 text-white font-mono text-xs outline-none focus:border-neutral-600 cursor-pointer"
           />
         </div>
       </div>
@@ -274,35 +274,35 @@ function DateTimePickerField({
         <button
           type="button"
           onClick={() => setTodayTomorrow(false)}
-          className="px-1.5 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
+          className="px-1.5 py-0.5 rounded-none bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
         >
           Hoje
         </button>
         <button
           type="button"
           onClick={() => setTodayTomorrow(true)}
-          className="px-1.5 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
+          className="px-1.5 py-0.5 rounded-none bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
         >
           Amanhã
         </button>
         <button
           type="button"
           onClick={() => addMinutes(15)}
-          className="px-1.5 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
+          className="px-1.5 py-0.5 rounded-none bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
         >
           +15m
         </button>
         <button
           type="button"
           onClick={() => addMinutes(30)}
-          className="px-1.5 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
+          className="px-1.5 py-0.5 rounded-none bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
         >
           +30m
         </button>
         <button
           type="button"
           onClick={() => addMinutes(60)}
-          className="px-1.5 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
+          className="px-1.5 py-0.5 rounded-none bg-neutral-900 border border-neutral-800 hover:text-white hover:border-neutral-700"
         >
           +1h
         </button>
@@ -333,7 +333,7 @@ function ManagePlaylistsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="w-full max-w-lg rounded-[2px] border border-neutral-800 bg-neutral-950 p-4 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+      <div className="w-full max-w-lg rounded-none border border-neutral-800 bg-neutral-950 p-4 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
           <div className="flex items-center gap-2">
             <ListMusic className="h-4 w-4 text-white" />
@@ -341,7 +341,7 @@ function ManagePlaylistsModal({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-[2px] text-neutral-400 hover:text-white hover:bg-neutral-900 transition"
+            className="p-1 rounded-none text-neutral-400 hover:text-white hover:bg-neutral-900 transition"
           >
             <X className="h-4 w-4" />
           </button>
@@ -362,7 +362,7 @@ function ManagePlaylistsModal({
               return (
                 <div
                   key={pl.id}
-                  className={`flex items-center justify-between gap-2 p-2.5 rounded-[2px] border transition ${
+                  className={`flex items-center justify-between gap-2 p-2.5 rounded-none border transition ${
                     isActive
                       ? "bg-neutral-900 border-white/40 shadow-xs"
                       : "bg-neutral-900/60 border-neutral-800 hover:border-neutral-700"
@@ -380,7 +380,7 @@ function ManagePlaylistsModal({
                         {pl.name}
                       </span>
                       {isActive && (
-                        <span className="px-1.5 py-0.2 rounded-[2px] text-[9px] font-bold bg-white text-black uppercase">
+                        <span className="px-1.5 py-0.2 rounded-none text-[9px] font-bold bg-white text-black uppercase">
                           Ativa
                         </span>
                       )}
@@ -397,14 +397,14 @@ function ManagePlaylistsModal({
                           onSelect(pl.id);
                           onClose();
                         }}
-                        className="px-2 py-1 rounded-[2px] bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition"
+                        className="px-2 py-1 rounded-none bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition"
                       >
                         Usar
                       </button>
                     )}
                     <button
                       onClick={() => onDelete(pl.id, pl.name)}
-                      className="p-1.5 rounded-[2px] text-neutral-400 hover:text-red-400 hover:bg-red-500/10 transition"
+                      className="p-1.5 rounded-none text-neutral-400 hover:text-red-400 hover:bg-red-500/10 transition"
                       title="Excluir playlist permanentemente"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -419,7 +419,7 @@ function ManagePlaylistsModal({
         <div className="pt-2 border-t border-neutral-800 flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-[2px] bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-semibold text-white transition"
+            className="px-4 py-1.5 rounded-none bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-xs font-semibold text-white transition"
           >
             Fechar
           </button>
@@ -565,14 +565,14 @@ function VolumeWheelPicker({ value, onChange, compact = false, disabled = false 
           type="button"
           onClick={() => step(-1)}
           disabled={disabled || currentVal <= 0}
-          className={`${compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"} rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0`}
+          className={`${compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"} rounded-none bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0`}
           title="Diminuir 1%"
         >
           <Minus className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
         </button>
 
         {/* Tambor Cilíndrico da Roleta (UIDatePicker Style com Rounded Quase Zero) */}
-        <div className={`relative ${compact ? "h-[96px] w-24 sm:w-28" : "h-[114px] w-28 sm:w-32"} overflow-hidden rounded-[2px] border border-neutral-800 bg-black shadow-inner select-none flex-shrink-0`}>
+        <div className={`relative ${compact ? "h-[96px] w-24 sm:w-28" : "h-[114px] w-28 sm:w-32"} overflow-hidden rounded-none border border-neutral-800 bg-black shadow-inner select-none flex-shrink-0`}>
           <div className={`pointer-events-none absolute inset-x-0 top-0 ${compact ? "h-7" : "h-9"} bg-gradient-to-b from-neutral-950 via-neutral-950/80 to-transparent z-20`} />
           <div className={`pointer-events-none absolute inset-x-0 ${compact ? "top-[32px] h-[32px]" : "top-[38px] h-[38px]"} border-y border-neutral-600 bg-white/10 z-10 flex items-center justify-end pr-2`}>
             <span className="text-[10px] font-bold text-neutral-300 font-mono">%</span>
@@ -615,7 +615,7 @@ function VolumeWheelPicker({ value, onChange, compact = false, disabled = false 
           type="button"
           onClick={() => step(1)}
           disabled={disabled || currentVal >= 100}
-          className={`${compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"} rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0`}
+          className={`${compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"} rounded-none bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0`}
           title="Aumentar 1%"
         >
           <Plus className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
@@ -625,7 +625,7 @@ function VolumeWheelPicker({ value, onChange, compact = false, disabled = false 
           type="button"
           disabled={disabled}
           onClick={() => handleSelect(currentVal > 0 ? 0 : 50)}
-          className={`${compact ? "h-8 w-8" : "h-9 w-9"} rounded-[2px] border flex items-center justify-center transition flex-shrink-0 ${
+          className={`${compact ? "h-8 w-8" : "h-9 w-9"} rounded-none border flex items-center justify-center transition flex-shrink-0 ${
             currentVal === 0
               ? "bg-red-500/20 border-red-500/40 text-red-300"
               : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:text-white"
@@ -643,7 +643,7 @@ function VolumeWheelPicker({ value, onChange, compact = false, disabled = false 
       {!compact && (
         <div className="flex items-center gap-1.5 justify-center sm:justify-start">
           <span className="text-xs text-neutral-400 font-medium">Volume:</span>
-          <span className="text-sm font-bold text-white font-mono bg-neutral-900 px-2 py-0.5 rounded-[2px] border border-neutral-800">
+          <span className="text-sm font-bold text-white font-mono bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-800">
             {currentVal}%
           </span>
         </div>
@@ -941,7 +941,7 @@ function RoomOperator() {
   const createRoutineMut = useMutation({
     mutationFn: (data: Partial<RoomRoutine>) => signageApi.createRoutine(data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["routines", slug] });
+      qc.invalidateQueries({ queryKey: ["routines"] });
     },
   });
 
@@ -949,21 +949,21 @@ function RoomOperator() {
     mutationFn: ({ id, data }: { id: string; data: Partial<RoomRoutine> }) =>
       signageApi.updateRoutine(id, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["routines", slug] });
+      qc.invalidateQueries({ queryKey: ["routines"] });
     },
   });
 
   const deleteRoutineMut = useMutation({
     mutationFn: (id: string) => signageApi.deleteRoutine(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["routines", slug] });
+      qc.invalidateQueries({ queryKey: ["routines"] });
     },
   });
 
   const toggleRoutineMut = useMutation({
     mutationFn: (id: string) => signageApi.toggleRoutine(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["routines", slug] });
+      qc.invalidateQueries({ queryKey: ["routines"] });
     },
   });
 
@@ -1778,137 +1778,118 @@ function RoomOperator() {
       {/* ============================================================ */}
       {/* CABEÇALHO PRINCIPAL LIMPO E INTUITIVO                         */}
       {/* ============================================================ */}
-      <header className="border-b border-neutral-800 bg-neutral-950 px-3 py-2.5 sm:px-5 sm:py-3 space-y-2.5 w-full flex-shrink-0">
+      <header className="border-b border-neutral-900 bg-black px-3 py-2 sm:px-5 sm:py-2.5 space-y-2 w-full flex-shrink-0">
         {/* Linha 1: Título da Sala + Status + Ações Principais */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-                Sala
-              </span>
-              {/* Badge de Status Simples e Direto */}
-              {isRoomOnline ? (
-                <span
-                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[2px] text-[11px] font-semibold border truncate ${
-                    isRoomFull
-                      ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
-                      : "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"
-                  }`}
-                >
-                  <span
-                    className={`h-2 w-2 rounded-full flex-shrink-0 ${
-                      isRoomFull ? "bg-amber-400" : "bg-emerald-400"
-                    }`}
-                  />
-                  <span className="truncate">
-                    {devicesCount === 1 ? "1 TV conectada" : `${devicesCount} TVs conectadas`}
-                    {isRoomFull ? " (Cheia)" : ""}
-                  </span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[2px] text-[11px] font-medium bg-neutral-900 text-neutral-400 border border-neutral-800">
-                  <span className="h-2 w-2 rounded-full bg-neutral-600 flex-shrink-0" />
-                  <span>Nenhuma TV</span>
-                </span>
-              )}
-            </div>
-            <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight truncate mt-0.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="text-sm sm:text-base font-bold text-white tracking-tight truncate font-mono uppercase">
               {currentRoom?.name || slug}
             </h1>
+            {isRoomOnline ? (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-neutral-950 border border-neutral-850 text-[10px] font-mono text-emerald-400">
+                <span className={`h-1.5 w-1.5 rounded-full ${isRoomFull ? "bg-amber-400" : "bg-emerald-400"}`} />
+                <span>{devicesCount} TV{devicesCount !== 1 ? "s" : ""}</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-neutral-950 border border-neutral-850 text-[10px] font-mono text-neutral-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-neutral-700" />
+                <span>Offline</span>
+              </span>
+            )}
           </div>
 
-          {/* Botões de Controle Rápido da TV: 3 colunas iguais no mobile */}
-          <div className="grid grid-cols-3 gap-1.5 w-full sm:w-auto sm:flex sm:items-center sm:gap-2">
-            {/* Standby / Suspender TV */}
+          {/* Botões de Ação Rápida */}
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
+            {/* Standby */}
             <button
               onClick={() => {
                 const nextStandby = !stateQ.data?.standby;
                 setState.mutate({ standby: nextStandby });
               }}
-              className={`min-h-[34px] px-2.5 py-1 rounded-[2px] text-xs font-bold transition flex items-center justify-center gap-1.5 text-center truncate ${
+              className={`min-h-[28px] px-2 py-0.5 text-xs font-mono font-bold transition flex items-center justify-center gap-1 ${
                 stateQ.data?.standby
-                  ? "bg-amber-500 text-neutral-950 hover:bg-amber-400 font-extrabold"
-                  : "bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-amber-300 hover:border-amber-500/50"
+                  ? "bg-amber-500 text-black font-extrabold"
+                  : "bg-neutral-950 border border-neutral-850 text-neutral-300 hover:text-amber-300 hover:border-amber-500/50"
               }`}
-              title="Exibe relógio e clima na tela da TV (permite manter ou pausar a música)"
+              title="Suspender TV / Standby"
             >
-              {stateQ.data?.standby ? <Sun className="h-3.5 w-3.5 flex-shrink-0" /> : <Moon className="h-3.5 w-3.5 flex-shrink-0" />}
-              <span className="truncate">{stateQ.data?.standby ? "Standby" : "Suspender"}</span>
+              {stateQ.data?.standby ? <Sun className="h-3 w-3 flex-shrink-0" /> : <Moon className="h-3 w-3 flex-shrink-0" />}
+              <span className="hidden sm:inline">{stateQ.data?.standby ? "Standby" : "Suspender"}</span>
             </button>
 
-            {/* Recarregar TV */}
+            {/* Recarregar */}
             <button
               onClick={() => {
                 if (confirm("Deseja recarregar a tela da TV conectada?")) {
                   signageApi.reloadRoom(slug);
                 }
               }}
-              className="min-h-[34px] px-2.5 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 text-xs font-medium transition flex items-center justify-center gap-1.5 text-center truncate"
-              title="Recarrega a TV conectada"
+              className="min-h-[28px] px-2 py-0.5 bg-neutral-950 border border-neutral-850 text-neutral-300 hover:text-white hover:bg-neutral-900 text-xs font-mono transition flex items-center justify-center gap-1"
+              title="Recarregar tela"
             >
-              <RefreshCw className="h-3.5 w-3.5 flex-shrink-0" />
-              <span className="truncate">Recarregar</span>
+              <RefreshCw className="h-3 w-3 flex-shrink-0" />
+              <span className="hidden sm:inline">Recarregar</span>
             </button>
 
-            {/* Abrir Player em nova aba */}
+            {/* Ver TV */}
             <a
               href={playerUrl}
               target="_blank"
               rel="noreferrer"
-              className="min-h-[34px] px-2.5 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-200 hover:text-white hover:border-neutral-700 text-xs font-medium transition flex items-center justify-center gap-1.5 text-center truncate"
-              title="Abre o visualizador da TV nesta aba"
+              className="min-h-[28px] px-2.5 py-0.5 bg-white text-black hover:bg-neutral-200 text-xs font-mono font-bold transition flex items-center justify-center gap-1"
+              title="Abrir Player em nova aba"
             >
-              <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" />
-              <span className="truncate">Ver TV</span>
+              <ExternalLink className="h-3 w-3 flex-shrink-0" />
+              <span>Ver TV</span>
             </a>
           </div>
         </div>
 
-        {/* Linha 2: Abas Principais da Sala: Conteúdo / Áudio / Automação / Aparelhos */}
-        <div className="flex items-center justify-between gap-2 pt-1 border-t border-neutral-800/60 overflow-x-auto">
-          <div className="grid grid-cols-4 bg-neutral-950 p-0.5 rounded-[2px] border border-neutral-800 gap-1 w-full sm:w-auto">
+        {/* Linha 2: 4 Abas Principais (Sharp, Flat, Compact) */}
+        <div className="flex items-center justify-between gap-2 pt-1 border-t border-neutral-900">
+          <div className="grid grid-cols-4 bg-neutral-950 p-0.5 border border-neutral-900 gap-0.5 w-full sm:w-auto">
             <button
               onClick={() => handleSelectTab("content")}
-              className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[2px] text-xs font-bold transition truncate ${
+              className={`flex items-center justify-center gap-1 py-1 px-2.5 text-xs font-mono transition truncate ${
                 activeTab === "content"
-                  ? "bg-white text-black shadow-xs font-extrabold"
+                  ? "bg-white text-black font-bold"
                   : "text-neutral-400 hover:text-white"
               }`}
             >
-              <Globe className="h-3.5 w-3.5 flex-shrink-0" />
+              <Globe className="h-3 w-3 flex-shrink-0" />
               <span className="truncate">Conteúdo</span>
             </button>
             <button
               onClick={() => handleSelectTab("audio")}
-              className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[2px] text-xs font-bold transition truncate ${
+              className={`flex items-center justify-center gap-1 py-1 px-2.5 text-xs font-mono transition truncate ${
                 activeTab === "audio"
-                  ? "bg-white text-black shadow-xs font-extrabold"
+                  ? "bg-white text-black font-bold"
                   : "text-neutral-400 hover:text-white"
               }`}
             >
-              <Music className="h-3.5 w-3.5 flex-shrink-0" />
+              <Music className="h-3 w-3 flex-shrink-0" />
               <span className="truncate">Áudio</span>
             </button>
             <button
               onClick={() => handleSelectTab("automation")}
-              className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[2px] text-xs font-bold transition truncate ${
+              className={`flex items-center justify-center gap-1 py-1 px-2.5 text-xs font-mono transition truncate ${
                 activeTab === "automation"
-                  ? "bg-white text-black shadow-xs font-extrabold"
+                  ? "bg-white text-black font-bold"
                   : "text-neutral-400 hover:text-white"
               }`}
             >
-              <CalendarClock className="h-3.5 w-3.5 flex-shrink-0" />
+              <CalendarClock className="h-3 w-3 flex-shrink-0" />
               <span className="truncate">Automação</span>
             </button>
             <button
               onClick={() => handleSelectTab("devices")}
-              className={`flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[2px] text-xs font-bold transition truncate ${
+              className={`flex items-center justify-center gap-1 py-1 px-2.5 text-xs font-mono transition truncate ${
                 activeTab === "devices"
-                  ? "bg-white text-black shadow-xs font-extrabold"
+                  ? "bg-white text-black font-bold"
                   : "text-neutral-400 hover:text-white"
               }`}
             >
-              <Monitor className="h-3.5 w-3.5 flex-shrink-0" />
+              <Monitor className="h-3 w-3 flex-shrink-0" />
               <span className="truncate">Aparelhos</span>
             </button>
           </div>
@@ -1917,10 +1898,10 @@ function RoomOperator() {
             <button
               onClick={handleDeleteRoom}
               disabled={deleteRoomMut.isPending}
-              className="min-h-[28px] px-2 py-0.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-neutral-400 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 text-[11px] font-medium transition flex items-center gap-1"
+              className="min-h-[26px] px-2 py-0.5 border border-neutral-850 bg-neutral-950 text-neutral-400 hover:bg-red-500/10 hover:border-red-900 hover:text-red-400 text-[10px] font-mono transition flex items-center gap-1"
               title="Excluir esta sala"
             >
-              <Trash2 className="h-3 w-3" />
+              <Trash2 className="h-2.5 w-2.5" />
               <span>Excluir Sala</span>
             </button>
           </div>
@@ -1944,7 +1925,7 @@ function RoomOperator() {
           <div className="flex items-center gap-2 w-full sm:w-auto flex-shrink-0">
             <button
               onClick={() => handleOptimisticCommand("audio", isAudioPlaying ? "pause" : "play")}
-              className={`flex-1 sm:flex-initial min-h-[32px] px-3 py-1 rounded-[2px] font-bold text-xs transition flex items-center justify-center gap-1.5 border ${
+              className={`flex-1 sm:flex-initial min-h-[32px] px-3 py-1 rounded-none font-bold text-xs transition flex items-center justify-center gap-1.5 border ${
                 isAudioPlaying
                   ? "bg-neutral-900 border-amber-500/40 text-amber-300 hover:bg-neutral-800"
                   : "bg-emerald-500 text-neutral-950 border-emerald-400 hover:bg-emerald-400"
@@ -1964,7 +1945,7 @@ function RoomOperator() {
             </button>
             <button
               onClick={() => setState.mutate({ standby: false })}
-              className="flex-1 sm:flex-initial min-h-[32px] px-3 py-1 rounded-[2px] bg-amber-500 text-neutral-950 font-bold text-xs hover:bg-amber-400 transition flex items-center justify-center gap-1.5"
+              className="flex-1 sm:flex-initial min-h-[32px] px-3 py-1 rounded-none bg-amber-500 text-neutral-950 font-bold text-xs hover:bg-amber-400 transition flex items-center justify-center gap-1.5"
             >
               <Sun className="h-3.5 w-3.5" />
               <span>Retomar Tela da TV</span>
@@ -1979,7 +1960,7 @@ function RoomOperator() {
         {/* ============================================================ */}
         {activeTab === "content" && (
           <section
-            className={`rounded-[2px] border p-3 sm:p-4 transition-all ${
+            className={`rounded-none border p-3 sm:p-4 transition-all ${
               isSiteActive
                 ? "border-emerald-500/40 bg-neutral-900/50 shadow-sm"
                 : "border-neutral-800 bg-neutral-900/30"
@@ -1988,7 +1969,7 @@ function RoomOperator() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-neutral-800">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div
-                  className={`p-1.5 rounded-[2px] flex-shrink-0 ${
+                  className={`p-1.5 rounded-none flex-shrink-0 ${
                     isSiteActive ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-neutral-900 text-neutral-400 border border-neutral-800"
                   }`}
                 >
@@ -1998,11 +1979,11 @@ function RoomOperator() {
                   <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 flex-wrap">
                     <span>Conteúdo na TV</span>
                     {isSiteActive ? (
-                      <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.2 rounded-[2px] font-bold">
+                      <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.2 rounded-none font-bold">
                         No Ar
                       </span>
                     ) : (
-                      <span className="text-[10px] bg-neutral-900 text-neutral-400 border border-neutral-800 px-2 py-0.2 rounded-[2px]">
+                      <span className="text-[10px] bg-neutral-900 text-neutral-400 border border-neutral-800 px-2 py-0.2 rounded-none">
                         Inativo
                       </span>
                     )}
@@ -2018,7 +1999,7 @@ function RoomOperator() {
                 <div className="grid grid-cols-3 gap-1.5 w-full sm:w-auto sm:flex sm:items-center">
                   <button
                     onClick={() => signageApi.reloadSite(slug)}
-                    className="min-h-[32px] px-2.5 py-1 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-xs text-neutral-200 transition flex items-center justify-center gap-1 truncate text-center"
+                    className="min-h-[32px] px-2.5 py-1 rounded-none border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-xs text-neutral-200 transition flex items-center justify-center gap-1 truncate text-center"
                     title="Recarrega apenas o site na tela"
                   >
                     <RefreshCw className="h-3 w-3 flex-shrink-0" />
@@ -2028,7 +2009,7 @@ function RoomOperator() {
                     href={stateQ.data?.siteUrl || "#"}
                     target="_blank"
                     rel="noreferrer"
-                    className="min-h-[32px] px-2.5 py-1 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-xs text-neutral-200 transition flex items-center justify-center gap-1 truncate text-center"
+                    className="min-h-[32px] px-2.5 py-1 rounded-none border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-xs text-neutral-200 transition flex items-center justify-center gap-1 truncate text-center"
                   >
                     <ExternalLink className="h-3 w-3 flex-shrink-0" />
                     <span className="truncate">Abrir</span>
@@ -2036,7 +2017,7 @@ function RoomOperator() {
                   <button
                     onClick={handleClearSite}
                     disabled={setState.isPending}
-                    className="min-h-[32px] px-2.5 py-1 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-red-500/10 hover:border-red-500/30 text-xs text-red-400 transition flex items-center justify-center gap-1 truncate text-center"
+                    className="min-h-[32px] px-2.5 py-1 rounded-none border border-neutral-800 bg-neutral-900 hover:bg-red-500/10 hover:border-red-500/30 text-xs text-red-400 transition flex items-center justify-center gap-1 truncate text-center"
                   >
                     <X className="h-3 w-3 flex-shrink-0" />
                     <span className="truncate">Remover</span>
@@ -2047,7 +2028,7 @@ function RoomOperator() {
 
             {/* Se o site está ativo, mostra o link atual de forma limpa */}
             {isSiteActive && (
-              <div className="bg-neutral-950 border border-neutral-800 rounded-[2px] p-2 text-xs text-neutral-200 flex items-center justify-between gap-2 overflow-hidden w-full">
+              <div className="bg-neutral-950 border border-neutral-800 rounded-none p-2 text-xs text-neutral-200 flex items-center justify-between gap-2 overflow-hidden w-full">
                 <div className="truncate flex items-center gap-2 min-w-0 flex-1">
                   <span className="font-semibold text-neutral-400 flex-shrink-0 text-[11px]">Link Atual:</span>
                   <span className="truncate text-white min-w-0 flex-1 font-mono text-[11px]">{stateQ.data?.siteUrl}</span>
@@ -2067,12 +2048,12 @@ function RoomOperator() {
                   value={siteInputUrl}
                   onChange={(e) => setSiteInputUrl(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleApplySite()}
-                  className="w-full flex-1 min-w-0 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500 transition"
+                  className="w-full flex-1 min-w-0 rounded-none border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500 transition"
                 />
                 <button
                   onClick={handleApplySite}
                   disabled={!siteInputUrl.trim() || setState.isPending}
-                  className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow flex-shrink-0"
+                  className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-none bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow flex-shrink-0"
                 >
                   <Tv className="h-3.5 w-3.5" />
                   <span>Exibir na TV</span>
@@ -2090,22 +2071,22 @@ function RoomOperator() {
         {/* ABA 2: MÚSICA AMBIENTE & SOM DE FUNDO                        */}
         {/* ============================================================ */}
         {activeTab === "audio" && (
-          <section className="rounded-[2px] border border-neutral-800 bg-neutral-900/40 p-3 sm:p-4 space-y-3">
+          <section className="rounded-none border border-neutral-800 bg-neutral-900/40 p-3 sm:p-4 space-y-3">
             <div className="flex flex-col gap-2 pb-2.5 border-b border-neutral-800">
               <div className="flex items-center justify-between gap-2.5">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="p-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800 flex-shrink-0">
+                  <div className="p-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-800 flex-shrink-0">
                     <Music className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
                     <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 truncate">
                       <span>Música Ambiente</span>
                       {isAudioPlaying ? (
-                        <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.2 rounded-[2px] font-bold flex-shrink-0">
+                        <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.2 rounded-none font-bold flex-shrink-0">
                           Tocando
                         </span>
                       ) : (
-                        <span className="text-[10px] bg-neutral-900 text-neutral-400 border border-neutral-800 px-2 py-0.2 rounded-[2px] flex items-center gap-1 flex-shrink-0">
+                        <span className="text-[10px] bg-neutral-900 text-neutral-400 border border-neutral-800 px-2 py-0.2 rounded-none flex items-center gap-1 flex-shrink-0">
                           <Pause className="h-2.5 w-2.5" />
                           <span>Pausado</span>
                         </span>
@@ -2120,7 +2101,7 @@ function RoomOperator() {
             </div>
 
             {/* CONTROLE PRINCIPAL DE ÁUDIO: STATUS, BOTÕES E VOLUME (EM PRIMEIRO LUGAR) */}
-            <div className="bg-neutral-950 rounded-[2px] border border-neutral-800 p-3 space-y-3 w-full overflow-hidden">
+            <div className="bg-neutral-950 rounded-none border border-neutral-800 p-3 space-y-3 w-full overflow-hidden">
               {/* Botões de Playback e Volume */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 w-full">
                 {/* Botões Prev / Play-Pause / Next */}
@@ -2128,7 +2109,7 @@ function RoomOperator() {
                   <button
                     onClick={() => handleOptimisticCommand("audio", "prev")}
                     disabled={isAudioStreamActive || !activeAudio || activeAudio.items.length === 0}
-                    className="min-h-[40px] w-10 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
+                    className="min-h-[40px] w-10 rounded-none bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
                     title="Música Anterior"
                   >
                     <SkipBack className="h-4 w-4" />
@@ -2137,7 +2118,7 @@ function RoomOperator() {
                   {isAudioPlaying ? (
                     <button
                       onClick={() => handleOptimisticCommand("audio", "pause")}
-                      className="min-h-[40px] px-4 rounded-[2px] bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 flex items-center justify-center gap-1.5 font-bold text-xs uppercase tracking-wider transition"
+                      className="min-h-[40px] px-4 rounded-none bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 flex items-center justify-center gap-1.5 font-bold text-xs uppercase tracking-wider transition"
                     >
                       <Pause className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">Pausar</span>
@@ -2145,7 +2126,7 @@ function RoomOperator() {
                   ) : (
                     <button
                       onClick={() => handleOptimisticCommand("audio", "play")}
-                      className="min-h-[40px] px-4 rounded-[2px] bg-white text-black hover:bg-neutral-200 flex items-center justify-center gap-1.5 font-bold text-xs uppercase tracking-wider shadow-sm transition"
+                      className="min-h-[40px] px-4 rounded-none bg-white text-black hover:bg-neutral-200 flex items-center justify-center gap-1.5 font-bold text-xs uppercase tracking-wider shadow-sm transition"
                     >
                       <Play className="h-4 w-4 flex-shrink-0 ml-0.5" />
                       <span className="truncate">Tocar</span>
@@ -2155,7 +2136,7 @@ function RoomOperator() {
                   <button
                     onClick={() => handleOptimisticCommand("audio", "next")}
                     disabled={isAudioStreamActive || !activeAudio || activeAudio.items.length === 0}
-                    className="min-h-[40px] w-10 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
+                    className="min-h-[40px] w-10 rounded-none bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
                     title="Próxima Música"
                   >
                     <SkipForward className="h-4 w-4" />
@@ -2163,7 +2144,7 @@ function RoomOperator() {
                 </div>
 
                 {/* Roleta de Volume (UIDatePicker Wheel Picker) e Presets de 12,5 em 12,5% */}
-                <div className="w-full sm:w-auto space-y-2 bg-neutral-900/60 p-2.5 rounded-[2px] border border-neutral-800 overflow-hidden">
+                <div className="w-full sm:w-auto space-y-2 bg-neutral-900/60 p-2.5 rounded-none border border-neutral-800 overflow-hidden">
                   <VolumeWheelPicker
                     compact
                     disabled={!stateQ.data}
@@ -2184,7 +2165,7 @@ function RoomOperator() {
                             key={preset.val}
                             disabled={!stateQ.data}
                             onClick={() => handleOptimisticCommand("audio", "setVolume", preset.val)}
-                            className={`min-h-[28px] px-1 py-0.5 rounded-[2px] text-[10px] font-semibold transition text-center truncate flex items-center justify-center disabled:opacity-40 ${
+                            className={`min-h-[28px] px-1 py-0.5 rounded-none text-[10px] font-semibold transition text-center truncate flex items-center justify-center disabled:opacity-40 ${
                               isSelected
                                 ? "bg-white text-black font-bold border border-white shadow-xs"
                                 : "bg-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 border border-neutral-800"
@@ -2226,10 +2207,10 @@ function RoomOperator() {
                       return (
                         <div
                           key={dev.id}
-                          className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-[2px] bg-neutral-900/70 border border-neutral-800 text-[11px]"
+                          className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-none bg-neutral-900/70 border border-neutral-800 text-[11px]"
                         >
                           <span className="text-neutral-200 font-medium truncate">{dev.deviceLabel}</span>
-                          <span className={`px-1.5 py-0.5 rounded-[2px] border text-[10px] font-bold flex-shrink-0 ${badge.cls}`}>
+                          <span className={`px-1.5 py-0.5 rounded-none border text-[10px] font-bold flex-shrink-0 ${badge.cls}`}>
                             {badge.label}
                           </span>
                         </div>
@@ -2241,10 +2222,10 @@ function RoomOperator() {
             </div>
 
             {/* Seletor de 4 Abas: Buscar, Importar, Fila, Rádio (MOVIDO PARA DEPOIS DO CONTROLE) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 bg-neutral-950 border border-neutral-800 p-0.5 rounded-[2px] gap-1 w-full">
+            <div className="grid grid-cols-2 sm:grid-cols-4 bg-neutral-950 border border-neutral-800 p-0.5 rounded-none gap-1 w-full">
               <button
                 onClick={() => setBasicAudioTab("youtube")}
-                className={`py-1.5 px-2 rounded-[2px] text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
                   basicAudioTab === "youtube"
                     ? "bg-neutral-800 text-white border border-neutral-700 shadow-sm font-bold"
                     : "text-neutral-400 hover:text-white"
@@ -2255,7 +2236,7 @@ function RoomOperator() {
               </button>
               <button
                 onClick={() => setBasicAudioTab("playlist_import")}
-                className={`py-1.5 px-2 rounded-[2px] text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
                   basicAudioTab === "playlist_import"
                     ? "bg-neutral-800 text-white border border-neutral-700 shadow-sm font-bold"
                     : "text-neutral-400 hover:text-white"
@@ -2266,7 +2247,7 @@ function RoomOperator() {
               </button>
               <button
                 onClick={() => setBasicAudioTab("playlist")}
-                className={`py-1.5 px-2 rounded-[2px] text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
                   basicAudioTab === "playlist"
                     ? "bg-neutral-800 text-white border border-neutral-700 shadow-sm font-bold"
                     : "text-neutral-400 hover:text-white"
@@ -2277,7 +2258,7 @@ function RoomOperator() {
               </button>
               <button
                 onClick={() => setBasicAudioTab("stream")}
-                className={`py-1.5 px-2 rounded-[2px] text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
                   basicAudioTab === "stream"
                     ? "bg-neutral-800 text-white border border-neutral-700 shadow-sm font-bold"
                     : "text-neutral-400 hover:text-white"
@@ -2293,7 +2274,7 @@ function RoomOperator() {
             {/* ============================================================ */}
             {basicAudioTab === "youtube" && (
               <div className="space-y-2.5 w-full">
-                <div className="bg-neutral-950/70 p-3 sm:p-3.5 rounded-[2px] border border-neutral-800 space-y-2.5">
+                <div className="bg-neutral-950/70 p-3 sm:p-3.5 rounded-none border border-neutral-800 space-y-2.5">
                   <div className="space-y-0.5">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
                       <Search className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
@@ -2309,13 +2290,13 @@ function RoomOperator() {
                         value={ytQuery}
                         onChange={(e) => setYtQuery(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleSearchYt()}
-                        className="w-full rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
+                        className="w-full rounded-none border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
                       />
                     </div>
                     <button
                       onClick={() => handleSearchYt()}
                       disabled={!ytQuery.trim() || isSearchingYt}
-                      className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm flex-shrink-0"
+                      className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-none bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm flex-shrink-0"
                     >
                       {isSearchingYt ? (
                         <>
@@ -2334,7 +2315,7 @@ function RoomOperator() {
 
                 {/* Mensagem de Erro na Busca */}
                 {ytSearchError && (
-                  <div className="p-2.5 rounded-[2px] bg-neutral-900 border border-red-500/40 text-xs text-red-300 flex items-center gap-2">
+                  <div className="p-2.5 rounded-none bg-neutral-900 border border-red-500/40 text-xs text-red-300 flex items-center gap-2">
                     <Info className="h-3.5 w-3.5 flex-shrink-0 text-red-400" />
                     <span>{ytSearchError}</span>
                   </div>
@@ -2359,19 +2340,19 @@ function RoomOperator() {
                         return (
                           <div
                             key={item.id}
-                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 sm:p-2.5 rounded-[2px] border border-neutral-800 bg-neutral-950/60 hover:border-neutral-700 transition"
+                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 sm:p-2.5 rounded-none border border-neutral-800 bg-neutral-950/60 hover:border-neutral-700 transition"
                           >
                             <div className="flex items-center gap-2.5 min-w-0 flex-1">
                               {/* Thumbnail com tempo */}
                               {item.thumbnailUrl && (
-                                <div className="relative w-14 h-10 sm:w-16 sm:h-11 rounded-[2px] overflow-hidden bg-neutral-900 flex-shrink-0">
+                                <div className="relative w-14 h-10 sm:w-16 sm:h-11 rounded-none overflow-hidden bg-neutral-900 flex-shrink-0">
                                   <img
                                     src={item.thumbnailUrl}
                                     alt={item.title}
                                     className="w-full h-full object-cover"
                                     loading="lazy"
                                   />
-                                  <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[9px] text-white px-1 rounded-[1px] font-mono">
+                                  <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[9px] text-white px-1 rounded-none font-mono">
                                     {item.durationFormatted}
                                   </span>
                                 </div>
@@ -2393,7 +2374,7 @@ function RoomOperator() {
                             <div className="flex items-center gap-1.5 self-end sm:self-center flex-shrink-0">
                               <button
                                 onClick={() => handleAddYtTrack(item, false)}
-                                className={`min-h-[32px] px-2.5 rounded-[2px] text-xs font-semibold transition flex items-center gap-1 ${
+                                className={`min-h-[32px] px-2.5 rounded-none text-xs font-semibold transition flex items-center gap-1 ${
                                   isJustAdded
                                     ? "bg-neutral-800 text-emerald-400 border border-emerald-500/40 font-bold"
                                     : "bg-neutral-900 border border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white"
@@ -2413,7 +2394,7 @@ function RoomOperator() {
                               </button>
                               <button
                                 onClick={() => handleAddYtTrack(item, true)}
-                                className="min-h-[32px] px-3 rounded-[2px] bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center gap-1 shadow-sm"
+                                className="min-h-[32px] px-3 rounded-none bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center gap-1 shadow-sm"
                                 title="Adiciona e inicia a reprodução agora na TV"
                               >
                                 <Play className="h-3 w-3 ml-0.5" />
@@ -2434,7 +2415,7 @@ function RoomOperator() {
             {/* ============================================================ */}
             {basicAudioTab === "playlist_import" && (
               <div className="space-y-3 w-full">
-                <div className="bg-neutral-950/70 p-3 sm:p-3.5 rounded-[2px] border border-neutral-800 space-y-2.5">
+                <div className="bg-neutral-950/70 p-3 sm:p-3.5 rounded-none border border-neutral-800 space-y-2.5">
                   <div className="space-y-0.5">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
                       <Disc className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
@@ -2451,12 +2432,12 @@ function RoomOperator() {
                       value={playlistInputUrl}
                       onChange={(e) => setPlaylistInputUrl(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleFetchPlaylistInfo()}
-                      className="w-full flex-1 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500 font-mono"
+                      className="w-full flex-1 rounded-none border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500 font-mono"
                     />
                     <button
                       onClick={handleFetchPlaylistInfo}
                       disabled={!playlistInputUrl.trim() || isLoadingPlaylist}
-                      className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm flex-shrink-0"
+                      className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-none bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm flex-shrink-0"
                     >
                       {isLoadingPlaylist ? (
                         <>
@@ -2480,7 +2461,7 @@ function RoomOperator() {
 
                 {/* Feedback de Erro */}
                 {playlistError && (
-                  <div className="p-2.5 rounded-[2px] bg-neutral-900 border border-red-500/40 text-xs text-red-300 flex items-center gap-2">
+                  <div className="p-2.5 rounded-none bg-neutral-900 border border-red-500/40 text-xs text-red-300 flex items-center gap-2">
                     <Info className="h-3.5 w-3.5 flex-shrink-0 text-red-400" />
                     <span>{playlistError}</span>
                   </div>
@@ -2488,7 +2469,7 @@ function RoomOperator() {
 
                 {/* Feedback de Sucesso */}
                 {importSuccessMsg && (
-                  <div className="p-2.5 rounded-[2px] bg-neutral-900 border border-emerald-500/40 text-xs text-emerald-300 flex items-center gap-2">
+                  <div className="p-2.5 rounded-none bg-neutral-900 border border-emerald-500/40 text-xs text-emerald-300 flex items-center gap-2">
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 flex-shrink-0" />
                     <span className="font-semibold">{importSuccessMsg}</span>
                   </div>
@@ -2496,7 +2477,7 @@ function RoomOperator() {
 
                 {/* Card de Pré-visualização da Playlist Encontrada */}
                 {loadedPlaylistPreview && (
-                  <div className="p-3 rounded-[2px] border border-neutral-700 bg-neutral-900/50 space-y-2.5">
+                  <div className="p-3 rounded-none border border-neutral-700 bg-neutral-900/50 space-y-2.5">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-neutral-800 pb-2">
                       <div>
                         <span className="text-[9px] uppercase font-bold text-neutral-400 tracking-wider">
@@ -2520,7 +2501,7 @@ function RoomOperator() {
                         <button
                           onClick={() => handleImportPlaylistTracks("replace")}
                           disabled={isLoadingPlaylist}
-                          className="min-h-[36px] px-3 py-2 rounded-[2px] bg-white text-black font-bold text-xs hover:bg-neutral-200 transition flex items-center justify-center gap-1.5 shadow-sm"
+                          className="min-h-[36px] px-3 py-2 rounded-none bg-white text-black font-bold text-xs hover:bg-neutral-200 transition flex items-center justify-center gap-1.5 shadow-sm"
                         >
                           <Disc className="h-3.5 w-3.5" />
                           <span>Importar Todas ({loadedPlaylistPreview.videoCount} faixas)</span>
@@ -2530,7 +2511,7 @@ function RoomOperator() {
                           <button
                             onClick={() => handleImportPlaylistTracks("append")}
                             disabled={isLoadingPlaylist}
-                            className="min-h-[36px] px-3 py-2 rounded-[2px] bg-neutral-900 border border-neutral-700 text-neutral-200 font-semibold text-xs hover:text-white hover:bg-neutral-800 transition flex items-center justify-center gap-1.5"
+                            className="min-h-[36px] px-3 py-2 rounded-none bg-neutral-900 border border-neutral-700 text-neutral-200 font-semibold text-xs hover:text-white hover:bg-neutral-800 transition flex items-center justify-center gap-1.5"
                           >
                             <Plus className="h-3.5 w-3.5" />
                             <span>Acrescentar à Fila Atual</span>
@@ -2559,7 +2540,7 @@ function RoomOperator() {
             {basicAudioTab === "playlist" && (
               <div className="space-y-3 w-full">
                 {/* Seleção de Playlist & Modos de Repetição */}
-                <div className="bg-neutral-950/70 p-3 rounded-[2px] border border-neutral-800 space-y-2.5 w-full overflow-hidden">
+                <div className="bg-neutral-950/70 p-3 rounded-none border border-neutral-800 space-y-2.5 w-full overflow-hidden">
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 w-full">
                     <div className="flex items-center gap-1.5 flex-1 min-w-0">
                       <span className="text-xs font-semibold text-neutral-400 flex-shrink-0">
@@ -2568,7 +2549,7 @@ function RoomOperator() {
                       <select
                         value={activeAudio?.id || ""}
                         onChange={(e) => handleSelectAudioPlaylist(e.target.value)}
-                        className="flex-1 min-w-0 rounded-[2px] border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-xs text-white outline-none focus:border-neutral-500 truncate"
+                        className="flex-1 min-w-0 rounded-none border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-xs text-white outline-none focus:border-neutral-500 truncate"
                       >
                         <option value="">-- Nenhuma Selecionada --</option>
                         {audioPlaylists.map((p) => (
@@ -2582,14 +2563,14 @@ function RoomOperator() {
                     <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 w-full sm:w-auto">
                       <button
                         onClick={handleCreateNewAudioPlaylist}
-                        className="min-h-[32px] px-2.5 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 text-xs font-semibold transition flex items-center justify-center gap-1 truncate text-center"
+                        className="min-h-[32px] px-2.5 py-1 rounded-none bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 text-xs font-semibold transition flex items-center justify-center gap-1 truncate text-center"
                       >
                         <Plus className="h-3 w-3 flex-shrink-0" />
                         <span className="truncate">Nova Lista</span>
                       </button>
                       <button
                         onClick={() => setIsManagingPlaylistsOpen(true)}
-                        className="min-h-[32px] px-2.5 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 text-xs font-semibold transition flex items-center justify-center gap-1 truncate text-center"
+                        className="min-h-[32px] px-2.5 py-1 rounded-none bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-800 text-xs font-semibold transition flex items-center justify-center gap-1 truncate text-center"
                         title="Ver todas as listas salvas, selecionar ou excluir"
                       >
                         <ListMusic className="h-3.5 w-3.5 flex-shrink-0" />
@@ -2598,7 +2579,7 @@ function RoomOperator() {
                       {activeAudio && activeAudio.items && activeAudio.items.length > 0 && (
                         <button
                           onClick={handleOpenSaveQueue}
-                          className="min-h-[32px] px-3 py-1 rounded-[2px] bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center justify-center gap-1 truncate text-center shadow-xs"
+                          className="min-h-[32px] px-3 py-1 rounded-none bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center justify-center gap-1 truncate text-center shadow-xs"
                           title="Salvar esta fila como uma playlist reutilizável"
                         >
                           <Save className="h-3.5 w-3.5 flex-shrink-0" />
@@ -2608,7 +2589,7 @@ function RoomOperator() {
                       {activeAudio && activeAudio.items && activeAudio.items.length > 0 && (
                         <button
                           onClick={handleClearPlaylist}
-                          className="min-h-[32px] px-2.5 py-1 rounded-[2px] border border-neutral-800 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs transition text-center truncate"
+                          className="min-h-[32px] px-2.5 py-1 rounded-none border border-neutral-800 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs transition text-center truncate"
                           title="Esvazia todas as músicas desta lista"
                         >
                           Limpar Fila
@@ -2617,7 +2598,7 @@ function RoomOperator() {
                       {activeAudio && (
                         <button
                           onClick={handleDeleteCurrentPlaylist}
-                          className="min-h-[32px] px-2.5 py-1 rounded-[2px] border border-neutral-800 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs transition flex items-center justify-center gap-1"
+                          className="min-h-[32px] px-2.5 py-1 rounded-none border border-neutral-800 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 text-xs transition flex items-center justify-center gap-1"
                           title="Excluir playlist salva permanentemente"
                         >
                           <Trash2 className="h-3.5 w-3.5 flex-shrink-0" />
@@ -2629,10 +2610,10 @@ function RoomOperator() {
 
                   {/* Modos de Repetição e Ordem Aleatória */}
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-1.5 pt-1.5 border-t border-neutral-800/80 w-full">
-                    <div className="grid grid-cols-3 bg-neutral-900 rounded-[2px] p-0.5 border border-neutral-800 w-full sm:w-auto">
+                    <div className="grid grid-cols-3 bg-neutral-900 rounded-none p-0.5 border border-neutral-800 w-full sm:w-auto">
                       <button
                         onClick={() => handleChangeLoopMode("all")}
-                        className={`min-h-[28px] px-2 py-0.5 rounded-[2px] text-xs transition flex items-center justify-center gap-1 ${
+                        className={`min-h-[28px] px-2 py-0.5 rounded-none text-xs transition flex items-center justify-center gap-1 ${
                           loopMode === "all"
                             ? "bg-white text-black font-bold shadow-xs"
                             : "text-neutral-400 hover:text-white"
@@ -2644,7 +2625,7 @@ function RoomOperator() {
                       </button>
                       <button
                         onClick={() => handleChangeLoopMode("one")}
-                        className={`min-h-[28px] px-2 py-0.5 rounded-[2px] text-xs transition flex items-center justify-center gap-1 ${
+                        className={`min-h-[28px] px-2 py-0.5 rounded-none text-xs transition flex items-center justify-center gap-1 ${
                           loopMode === "one"
                             ? "bg-white text-black font-bold shadow-xs"
                             : "text-neutral-400 hover:text-white"
@@ -2656,7 +2637,7 @@ function RoomOperator() {
                       </button>
                       <button
                         onClick={() => handleChangeLoopMode("none")}
-                        className={`min-h-[28px] px-2 py-0.5 rounded-[2px] text-xs transition flex items-center justify-center ${
+                        className={`min-h-[28px] px-2 py-0.5 rounded-none text-xs transition flex items-center justify-center ${
                           loopMode === "none"
                             ? "bg-white text-black font-bold shadow-xs"
                             : "text-neutral-400 hover:text-white"
@@ -2669,7 +2650,7 @@ function RoomOperator() {
 
                     <button
                       onClick={handleToggleShuffle}
-                      className={`min-h-[28px] px-2.5 py-0.5 rounded-[2px] border text-xs transition flex items-center justify-center gap-1.5 w-full sm:w-auto ${
+                      className={`min-h-[28px] px-2.5 py-0.5 rounded-none border text-xs transition flex items-center justify-center gap-1.5 w-full sm:w-auto ${
                         shuffleActive
                           ? "bg-white text-black font-bold border-white"
                           : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -2683,7 +2664,7 @@ function RoomOperator() {
                 </div>
 
                 {/* Bloco de Adicionar Músicas por Link Único */}
-                <div className="rounded-[2px] border border-neutral-800 bg-neutral-950/60 p-3 space-y-2">
+                <div className="rounded-none border border-neutral-800 bg-neutral-950/60 p-3 space-y-2">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 w-full">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
                       <Plus className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
@@ -2704,19 +2685,19 @@ function RoomOperator() {
                       value={newTrackUrl}
                       onChange={(e) => setNewTrackUrl(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleAddTrack(newTrackUrl, newTrackTitle)}
-                      className="w-full min-w-0 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
+                      className="w-full min-w-0 rounded-none border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
                     />
                     <input
                       placeholder="Nome da música (opcional)"
                       value={newTrackTitle}
                       onChange={(e) => setNewTrackTitle(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleAddTrack(newTrackUrl, newTrackTitle)}
-                      className="w-full min-w-0 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
+                      className="w-full min-w-0 rounded-none border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
                     />
                     <button
                       onClick={() => handleAddTrack(newTrackUrl, newTrackTitle)}
                       disabled={!newTrackUrl.trim()}
-                      className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1 shadow-sm flex-shrink-0"
+                      className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-none bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1 shadow-sm flex-shrink-0"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       <span>Adicionar</span>
@@ -2744,7 +2725,7 @@ function RoomOperator() {
                         placeholder="Buscar música nesta playlist..."
                         value={queueSearchQuery}
                         onChange={(e) => setQueueSearchQuery(e.target.value)}
-                        className="w-full rounded-[2px] border border-neutral-800 bg-neutral-900/90 pl-8 pr-7 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-600"
+                        className="w-full rounded-none border border-neutral-800 bg-neutral-900/90 pl-8 pr-7 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-600"
                       />
                       {queueSearchQuery && (
                         <button
@@ -2777,7 +2758,7 @@ function RoomOperator() {
                           return (
                           <div
                             key={idx}
-                            className={`flex items-center justify-between gap-2 p-2 rounded-[2px] border transition overflow-hidden w-full ${
+                            className={`flex items-center justify-between gap-2 p-2 rounded-none border transition overflow-hidden w-full ${
                               isCurrentlyPlaying
                                 ? "border-neutral-600 bg-neutral-900/80 border-l-2 border-l-white shadow-xs"
                                 : "border-neutral-800 bg-neutral-950/40 hover:border-neutral-700"
@@ -2787,7 +2768,7 @@ function RoomOperator() {
                               {/* Botão de Tocar a Faixa */}
                               <button
                                 onClick={() => handlePlayTrack(idx)}
-                                className={`h-7 w-7 rounded-[2px] flex items-center justify-center transition flex-shrink-0 ${
+                                className={`h-7 w-7 rounded-none flex items-center justify-center transition flex-shrink-0 ${
                                   isCurrentlyPlaying
                                     ? "bg-white text-black shadow-xs font-bold"
                                     : "bg-neutral-900 text-neutral-300 hover:bg-neutral-800 hover:text-white border border-neutral-800"
@@ -2821,7 +2802,7 @@ function RoomOperator() {
                               <button
                                 onClick={() => handleMoveTrack(idx, "up")}
                                 disabled={idx === 0}
-                                className="h-7 w-7 flex items-center justify-center rounded-[2px] text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-20 transition"
+                                className="h-7 w-7 flex items-center justify-center rounded-none text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-20 transition"
                                 title="Mover para cima"
                               >
                                 <ChevronUp className="h-3.5 w-3.5" />
@@ -2829,14 +2810,14 @@ function RoomOperator() {
                               <button
                                 onClick={() => handleMoveTrack(idx, "down")}
                                 disabled={idx === activeAudio.items.length - 1}
-                                className="h-7 w-7 flex items-center justify-center rounded-[2px] text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-20 transition"
+                                className="h-7 w-7 flex items-center justify-center rounded-none text-neutral-400 hover:text-white hover:bg-neutral-800 disabled:opacity-20 transition"
                                 title="Mover para baixo"
                               >
                                 <ChevronDown className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={() => handleRemoveTrack(idx)}
-                                className="h-7 w-7 flex items-center justify-center rounded-[2px] text-neutral-400 hover:text-red-400 hover:bg-red-500/10 transition"
+                                className="h-7 w-7 flex items-center justify-center rounded-none text-neutral-400 hover:text-red-400 hover:bg-red-500/10 transition"
                                 title="Remover da lista"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -2847,19 +2828,19 @@ function RoomOperator() {
                       })}
                     </div>
                   ) : (
-                    <div className="rounded-[2px] border border-dashed border-neutral-800 p-6 text-center text-xs text-neutral-400 space-y-2">
+                    <div className="rounded-none border border-dashed border-neutral-800 p-6 text-center text-xs text-neutral-400 space-y-2">
                       <div>Nenhuma música na lista no momento.</div>
                       <div className="flex items-center justify-center gap-2 pt-1">
                         <button
                           onClick={() => setBasicAudioTab("youtube")}
-                          className="px-3 py-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-700 text-xs font-semibold hover:bg-neutral-800 hover:text-white transition flex items-center gap-1.5"
+                          className="px-3 py-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-700 text-xs font-semibold hover:bg-neutral-800 hover:text-white transition flex items-center gap-1.5"
                         >
                           <Search className="h-3.5 w-3.5" />
                           <span>Buscar no YouTube</span>
                         </button>
                         <button
                           onClick={() => setBasicAudioTab("playlist_import")}
-                          className="px-3 py-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-700 text-xs font-semibold hover:bg-neutral-800 hover:text-white transition flex items-center gap-1.5"
+                          className="px-3 py-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-700 text-xs font-semibold hover:bg-neutral-800 hover:text-white transition flex items-center gap-1.5"
                         >
                           <Disc className="h-3.5 w-3.5" />
                           <span>Importar Playlist</span>
@@ -2875,7 +2856,7 @@ function RoomOperator() {
             {/* SUB-ABA 4: SINTONIZAR WEB RÁDIO 24H                          */}
             {/* ============================================================ */}
             {basicAudioTab === "stream" && (
-              <div className="rounded-[2px] border border-neutral-800 bg-neutral-950/60 p-3 space-y-3.5">
+              <div className="rounded-none border border-neutral-800 bg-neutral-950/60 p-3 space-y-3.5">
                 {/* Cabeçalho da Web Rádio */}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800/80 pb-2.5">
                   <div className="flex items-center gap-2">
@@ -2888,7 +2869,7 @@ function RoomOperator() {
                       Web Rádios Ao Vivo 24h (Gospel, Instrumental & Louvor)
                     </span>
                     {isAudioStreamActive && (
-                      <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-[2px] font-bold uppercase tracking-wider">
+                      <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-none font-bold uppercase tracking-wider">
                         No Ar
                       </span>
                     )}
@@ -2897,7 +2878,7 @@ function RoomOperator() {
                   {isAudioStreamActive && (
                     <button
                       onClick={handleClearAudioStream}
-                      className="px-2.5 py-1 rounded-[2px] bg-red-500/10 border border-red-500/30 text-xs text-red-300 hover:bg-red-500/20 flex items-center gap-1 font-semibold transition"
+                      className="px-2.5 py-1 rounded-none bg-red-500/10 border border-red-500/30 text-xs text-red-300 hover:bg-red-500/20 flex items-center gap-1 font-semibold transition"
                     >
                       <X className="h-3.5 w-3.5" />
                       <span>Desconectar Rádio</span>
@@ -2907,14 +2888,14 @@ function RoomOperator() {
 
                 {/* Mensagens de retorno (validação / sintonização) */}
                 {radioStatusMsg && (
-                  <div className="flex items-center gap-2 rounded-[2px] border border-emerald-500/30 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-300 font-semibold">
+                  <div className="flex items-center gap-2 rounded-none border border-emerald-500/30 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-300 font-semibold">
                     <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-emerald-400" />
                     <span>{radioStatusMsg}</span>
                   </div>
                 )}
 
                 {radioErrorMsg && (
-                  <div className="flex items-center gap-2 rounded-[2px] border border-amber-500/30 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+                  <div className="flex items-center gap-2 rounded-none border border-amber-500/30 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
                     <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-400" />
                     <span>{radioErrorMsg}</span>
                   </div>
@@ -2940,7 +2921,7 @@ function RoomOperator() {
                       return (
                         <div
                           key={station.id}
-                          className={`rounded-[2px] border p-2.5 flex items-center justify-between gap-2.5 transition ${
+                          className={`rounded-none border p-2.5 flex items-center justify-between gap-2.5 transition ${
                             isThisActive
                               ? "border-emerald-500/60 bg-emerald-950/25 shadow-xs"
                               : "border-neutral-800 bg-neutral-900/60 hover:border-neutral-700"
@@ -2951,11 +2932,11 @@ function RoomOperator() {
                               <span className="text-xs font-bold text-white truncate">
                                 {station.name}
                               </span>
-                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-[2px] border border-neutral-700 bg-neutral-950 text-neutral-300">
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none border border-neutral-700 bg-neutral-950 text-neutral-300">
                                 {station.category}
                               </span>
                               {isThisActive && (
-                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-[2px] bg-emerald-500 text-black">
+                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none bg-emerald-500 text-black">
                                   Tocando
                                 </span>
                               )}
@@ -2972,7 +2953,7 @@ function RoomOperator() {
                             type="button"
                             onClick={() => handleTuneRadioStation(station)}
                             disabled={setState.isPending}
-                            className={`px-3 py-2 rounded-[2px] text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0 transition ${
+                            className={`px-3 py-2 rounded-none text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0 transition ${
                               isThisActive
                                 ? "bg-emerald-500 text-black hover:bg-emerald-400"
                                 : "bg-white text-black hover:bg-neutral-200"
@@ -3005,7 +2986,7 @@ function RoomOperator() {
                           key={chip}
                           type="button"
                           onClick={() => handleSearchRadios(chip)}
-                          className="px-2 py-0.5 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-[10px] font-semibold text-neutral-300 hover:text-white transition"
+                          className="px-2 py-0.5 rounded-none border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-[10px] font-semibold text-neutral-300 hover:text-white transition"
                         >
                           {chip}
                         </button>
@@ -3019,13 +3000,13 @@ function RoomOperator() {
                       value={radioSearchQuery}
                       onChange={(e) => setRadioSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleSearchRadios()}
-                      className="flex-1 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white outline-none focus:border-neutral-500"
+                      className="flex-1 rounded-none border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white outline-none focus:border-neutral-500"
                     />
                     <button
                       type="button"
                       onClick={() => handleSearchRadios()}
                       disabled={!radioSearchQuery.trim() || isSearchingRadio}
-                      className="min-h-[36px] px-4 py-2 rounded-[2px] bg-neutral-800 border border-neutral-700 text-white font-bold text-xs uppercase tracking-wider hover:bg-neutral-700 disabled:opacity-40 transition flex items-center justify-center gap-1.5"
+                      className="min-h-[36px] px-4 py-2 rounded-none bg-neutral-800 border border-neutral-700 text-white font-bold text-xs uppercase tracking-wider hover:bg-neutral-700 disabled:opacity-40 transition flex items-center justify-center gap-1.5"
                     >
                       {isSearchingRadio ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -3045,7 +3026,7 @@ function RoomOperator() {
                         return (
                           <div
                             key={station.id}
-                            className={`rounded-[2px] border p-2 flex items-center justify-between gap-2 ${
+                            className={`rounded-none border p-2 flex items-center justify-between gap-2 ${
                               isThisActive
                                 ? "border-emerald-500/60 bg-emerald-950/25"
                                 : "border-neutral-800 bg-neutral-900/40"
@@ -3062,7 +3043,7 @@ function RoomOperator() {
                             <button
                               type="button"
                               onClick={() => handleTuneRadioStation(station)}
-                              className="px-2.5 py-1.5 rounded-[2px] bg-white text-black text-[11px] font-bold uppercase hover:bg-neutral-200 flex-shrink-0 transition"
+                              className="px-2.5 py-1.5 rounded-none bg-white text-black text-[11px] font-bold uppercase hover:bg-neutral-200 flex-shrink-0 transition"
                             >
                               {isThisActive ? "No Ar" : "Sintonizar"}
                             </button>
@@ -3085,12 +3066,12 @@ function RoomOperator() {
                       value={audioStreamInputUrl}
                       onChange={(e) => setAudioStreamInputUrl(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleApplyAudioStream()}
-                      className="flex-1 rounded-[2px] border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white outline-none focus:border-neutral-500 font-mono"
+                      className="flex-1 rounded-none border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white outline-none focus:border-neutral-500 font-mono"
                     />
                     <button
                       onClick={handleApplyAudioStream}
                       disabled={!audioStreamInputUrl.trim() || setState.isPending || isProbingRadio}
-                      className="min-h-[36px] px-4 py-2 rounded-[2px] bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm"
+                      className="min-h-[36px] px-4 py-2 rounded-none bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm"
                     >
                       {isProbingRadio ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -3101,7 +3082,7 @@ function RoomOperator() {
                     </button>
                   </div>
 
-                  <div className="rounded-[2px] border border-neutral-800/90 bg-neutral-900/40 p-2.5 text-[11px] text-neutral-400 space-y-1">
+                  <div className="rounded-none border border-neutral-800/90 bg-neutral-900/40 p-2.5 text-[11px] text-neutral-400 space-y-1">
                     <div className="font-semibold text-neutral-200 flex items-center gap-1.5">
                       <Info className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
                       <span>Quais Web Rádios funcionam neste sistema?</span>
@@ -3192,7 +3173,7 @@ function RoomOperator() {
       {/* ============================================================ */}
       {saveQueueModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 sm:p-4">
-          <div className="w-full max-w-md rounded-[2px] border border-neutral-800 bg-neutral-950 p-4 sm:p-5 flex flex-col shadow-2xl space-y-3">
+          <div className="w-full max-w-md rounded-none border border-neutral-800 bg-neutral-950 p-4 sm:p-5 flex flex-col shadow-2xl space-y-3">
             <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
               <div className="flex items-center gap-2">
                 <Save className="h-4 w-4 text-neutral-300" />
@@ -3216,7 +3197,7 @@ function RoomOperator() {
                 value={saveQueueName}
                 onChange={(e) => setSaveQueueName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSaveQueue()}
-                className="w-full rounded-[2px] border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
+                className="w-full rounded-none border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
                 autoFocus
               />
 
@@ -3227,7 +3208,7 @@ function RoomOperator() {
                     <button
                       type="button"
                       onClick={() => setSaveQueueMode("new")}
-                      className={`p-2 rounded-[2px] border text-left text-xs transition ${
+                      className={`p-2 rounded-none border text-left text-xs transition ${
                         saveQueueMode === "new"
                           ? "border-white bg-neutral-900 text-white font-bold"
                           : "border-neutral-800 bg-neutral-950 text-neutral-400 hover:text-neutral-200"
@@ -3239,7 +3220,7 @@ function RoomOperator() {
                     <button
                       type="button"
                       onClick={() => setSaveQueueMode("update")}
-                      className={`p-2 rounded-[2px] border text-left text-xs transition ${
+                      className={`p-2 rounded-none border text-left text-xs transition ${
                         saveQueueMode === "update"
                           ? "border-white bg-neutral-900 text-white font-bold"
                           : "border-neutral-800 bg-neutral-950 text-neutral-400 hover:text-neutral-200"
@@ -3261,7 +3242,7 @@ function RoomOperator() {
               <button
                 type="button"
                 onClick={() => setSaveQueueModalOpen(false)}
-                className="min-h-[34px] px-3.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white"
+                className="min-h-[34px] px-3.5 rounded-none border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white"
               >
                 Cancelar
               </button>
@@ -3269,7 +3250,7 @@ function RoomOperator() {
                 type="button"
                 onClick={handleSaveQueue}
                 disabled={!saveQueueName.trim() || isSavingQueue}
-                className="min-h-[34px] flex items-center gap-1.5 px-4 rounded-[2px] bg-white text-xs font-bold text-black hover:bg-neutral-200 disabled:opacity-40"
+                className="min-h-[34px] flex items-center gap-1.5 px-4 rounded-none bg-white text-xs font-bold text-black hover:bg-neutral-200 disabled:opacity-40"
               >
                 {isSavingQueue ? (
                   <>
@@ -3294,7 +3275,7 @@ function RoomOperator() {
       {/* ============================================================ */}
       {showMultiLinksModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 sm:p-4">
-          <div className="w-full max-w-lg rounded-[2px] border border-neutral-800 bg-neutral-950 p-4 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[90dvh]">
+          <div className="w-full max-w-lg rounded-none border border-neutral-800 bg-neutral-950 p-4 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[90dvh]">
             <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
               <div className="flex items-center gap-2">
                 <Layers className="h-4 w-4 text-neutral-300" />
@@ -3319,20 +3300,20 @@ function RoomOperator() {
               placeholder={`https://www.youtube.com/watch?v=xV7ZzeBR3oc\nhttps://www.youtube.com/watch?v=QXX-O1U2ufY\nhttps://meusite.com/audio.mp3`}
               value={multiLinksText}
               onChange={(e) => setMultiLinksText(e.target.value)}
-              className="w-full rounded-[2px] border border-neutral-700 bg-neutral-950 p-3 text-xs text-white placeholder-neutral-600 outline-none focus:border-neutral-500 font-mono"
+              className="w-full rounded-none border border-neutral-700 bg-neutral-950 p-3 text-xs text-white placeholder-neutral-600 outline-none focus:border-neutral-500 font-mono"
             />
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-800">
               <button
                 onClick={() => setShowMultiLinksModal(false)}
-                className="min-h-[34px] px-3.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white"
+                className="min-h-[34px] px-3.5 rounded-none border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleAddMultipleTracks}
                 disabled={!multiLinksText.trim()}
-                className="min-h-[34px] flex items-center gap-1.5 px-4 rounded-[2px] bg-white text-xs font-bold text-black hover:bg-neutral-200 disabled:opacity-40"
+                className="min-h-[34px] flex items-center gap-1.5 px-4 rounded-none bg-white text-xs font-bold text-black hover:bg-neutral-200 disabled:opacity-40"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Adicionar à Playlist</span>
@@ -3388,14 +3369,27 @@ function RoomOperator() {
           setEditingRoutine(null);
         }}
         slug={slug}
+        availableRooms={roomsQ.data?.map((r) => ({ slug: r.slug, name: r.name })) || []}
         currentSiteUrl={stateQ.data?.siteUrl}
         audioPlaylists={audioPlaylists}
         initialData={editingRoutine}
-        onSave={(data) => {
+        onSave={(data, targetRooms) => {
           if (editingRoutine?.id) {
             updateRoutineMut.mutate({ id: editingRoutine.id, data });
+            if (targetRooms && targetRooms.length > 1) {
+              const otherRooms = targetRooms.filter((s) => s !== data.roomSlug);
+              otherRooms.forEach((targetSlug) => {
+                createRoutineMut.mutate({ ...data, roomSlug: targetSlug });
+              });
+            }
           } else {
-            createRoutineMut.mutate(data);
+            if (targetRooms && targetRooms.length > 0) {
+              targetRooms.forEach((targetSlug) => {
+                createRoutineMut.mutate({ ...data, roomSlug: targetSlug });
+              });
+            } else {
+              createRoutineMut.mutate(data);
+            }
           }
         }}
       />
@@ -3448,7 +3442,7 @@ function RoomDevicesCard({
 
   return (
     <section
-      className={`rounded-[2px] border transition-all ${
+      className={`rounded-none border transition-all ${
         isFull
           ? "border-amber-500/30 bg-neutral-900/40"
           : count > 0
@@ -3460,7 +3454,7 @@ function RoomDevicesCard({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-neutral-800">
         <div className="flex items-center gap-2.5 min-w-0">
           <div
-            className={`p-1.5 rounded-[2px] flex-shrink-0 ${
+            className={`p-1.5 rounded-none flex-shrink-0 ${
               isFull
                 ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                 : count > 0
@@ -3474,7 +3468,7 @@ function RoomDevicesCard({
             <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 flex-wrap">
               <span>TVs Conectadas</span>
               <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-[2px] font-mono font-bold border truncate ${
+                className={`text-[10px] px-1.5 py-0.2 rounded-none font-mono font-bold border truncate ${
                   isFull
                     ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
                     : count > 0
@@ -3504,7 +3498,7 @@ function RoomDevicesCard({
               }
             }}
             disabled={isKicking}
-            className="w-full sm:w-auto min-h-[32px] flex items-center justify-center gap-1 rounded-[2px] bg-neutral-900 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40 text-neutral-400 border border-neutral-800 px-3 py-1 text-xs font-semibold transition disabled:opacity-40"
+            className="w-full sm:w-auto min-h-[32px] flex items-center justify-center gap-1 rounded-none bg-neutral-900 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40 text-neutral-400 border border-neutral-800 px-3 py-1 text-xs font-semibold transition disabled:opacity-40"
           >
             <LogOut className="h-3 w-3 flex-shrink-0" />
             <span className="truncate">Desconectar Todas ({count})</span>
@@ -3513,7 +3507,7 @@ function RoomDevicesCard({
       </div>
 
       {/* Lista de Telas Conectadas e Vagas Disponíveis */}
-      <div className="rounded-[2px] border border-neutral-800 bg-neutral-950/70 overflow-hidden divide-y divide-neutral-800/80">
+      <div className="rounded-none border border-neutral-800 bg-neutral-950/70 overflow-hidden divide-y divide-neutral-800/80">
         {/* Telas Conectadas */}
         {devices.map((device, idx) => (
           <div
@@ -3521,7 +3515,7 @@ function RoomDevicesCard({
             className="p-3 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-neutral-900/40 transition"
           >
             <div className="flex items-center gap-3 min-w-0">
-              <div className="relative p-2 rounded-[2px] bg-neutral-900 border border-neutral-800 flex-shrink-0 text-neutral-200">
+              <div className="relative p-2 rounded-none bg-neutral-900 border border-neutral-800 flex-shrink-0 text-neutral-200">
                 <Monitor className="h-4 w-4" />
                 <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-400 animate-pulse border border-neutral-950" />
               </div>
@@ -3531,7 +3525,7 @@ function RoomDevicesCard({
                   <span className="text-xs sm:text-sm font-bold text-white truncate">
                     {device.deviceLabel}
                   </span>
-                  <span className="text-[10px] font-semibold px-2 py-0.2 rounded-[2px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                  <span className="text-[10px] font-semibold px-2 py-0.2 rounded-none bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
                     Vaga #{idx + 1}
                   </span>
                   <span className="text-[10px] text-neutral-500 font-mono">
@@ -3552,15 +3546,15 @@ function RoomDevicesCard({
                     }`}
                   >
                     {device.audioState?.state === "playing"
-                      ? "🔊 Áudio tocando normalmente"
+                      ? "Áudio ativo"
                       : device.audioState?.state === "blocked"
-                      ? "⚠️ Áudio bloqueado (aperte OK na TV)"
+                      ? "Áudio bloqueado (requer interação na TV)"
                       : device.audioState?.state === "loading"
-                      ? "⏳ Carregando áudio..."
+                      ? "Carregando áudio..."
                       : device.audioState?.state === "error"
-                      ? `⚠️ ${device.audioState.detail || "Erro de áudio"}`
+                      ? (device.audioState.detail ? `Erro: ${device.audioState.detail}` : "Erro de áudio")
                       : device.audioState?.state === "disabled"
-                      ? "🔇 Som desativado nesta tela"
+                      ? "Som desativado nesta tela"
                       : "Tela conectada"}
                   </span>
                   <span className="text-neutral-600">•</span>
@@ -3583,7 +3577,7 @@ function RoomDevicesCard({
                   }
                 }}
                 disabled={isKicking}
-                className="min-h-[30px] px-3 py-1 rounded-[2px] border border-neutral-800 bg-neutral-900 hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-300 text-neutral-300 text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-40"
+                className="min-h-[30px] px-3 py-1 rounded-none border border-neutral-800 bg-neutral-900 hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-300 text-neutral-300 text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-40"
               >
                 <LogOut className="h-3 w-3 flex-shrink-0" />
                 <span>Desconectar Tela</span>
@@ -3601,13 +3595,13 @@ function RoomDevicesCard({
               className="p-3 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-neutral-950/40 text-neutral-400 hover:bg-neutral-950/70 transition"
             >
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-[2px] border border-dashed border-neutral-800 bg-neutral-900/40 text-neutral-600 flex-shrink-0">
+                <div className="p-2 rounded-none border border-dashed border-neutral-800 bg-neutral-900/40 text-neutral-600 flex-shrink-0">
                   <Tv className="h-4 w-4" />
                 </div>
                 <div>
                   <div className="text-xs font-bold text-neutral-300 flex items-center gap-2">
                     <span>Vaga #{slotNum} Disponível</span>
-                    <span className="text-[9px] uppercase px-1.5 py-0.2 rounded-[2px] border border-dashed border-neutral-800 text-neutral-500">
+                    <span className="text-[9px] uppercase px-1.5 py-0.2 rounded-none border border-dashed border-neutral-800 text-neutral-500">
                       Livre
                     </span>
                   </div>
@@ -3621,7 +3615,7 @@ function RoomDevicesCard({
                 href={playerUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-850 text-xs font-semibold transition flex-shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-none bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-850 text-xs font-semibold transition flex-shrink-0"
               >
                 <ExternalLink className="h-3 w-3" />
                 <span>Conectar TV Nesta Vaga</span>
@@ -3771,11 +3765,11 @@ function RoomSchedulesCard({
   const activeRoutinesCount = routines.filter((r) => r.enabled).length;
 
   return (
-    <section className="rounded-[2px] border border-neutral-800 bg-neutral-900/40 p-3 sm:p-4 space-y-3">
+    <section className="rounded-none border border-neutral-800 bg-neutral-900/40 p-3 sm:p-4 space-y-3">
       {/* Header do Card */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-neutral-800">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="p-1.5 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 flex-shrink-0">
+          <div className="p-1.5 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-800 flex-shrink-0">
             {subTab === "schedules" ? (
               <CalendarClock className="h-4 w-4" />
             ) : (
@@ -3787,21 +3781,21 @@ function RoomSchedulesCard({
               <span>{subTab === "schedules" ? "Automação & Cerimônias" : "Rotinas Base da Sala"}</span>
               {subTab === "schedules" ? (
                 activeCount > 0 ? (
-                  <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-1.5 py-0.2 rounded-[2px] font-mono font-bold">
+                  <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-1.5 py-0.2 rounded-none font-mono font-bold">
                     {activeCount} {activeCount === 1 ? "programado" : "programados"}
                   </span>
                 ) : (
-                  <span className="text-[10px] bg-neutral-900 text-neutral-500 px-1.5 py-0.2 rounded-[2px] font-mono">
+                  <span className="text-[10px] bg-neutral-900 text-neutral-500 px-1.5 py-0.2 rounded-none font-mono">
                     Sem agendamentos
                   </span>
                 )
               ) : (
                 activeRoutinesCount > 0 ? (
-                  <span className="text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded-[2px] font-mono font-bold">
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded-none font-mono font-bold">
                     {activeRoutinesCount} {activeRoutinesCount === 1 ? "rotina ativa" : "rotinas ativas"}
                   </span>
                 ) : (
-                  <span className="text-[10px] bg-neutral-900 text-neutral-500 px-1.5 py-0.2 rounded-[2px] font-mono">
+                  <span className="text-[10px] bg-neutral-900 text-neutral-500 px-1.5 py-0.2 rounded-none font-mono">
                     Sem rotinas ativas
                   </span>
                 )
@@ -3821,7 +3815,7 @@ function RoomSchedulesCard({
             <>
               <button
                 onClick={onOpenWizardModal}
-                className="flex-1 sm:flex-none min-h-[34px] px-3 py-1 rounded-[2px] bg-white hover:bg-neutral-200 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
+                className="flex-1 sm:flex-none min-h-[34px] px-3 py-1 rounded-none bg-white hover:bg-neutral-200 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
                 title="Gera automaticamente as 3 etapas de um velório: Recepção, Despedida e Encerramento"
               >
                 <Sparkles className="h-3.5 w-3.5" />
@@ -3830,7 +3824,7 @@ function RoomSchedulesCard({
 
               <button
                 onClick={onOpenNewModal}
-                className="flex-1 sm:flex-none min-h-[34px] px-3 py-1 rounded-[2px] bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 font-semibold text-xs transition flex items-center justify-center gap-1.5"
+                className="flex-1 sm:flex-none min-h-[34px] px-3 py-1 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-800 font-semibold text-xs transition flex items-center justify-center gap-1.5"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Novo Horário</span>
@@ -3839,7 +3833,7 @@ function RoomSchedulesCard({
           ) : (
             <button
               onClick={onOpenNewRoutineModal}
-              className="flex-1 sm:flex-none min-h-[34px] px-3 py-1 rounded-[2px] bg-white hover:bg-neutral-200 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
+              className="flex-1 sm:flex-none min-h-[34px] px-3 py-1 rounded-none bg-white hover:bg-neutral-200 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Nova Rotina Base</span>
@@ -3849,21 +3843,21 @@ function RoomSchedulesCard({
       </div>
 
       {/* Seletor de Sub-Abas: Cerimônias vs Rotinas Base */}
-      <div className="flex items-center gap-1 p-1 bg-neutral-950 rounded-[2px] border border-neutral-800">
+      <div className="flex items-center gap-1 p-1 bg-neutral-950 rounded-none border border-neutral-800">
         <button
           type="button"
           onClick={() => setSubTab("schedules")}
-          className={`flex-1 py-1.5 px-3 rounded-[2px] text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-1.5 px-3 rounded-none text-xs font-bold transition flex items-center justify-center gap-1.5 ${
             subTab === "schedules"
               ? "bg-white text-black shadow-xs font-extrabold"
               : "text-neutral-400 hover:text-white"
           }`}
         >
           <CalendarClock className="h-3.5 w-3.5" />
-          <span>⚡ Cerimônias & Agendamentos</span>
+          <span>Cerimônias & Agendamentos</span>
           {activeCount > 0 && (
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-[2px] font-mono ${
+              className={`text-[10px] px-1.5 py-0.2 rounded-none font-mono ${
                 subTab === "schedules"
                   ? "bg-black/15 text-black font-extrabold"
                   : "bg-neutral-800 text-neutral-300"
@@ -3877,17 +3871,17 @@ function RoomSchedulesCard({
         <button
           type="button"
           onClick={() => setSubTab("routines")}
-          className={`flex-1 py-1.5 px-3 rounded-[2px] text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+          className={`flex-1 py-1.5 px-3 rounded-none text-xs font-bold transition flex items-center justify-center gap-1.5 ${
             subTab === "routines"
               ? "bg-white text-black shadow-xs font-extrabold"
               : "text-neutral-400 hover:text-white"
           }`}
         >
           <Clock className="h-3.5 w-3.5" />
-          <span>🔄 Rotinas Base (Alarme Semanal)</span>
+          <span>Rotinas Semanais (Fundo)</span>
           {activeRoutinesCount > 0 && (
             <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-[2px] font-mono ${
+              className={`text-[10px] px-1.5 py-0.2 rounded-none font-mono ${
                 subTab === "routines"
                   ? "bg-black/15 text-black font-extrabold"
                   : "bg-neutral-800 text-neutral-300"
@@ -3910,8 +3904,8 @@ function RoomSchedulesCard({
               <span>Carregando programação da sala...</span>
             </div>
           ) : sortedSchedules.length === 0 ? (
-            <div className="rounded-[2px] border border-dashed border-neutral-800 bg-neutral-950/40 p-4 sm:p-5 text-center space-y-2.5">
-              <div className="mx-auto h-9 w-9 rounded-[2px] bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-400">
+            <div className="rounded-none border border-dashed border-neutral-800 bg-neutral-950/40 p-4 sm:p-5 text-center space-y-2.5">
+              <div className="mx-auto h-9 w-9 rounded-none bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-400">
                 <Calendar className="h-4 w-4" />
               </div>
               <div className="space-y-0.5">
@@ -3922,7 +3916,7 @@ function RoomSchedulesCard({
               </div>
               <button
                 onClick={onOpenWizardModal}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 <span>Criar Roteiro Padrão de Velório</span>
@@ -3942,7 +3936,7 @@ function RoomSchedulesCard({
                 return (
                   <div
                     key={task.id}
-                    className={`p-2.5 sm:p-3 rounded-[2px] border transition-all ${
+                    className={`p-2.5 sm:p-3 rounded-none border transition-all ${
                       isExecuted
                         ? "border-neutral-800/60 bg-neutral-950/40 opacity-75"
                         : isPaused
@@ -3954,24 +3948,24 @@ function RoomSchedulesCard({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {/* Badge de Horário */}
-                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 font-mono text-xs font-bold text-white">
+                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-none bg-neutral-900 border border-neutral-800 font-mono text-xs font-bold text-white">
                           <Clock className="h-3 w-3 text-neutral-400" />
                           <span>{formatScheduleDateTime(task.scheduledAt)}</span>
                         </div>
 
                         {/* Status Badge */}
                         {isExecuted ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] text-[10px] font-bold bg-neutral-800 text-neutral-400 border border-neutral-700">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none text-[10px] font-bold bg-neutral-800 text-neutral-400 border border-neutral-700">
                             <CheckCircle2 className="h-3 w-3 text-emerald-400" />
                             <span>Concluído</span>
                           </span>
                         ) : isPaused ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/25">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/25">
                             <Pause className="h-3 w-3" />
                             <span>Pausado</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                             <span>Agendado</span>
                           </span>
@@ -3987,7 +3981,7 @@ function RoomSchedulesCard({
                         <button
                           onClick={() => onRunNow(task.id)}
                           disabled={isRunning}
-                          className="min-h-[28px] px-2 py-0.5 rounded-[2px] bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 text-[11px] font-semibold transition flex items-center gap-1 disabled:opacity-40"
+                          className="min-h-[28px] px-2 py-0.5 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 text-[11px] font-semibold transition flex items-center gap-1 disabled:opacity-40"
                           title="Dispara as ações deste agendamento na TV agora mesmo para teste"
                         >
                           {isRunning ? (
@@ -4000,7 +3994,7 @@ function RoomSchedulesCard({
 
                         <button
                           onClick={() => onToggle(task.id)}
-                          className={`min-h-[28px] px-2 py-0.5 rounded-[2px] border text-[11px] font-semibold transition flex items-center gap-1 ${
+                          className={`min-h-[28px] px-2 py-0.5 rounded-none border text-[11px] font-semibold transition flex items-center gap-1 ${
                             task.enabled
                               ? "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
                               : "bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25"
@@ -4013,7 +4007,7 @@ function RoomSchedulesCard({
 
                         <button
                           onClick={() => onOpenEditModal(task)}
-                          className="min-h-[28px] h-7 w-7 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700 transition flex items-center justify-center"
+                          className="min-h-[28px] h-7 w-7 rounded-none bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700 transition flex items-center justify-center"
                           title="Editar agendamento"
                         >
                           <Pencil className="h-3 w-3" />
@@ -4021,7 +4015,7 @@ function RoomSchedulesCard({
 
                         <button
                           onClick={() => onDelete(task.id)}
-                          className="min-h-[28px] h-7 w-7 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition flex items-center justify-center"
+                          className="min-h-[28px] h-7 w-7 rounded-none bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition flex items-center justify-center"
                           title="Excluir agendamento"
                         >
                           <Trash2 className="h-3 w-3" />
@@ -4033,13 +4027,13 @@ function RoomSchedulesCard({
                     <div className="flex items-center gap-1 flex-wrap text-[10px] pt-1 border-t border-neutral-900">
                       {/* Standby / Suspensão */}
                       {task.actions.standby === false && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium">
                           <Sun className="h-3 w-3 text-amber-400" />
                           <span>Liga TV (Sai do Standby)</span>
                         </span>
                       )}
                       {task.actions.standby === true && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-400 border border-neutral-800 font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-400 border border-neutral-800 font-medium">
                           <Moon className="h-3 w-3 text-amber-400" />
                           <span>Suspende TV (Standby)</span>
                         </span>
@@ -4047,7 +4041,7 @@ function RoomSchedulesCard({
 
                       {/* Site / Memorial */}
                       {task.actions.siteUrl && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium max-w-xs truncate">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium max-w-xs truncate">
                           <Globe className="h-3 w-3 flex-shrink-0 text-neutral-400" />
                           <span className="truncate">{task.actions.siteUrl}</span>
                         </span>
@@ -4055,7 +4049,7 @@ function RoomSchedulesCard({
 
                       {/* Playlist de Áudio */}
                       {audioPlaylistName && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium">
                           <Music className="h-3 w-3 text-neutral-400" />
                           <span>{audioPlaylistName}</span>
                         </span>
@@ -4063,7 +4057,7 @@ function RoomSchedulesCard({
 
                       {/* Volume */}
                       {task.actions.audioVolume !== undefined && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800 font-medium font-mono">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-800 font-medium font-mono">
                           <Volume2 className="h-3 w-3 text-neutral-400" />
                           <span>Vol: {task.actions.audioVolume}%</span>
                         </span>
@@ -4071,13 +4065,13 @@ function RoomSchedulesCard({
 
                       {/* Status de Áudio */}
                       {task.actions.audioStatus === "playing" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 font-medium">
                           <Play className="h-3 w-3" />
                           <span>Tocar Músicas</span>
                         </span>
                       )}
                       {task.actions.audioStatus === "paused" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-400 border border-neutral-800 font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-400 border border-neutral-800 font-medium">
                           <Pause className="h-3 w-3" />
                           <span>Pausar Som</span>
                         </span>
@@ -4097,9 +4091,9 @@ function RoomSchedulesCard({
       {subTab === "routines" && (
         <div className="space-y-3">
           {/* Banner de Prioridade e Retomada */}
-          <div className="rounded-[2px] border border-blue-900/40 bg-blue-950/20 p-2.5 sm:p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
+          <div className="rounded-none border border-blue-900/40 bg-blue-950/20 p-2.5 sm:p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
             <div className="flex items-start gap-2">
-              <div className="p-1 rounded-[2px] bg-blue-900/40 text-blue-300 border border-blue-800/60 mt-0.5 sm:mt-0 flex-shrink-0">
+              <div className="p-1 rounded-none bg-blue-900/40 text-blue-300 border border-blue-800/60 mt-0.5 sm:mt-0 flex-shrink-0">
                 <Info className="h-3.5 w-3.5" />
               </div>
               <div className="space-y-0.5">
@@ -4114,7 +4108,7 @@ function RoomSchedulesCard({
             <button
               onClick={onRestoreRoutine}
               disabled={isRestoringRoutine}
-              className="px-2.5 py-1 rounded-[2px] bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-700 text-[11px] font-semibold transition flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap disabled:opacity-50"
+              className="px-2.5 py-1 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-700 text-[11px] font-semibold transition flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap disabled:opacity-50"
               title="Libera qualquer override de automação ativa e aplica imediatamente a rotina base correspondente ao dia/horário atual"
             >
               {isRestoringRoutine ? (
@@ -4133,8 +4127,8 @@ function RoomSchedulesCard({
               <span>Carregando rotinas base da sala...</span>
             </div>
           ) : sortedRoutines.length === 0 ? (
-            <div className="rounded-[2px] border border-dashed border-neutral-800 bg-neutral-950/40 p-4 sm:p-5 text-center space-y-2.5">
-              <div className="mx-auto h-9 w-9 rounded-[2px] bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-400">
+            <div className="rounded-none border border-dashed border-neutral-800 bg-neutral-950/40 p-4 sm:p-5 text-center space-y-2.5">
+              <div className="mx-auto h-9 w-9 rounded-none bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-400">
                 <Clock className="h-4 w-4" />
               </div>
               <div className="space-y-0.5">
@@ -4145,7 +4139,7 @@ function RoomSchedulesCard({
               </div>
               <button
                 onClick={onOpenNewRoutineModal}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Criar Primeira Rotina Base</span>
@@ -4166,7 +4160,7 @@ function RoomSchedulesCard({
                 return (
                   <div
                     key={routine.id}
-                    className={`p-2.5 sm:p-3 rounded-[2px] border transition-all ${
+                    className={`p-2.5 sm:p-3 rounded-none border transition-all ${
                       isPaused
                         ? "border-amber-500/25 bg-neutral-950/60"
                         : "border-neutral-800 bg-neutral-950 shadow-xs hover:border-neutral-700"
@@ -4176,19 +4170,19 @@ function RoomSchedulesCard({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {/* Horário */}
-                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-[2px] bg-neutral-900 border border-neutral-800 font-mono text-xs font-bold text-white">
+                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-none bg-neutral-900 border border-neutral-800 font-mono text-xs font-bold text-white">
                           <Clock className="h-3 w-3 text-neutral-400" />
                           <span>{routine.startTime} → {routine.endTime}</span>
                         </div>
 
                         {/* Status */}
                         {isPaused ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/25">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/25">
                             <Pause className="h-3 w-3" />
                             <span>Pausada</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
                             <span>Ativa</span>
                           </span>
@@ -4202,7 +4196,7 @@ function RoomSchedulesCard({
                               <span
                                 key={d.day}
                                 title={`${d.full}: ${isDayActive ? "Ativo nesta rotina" : "Inativo"}`}
-                                className={`h-4 min-w-[16px] px-0.5 rounded-[2px] text-[9px] font-bold flex items-center justify-center ${
+                                className={`h-4 min-w-[16px] px-0.5 rounded-none text-[9px] font-bold flex items-center justify-center ${
                                   isDayActive
                                     ? isPaused
                                       ? "bg-neutral-800 text-neutral-300 border border-neutral-700"
@@ -4226,7 +4220,7 @@ function RoomSchedulesCard({
                         <button
                           onClick={() => onRunRoutineNow(routine.id)}
                           disabled={isRunning}
-                          className="min-h-[28px] px-2 py-0.5 rounded-[2px] bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 text-[11px] font-semibold transition flex items-center gap-1 disabled:opacity-40"
+                          className="min-h-[28px] px-2 py-0.5 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 text-[11px] font-semibold transition flex items-center gap-1 disabled:opacity-40"
                           title="Aplica esta rotina na tela da TV imediatamente para conferir o resultado"
                         >
                           {isRunning ? (
@@ -4239,7 +4233,7 @@ function RoomSchedulesCard({
 
                         <button
                           onClick={() => onToggleRoutine(routine.id)}
-                          className={`min-h-[28px] px-2 py-0.5 rounded-[2px] border text-[11px] font-semibold transition flex items-center gap-1 ${
+                          className={`min-h-[28px] px-2 py-0.5 rounded-none border text-[11px] font-semibold transition flex items-center gap-1 ${
                             routine.enabled
                               ? "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
                               : "bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25"
@@ -4252,7 +4246,7 @@ function RoomSchedulesCard({
 
                         <button
                           onClick={() => onOpenEditRoutineModal(routine)}
-                          className="min-h-[28px] h-7 w-7 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700 transition flex items-center justify-center"
+                          className="min-h-[28px] h-7 w-7 rounded-none bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700 transition flex items-center justify-center"
                           title="Editar rotina base"
                         >
                           <Pencil className="h-3 w-3" />
@@ -4260,7 +4254,7 @@ function RoomSchedulesCard({
 
                         <button
                           onClick={() => onDeleteRoutine(routine.id)}
-                          className="min-h-[28px] h-7 w-7 rounded-[2px] bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition flex items-center justify-center"
+                          className="min-h-[28px] h-7 w-7 rounded-none bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition flex items-center justify-center"
                           title="Excluir rotina base"
                         >
                           <Trash2 className="h-3 w-3" />
@@ -4272,12 +4266,12 @@ function RoomSchedulesCard({
                     <div className="flex items-center gap-1 flex-wrap text-[10px] pt-1 border-t border-neutral-900">
                       {/* Standby */}
                       {routine.actions?.standby === true ? (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-indigo-300 border border-indigo-900/40 font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-indigo-300 border border-indigo-900/40 font-medium">
                           <Moon className="h-3 w-3 text-indigo-400" />
                           <span>Modo Repouso (TV em Standby)</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-amber-300 border border-amber-900/40 font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-amber-300 border border-amber-900/40 font-medium">
                           <Sun className="h-3 w-3 text-amber-400" />
                           <span>Sala Ativa (TV Ligada)</span>
                         </span>
@@ -4285,13 +4279,13 @@ function RoomSchedulesCard({
 
                       {/* Exibição Visual */}
                       {routine.actions?.mode === "site" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium max-w-xs truncate">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium max-w-xs truncate">
                           <Globe className="h-3 w-3 flex-shrink-0 text-neutral-400" />
                           <span className="truncate">{routine.actions.siteUrl || "Site Padrão (Adiaŭ)"}</span>
                         </span>
                       )}
                       {routine.actions?.mode === "playlist" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium">
                           <Tv className="h-3 w-3 text-neutral-400" />
                           <span>Carrossel de Mídias</span>
                         </span>
@@ -4299,13 +4293,13 @@ function RoomSchedulesCard({
 
                       {/* Rádio ou Playlist */}
                       {radioPresetName && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium max-w-xs truncate">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium max-w-xs truncate">
                           <Radio className="h-3 w-3 text-neutral-400 flex-shrink-0" />
                           <span className="truncate">{radioPresetName}</span>
                         </span>
                       )}
                       {audioPlaylistName && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-800 font-medium">
                           <Music className="h-3 w-3 text-neutral-400" />
                           <span>{audioPlaylistName}</span>
                         </span>
@@ -4313,7 +4307,7 @@ function RoomSchedulesCard({
 
                       {/* Volume */}
                       {routine.actions?.audioVolume !== undefined && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800 font-medium font-mono">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-800 font-medium font-mono">
                           <Volume2 className="h-3 w-3 text-neutral-400" />
                           <span>Vol: {routine.actions.audioVolume}%</span>
                         </span>
@@ -4321,13 +4315,13 @@ function RoomSchedulesCard({
 
                       {/* Status de Áudio */}
                       {routine.actions?.audioStatus === "playing" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 font-medium">
                           <Play className="h-3 w-3" />
                           <span>Tocar Áudio</span>
                         </span>
                       )}
                       {routine.actions?.audioStatus === "paused" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[2px] bg-neutral-900 text-neutral-400 border border-neutral-800 font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-400 border border-neutral-800 font-medium">
                           <Pause className="h-3 w-3" />
                           <span>Som Silenciado</span>
                         </span>
@@ -4461,10 +4455,10 @@ function CeremonyWizardModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-xl rounded-[2px] border border-neutral-800 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto">
+      <div className="w-full max-w-xl rounded-none border border-neutral-800 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto">
         <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800">
+            <div className="p-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-800">
               <Sparkles className="h-4 w-4" />
             </div>
             <div>
@@ -4483,15 +4477,15 @@ function CeremonyWizardModal({
 
         <div className="space-y-2.5 text-xs">
           {/* ETAPA 1: Recepção e Início */}
-          <div className="p-3 rounded-[2px] border border-neutral-800 bg-neutral-900/40 space-y-2.5">
+          <div className="p-3 rounded-none border border-neutral-800 bg-neutral-900/40 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
-                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-[2px] border border-neutral-700 font-bold">
+                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-none border border-neutral-700 font-bold">
                   01
                 </span>
                 Recepção & Abertura da TV
               </span>
-              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-2 py-0.5 rounded-[2px] font-mono font-semibold">
+              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-2 py-0.5 rounded-none font-mono font-semibold">
                 Sai do Standby
               </span>
             </div>
@@ -4511,7 +4505,7 @@ function CeremonyWizardModal({
                 <select
                   value={startPlaylist}
                   onChange={(e) => setStartPlaylist(e.target.value)}
-                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+                  className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
                 >
                   <option value="">Nenhuma música (Silêncio)</option>
                   {audioPlaylists.map((p) => (
@@ -4532,7 +4526,7 @@ function CeremonyWizardModal({
                 placeholder="https://exemplo.com.br/homenagem"
                 value={memorialUrl}
                 onChange={(e) => setMemorialUrl(e.target.value)}
-                className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+                className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
               />
             </div>
 
@@ -4542,7 +4536,7 @@ function CeremonyWizardModal({
                 <span className="text-[11px] font-semibold text-neutral-300">
                   Volume Livre da Recepção:
                 </span>
-                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-[2px] border border-neutral-800">
+                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-800">
                   {Math.round(startVolume)}%
                 </span>
               </div>
@@ -4558,7 +4552,7 @@ function CeremonyWizardModal({
                     key={v}
                     type="button"
                     onClick={() => setStartVolume(v)}
-                    className={`px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-semibold border transition ${
+                    className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
                       startVolume === v
                         ? "bg-white text-black border-white font-bold"
                         : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700"
@@ -4572,15 +4566,15 @@ function CeremonyWizardModal({
           </div>
 
           {/* ETAPA 2: Despedida da Família */}
-          <div className="p-3 rounded-[2px] border border-neutral-800 bg-neutral-900/40 space-y-2.5">
+          <div className="p-3 rounded-none border border-neutral-800 bg-neutral-900/40 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
-                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-[2px] border border-neutral-700 font-bold">
+                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-none border border-neutral-700 font-bold">
                   02
                 </span>
                 Despedida da Família (Fechamento)
               </span>
-              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-2 py-0.5 rounded-[2px] font-mono font-semibold">
+              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-2 py-0.5 rounded-none font-mono font-semibold">
                 Músicas Especiais
               </span>
             </div>
@@ -4600,7 +4594,7 @@ function CeremonyWizardModal({
                 <select
                   value={farewellPlaylist}
                   onChange={(e) => setFarewellPlaylist(e.target.value)}
-                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+                  className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
                 >
                   <option value="">Manter playlist atual</option>
                   {audioPlaylists.map((p) => (
@@ -4618,7 +4612,7 @@ function CeremonyWizardModal({
                 <span className="text-[11px] font-semibold text-neutral-300">
                   Volume Livre da Despedida:
                 </span>
-                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-[2px] border border-neutral-800">
+                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-800">
                   {Math.round(farewellVolume)}%
                 </span>
               </div>
@@ -4634,7 +4628,7 @@ function CeremonyWizardModal({
                     key={v}
                     type="button"
                     onClick={() => setFarewellVolume(v)}
-                    className={`px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-semibold border transition ${
+                    className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
                       farewellVolume === v
                         ? "bg-white text-black border-white font-bold"
                         : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700"
@@ -4648,15 +4642,15 @@ function CeremonyWizardModal({
           </div>
 
           {/* ETAPA 3: Encerramento e Modo Suspenso */}
-          <div className="p-3 rounded-[2px] border border-neutral-800 bg-neutral-900/40 space-y-2.5">
+          <div className="p-3 rounded-none border border-neutral-800 bg-neutral-900/40 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
-                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-[2px] border border-neutral-700 font-bold">
+                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-none border border-neutral-700 font-bold">
                   03
                 </span>
                 Encerramento & Desocupação
               </span>
-              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-2 py-0.5 rounded-[2px] font-mono font-semibold">
+              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700 px-2 py-0.5 rounded-none font-mono font-semibold">
                 Retorna ao Standby
               </span>
             </div>
@@ -4676,7 +4670,7 @@ function CeremonyWizardModal({
                 <select
                   value={endPlaylist}
                   onChange={(e) => setEndPlaylist(e.target.value)}
-                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+                  className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
                 >
                   <option value="">Pausar Som Completamente (Silêncio)</option>
                   {audioPlaylists.map((p) => (
@@ -4694,7 +4688,7 @@ function CeremonyWizardModal({
                 <span className="text-[11px] font-semibold text-neutral-300">
                   Volume Livre do Fundo (Standby):
                 </span>
-                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-[2px] border border-neutral-800">
+                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-800">
                   {Math.round(endVolume)}%
                 </span>
               </div>
@@ -4710,7 +4704,7 @@ function CeremonyWizardModal({
                     key={v}
                     type="button"
                     onClick={() => setEndVolume(v)}
-                    className={`px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-semibold border transition ${
+                    className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
                       endVolume === v
                         ? "bg-white text-black border-white font-bold"
                         : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700"
@@ -4728,7 +4722,7 @@ function CeremonyWizardModal({
           <button
             type="button"
             onClick={onClose}
-            className="min-h-[36px] px-3.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition"
+            className="min-h-[36px] px-3.5 rounded-none border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition"
           >
             Cancelar
           </button>
@@ -4736,7 +4730,7 @@ function CeremonyWizardModal({
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className="min-h-[36px] flex items-center gap-2 px-4 rounded-[2px] bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow disabled:opacity-40"
+            className="min-h-[36px] flex items-center gap-2 px-4 rounded-none bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow disabled:opacity-40"
           >
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -4858,10 +4852,10 @@ function ScheduleModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-lg rounded-[2px] border border-neutral-800 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto">
+      <div className="w-full max-w-lg rounded-none border border-neutral-800 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto">
         <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800">
+            <div className="p-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-800">
               <CalendarClock className="h-4 w-4" />
             </div>
             <h3 className="text-sm sm:text-base font-bold text-white">
@@ -4892,7 +4886,7 @@ function ScheduleModal({
               <button
                 type="button"
                 onClick={() => setStandbyAction("wake")}
-                className={`p-2 rounded-[2px] border text-center transition flex flex-col items-center gap-1 ${
+                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
                   standbyAction === "wake"
                     ? "bg-white text-black border-white font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -4905,7 +4899,7 @@ function ScheduleModal({
               <button
                 type="button"
                 onClick={() => setStandbyAction("standby")}
-                className={`p-2 rounded-[2px] border text-center transition flex flex-col items-center gap-1 ${
+                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
                   standbyAction === "standby"
                     ? "bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -4918,7 +4912,7 @@ function ScheduleModal({
               <button
                 type="button"
                 onClick={() => setStandbyAction("none")}
-                className={`p-2 rounded-[2px] border text-center transition flex flex-col items-center gap-1 ${
+                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
                   standbyAction === "none"
                     ? "bg-neutral-800 border-neutral-700 text-white font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -4951,7 +4945,7 @@ function ScheduleModal({
               placeholder="https://exemplo.com.br/homenagem"
               value={siteUrl}
               onChange={(e) => setSiteUrl(e.target.value)}
-              className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+              className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
             />
           </div>
 
@@ -4963,7 +4957,7 @@ function ScheduleModal({
             <select
               value={audioPlaylist}
               onChange={(e) => setAudioPlaylist(e.target.value)}
-              className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+              className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
             >
               <option value="">Manter playlist atual</option>
               {audioPlaylists.map((p) => (
@@ -4980,7 +4974,7 @@ function ScheduleModal({
               <span className="text-[11px] font-semibold text-neutral-300">
                 Volume Livre do Áudio:
               </span>
-              <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-[2px] border border-neutral-800">
+              <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-800">
                 {audioVolume}%
               </span>
             </div>
@@ -4996,7 +4990,7 @@ function ScheduleModal({
                   key={p.val}
                   type="button"
                   onClick={() => setAudioVolume(p.val)}
-                  className={`px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-semibold border transition ${
+                  className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
                     audioVolume === p.val
                       ? "bg-white text-black border-white font-bold"
                       : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700"
@@ -5017,7 +5011,7 @@ function ScheduleModal({
               <button
                 type="button"
                 onClick={() => setAudioStatus("playing")}
-                className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-1 ${
+                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-1 ${
                   audioStatus === "playing"
                     ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5030,7 +5024,7 @@ function ScheduleModal({
               <button
                 type="button"
                 onClick={() => setAudioStatus("paused")}
-                className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-1 ${
+                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-1 ${
                   audioStatus === "paused"
                     ? "bg-amber-500/20 border-amber-500/40 text-amber-300 font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5043,7 +5037,7 @@ function ScheduleModal({
               <button
                 type="button"
                 onClick={() => setAudioStatus("none")}
-                className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-1 ${
+                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-1 ${
                   audioStatus === "none"
                     ? "bg-neutral-800 border-neutral-700 text-white font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5059,14 +5053,14 @@ function ScheduleModal({
           <button
             type="button"
             onClick={onClose}
-            className="min-h-[36px] px-3.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition"
+            className="min-h-[36px] px-3.5 rounded-none border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition"
           >
             Cancelar
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="min-h-[36px] flex items-center gap-2 px-4 rounded-[2px] bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
+            className="min-h-[36px] flex items-center gap-2 px-4 rounded-none bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
           >
             <Check className="h-4 w-4" />
             <span>{isEditing ? "Salvar Alterações" : "Criar Agendamento"}</span>
@@ -5084,6 +5078,7 @@ function RoomRoutineModal({
   isOpen,
   onClose,
   slug,
+  availableRooms = [],
   currentSiteUrl,
   audioPlaylists,
   initialData,
@@ -5092,14 +5087,20 @@ function RoomRoutineModal({
   isOpen: boolean;
   onClose: () => void;
   slug: string;
+  availableRooms?: { slug: string; name: string }[];
   currentSiteUrl?: string | null;
   audioPlaylists: Playlist[];
   initialData?: RoomRoutine | null;
-  onSave: (data: Partial<RoomRoutine>) => void;
+  onSave: (data: Partial<RoomRoutine>, targetRooms?: string[]) => void;
 }) {
   if (!isOpen) return null;
 
   const isEditing = Boolean(initialData);
+
+  const [selectedRooms, setSelectedRooms] = useState<string[]>(() => {
+    if (initialData?.roomSlug) return [initialData.roomSlug];
+    return [slug];
+  });
 
   const [title, setTitle] = useState(initialData?.title || "");
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(
@@ -5213,25 +5214,25 @@ function RoomRoutineModal({
       enabled: initialData ? initialData.enabled : true,
       priority: 0,
       actions,
-    });
+    }, selectedRooms);
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-lg rounded-[2px] border border-neutral-800 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto">
+      <div className="w-full max-w-lg rounded-none border border-neutral-850 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto font-sans">
         {/* Header do Modal */}
-        <div className="flex items-center justify-between pb-2.5 border-b border-neutral-800">
+        <div className="flex items-center justify-between pb-2.5 border-b border-neutral-900">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-[2px] bg-neutral-900 text-neutral-200 border border-neutral-800">
+            <div className="p-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-850">
               <Clock className="h-4 w-4 text-emerald-400" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-white">
-                {isEditing ? "Editar Rotina Base" : "Nova Rotina Base da Sala"}
+              <h3 className="text-sm sm:text-base font-bold text-white font-mono uppercase">
+                {isEditing ? "Editar Rotina Base" : "Nova Rotina Base (Agnóstica)"}
               </h3>
-              <p className="text-[10px] text-neutral-400">
-                Programação estilo alarme de smartphone (opera de fundo)
+              <p className="text-[10px] text-neutral-400 font-mono">
+                Programação estilo alarme de smartphone para uma ou várias salas
               </p>
             </div>
           </div>
@@ -5242,9 +5243,70 @@ function RoomRoutineModal({
 
         {/* Formulário */}
         <div className="space-y-3 text-xs">
+          {/* Seleção de Salas Alvo (Rotina Agnóstica de Sala) */}
+          <div className="space-y-1.5 bg-neutral-900/40 p-2.5 border border-neutral-850">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-neutral-300 flex items-center gap-1.5 font-mono">
+                <Monitor className="h-3.5 w-3.5 text-neutral-400" />
+                <span>Salas que Executarão esta Rotina:</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (availableRooms.length > 0) {
+                    if (selectedRooms.length === availableRooms.length) {
+                      setSelectedRooms([slug]);
+                    } else {
+                      setSelectedRooms(availableRooms.map((r) => r.slug));
+                    }
+                  }
+                }}
+                className="text-[10px] text-neutral-300 hover:text-white font-mono underline"
+              >
+                {availableRooms.length > 0 && selectedRooms.length === availableRooms.length
+                  ? "Apenas esta sala"
+                  : "Selecionar Todas as Salas"}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              {(availableRooms.length > 0 ? availableRooms : [{ slug, name: slug }]).map((r) => {
+                const isSelected = selectedRooms.includes(r.slug);
+                return (
+                  <button
+                    key={r.slug}
+                    type="button"
+                    onClick={() => {
+                      setSelectedRooms((prev) =>
+                        prev.includes(r.slug)
+                          ? prev.length > 1
+                            ? prev.filter((s) => s !== r.slug)
+                            : prev
+                          : [...prev, r.slug]
+                      );
+                    }}
+                    className={`px-2 py-1 text-xs font-mono transition flex items-center gap-1.5 ${
+                      isSelected
+                        ? "bg-white text-black font-bold"
+                        : "bg-black text-neutral-400 hover:text-white border border-neutral-850"
+                    }`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-black" : "bg-neutral-600"}`} />
+                    <span>{r.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-neutral-400 font-mono">
+              {selectedRooms.length > 1
+                ? `Esta rotina será aplicada simultaneamente em ${selectedRooms.length} salas cadastradas.`
+                : "Aplicando somente nesta sala."}
+            </p>
+          </div>
+
           {/* Nome da Rotina */}
           <div>
-            <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+            <label className="text-[11px] font-semibold text-neutral-300 block mb-1 font-mono">
               Nome da Rotina:
             </label>
             <input
@@ -5252,12 +5314,12 @@ function RoomRoutineModal({
               placeholder="Ex: Expediente Diurno, Repouso Noturno, Fins de Semana..."
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+              className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
             />
           </div>
 
           {/* Dias da Semana (Estilo Alarme de Smartphone) */}
-          <div className="space-y-1.5 bg-neutral-900/40 p-2.5 rounded-[2px] border border-neutral-800/70">
+          <div className="space-y-1.5 bg-neutral-900/40 p-2.5 rounded-none border border-neutral-800/70">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-semibold text-neutral-300 flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5 text-neutral-400" />
@@ -5277,7 +5339,7 @@ function RoomRoutineModal({
                     key={opt.day}
                     type="button"
                     onClick={() => toggleDay(opt.day)}
-                    className={`py-2 px-1 text-center rounded-[2px] border text-xs font-bold transition flex flex-col items-center justify-center gap-1 ${
+                    className={`py-2 px-1 text-center rounded-none border text-xs font-bold transition flex flex-col items-center justify-center gap-1 ${
                       isSelected
                         ? "bg-white text-black border-white shadow-xs font-extrabold"
                         : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700"
@@ -5297,7 +5359,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setDaysOfWeek([0, 1, 2, 3, 4, 5, 6])}
-                className={`px-2 py-0.5 rounded-[2px] border transition ${
+                className={`px-2 py-0.5 rounded-none border transition ${
                   daysOfWeek.length === 7
                     ? "bg-neutral-800 border-neutral-600 text-white font-semibold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5308,7 +5370,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setDaysOfWeek([1, 2, 3, 4, 5])}
-                className={`px-2 py-0.5 rounded-[2px] border transition ${
+                className={`px-2 py-0.5 rounded-none border transition ${
                   daysOfWeek.length === 5 && [1, 2, 3, 4, 5].every((d) => daysOfWeek.includes(d))
                     ? "bg-neutral-800 border-neutral-600 text-white font-semibold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5319,7 +5381,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setDaysOfWeek([0, 6])}
-                className={`px-2 py-0.5 rounded-[2px] border transition ${
+                className={`px-2 py-0.5 rounded-none border transition ${
                   daysOfWeek.length === 2 && daysOfWeek.includes(0) && daysOfWeek.includes(6)
                     ? "bg-neutral-800 border-neutral-600 text-white font-semibold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5330,7 +5392,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setDaysOfWeek([0])}
-                className={`px-2 py-0.5 rounded-[2px] border transition ${
+                className={`px-2 py-0.5 rounded-none border transition ${
                   daysOfWeek.length === 1 && daysOfWeek.includes(0)
                     ? "bg-neutral-800 border-neutral-600 text-white font-semibold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5341,7 +5403,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setDaysOfWeek([])}
-                className="px-2 py-0.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-neutral-500 hover:text-neutral-300"
+                className="px-2 py-0.5 rounded-none border border-neutral-800 bg-neutral-900 text-neutral-500 hover:text-neutral-300"
               >
                 Limpar
               </button>
@@ -5359,7 +5421,7 @@ function RoomRoutineModal({
                   type="time"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
+                  className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
                   required
                 />
               </div>
@@ -5371,7 +5433,7 @@ function RoomRoutineModal({
                   type="time"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
+                  className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
                   required
                 />
               </div>
@@ -5393,7 +5455,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setStandby(false)}
-                className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-2 ${
+                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-2 ${
                   standby === false
                     ? "bg-white text-black border-white font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5405,7 +5467,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setStandby(true)}
-                className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-2 ${
+                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-2 ${
                   standby === true
                     ? "bg-white text-black border-white font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5426,7 +5488,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setMode("site")}
-                className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-2 ${
+                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-2 ${
                   mode === "site"
                     ? "bg-white text-black border-white font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5438,7 +5500,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setMode("playlist")}
-                className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-2 ${
+                className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-2 ${
                   mode === "playlist"
                     ? "bg-white text-black border-white font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5455,7 +5517,7 @@ function RoomRoutineModal({
                   placeholder="URL do Memorial ou deixe vazio para o padrão da sala"
                   value={siteUrl}
                   onChange={(e) => setSiteUrl(e.target.value)}
-                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
+                  className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
                 />
               </div>
             )}
@@ -5470,7 +5532,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setAudioType("radio")}
-                className={`p-2 rounded-[2px] border text-center transition flex flex-col items-center gap-1 ${
+                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
                   audioType === "radio"
                     ? "bg-white text-black border-white font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5482,7 +5544,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setAudioType("playlist")}
-                className={`p-2 rounded-[2px] border text-center transition flex flex-col items-center gap-1 ${
+                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
                   audioType === "playlist"
                     ? "bg-white text-black border-white font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5494,7 +5556,7 @@ function RoomRoutineModal({
               <button
                 type="button"
                 onClick={() => setAudioType("none")}
-                className={`p-2 rounded-[2px] border text-center transition flex flex-col items-center gap-1 ${
+                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
                   audioType === "none"
                     ? "bg-white text-black border-white font-bold"
                     : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5507,7 +5569,7 @@ function RoomRoutineModal({
 
             {/* Configuração de Rádio */}
             {audioType === "radio" && (
-              <div className="space-y-1.5 bg-neutral-900/50 p-2.5 rounded-[2px] border border-neutral-800/80">
+              <div className="space-y-1.5 bg-neutral-900/50 p-2.5 rounded-none border border-neutral-800/80">
                 <label className="text-[10px] text-neutral-400 font-medium block">
                   Selecione a Rádio Gospel 24h ou informe URL:
                 </label>
@@ -5519,7 +5581,7 @@ function RoomRoutineModal({
                       setAudioStreamUrl(e.target.value);
                     }
                   }}
-                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+                  className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
                 >
                   {VERIFIED_GOSPEL_PRESETS.map((p) => (
                     <option key={p.url} value={p.url}>
@@ -5534,7 +5596,7 @@ function RoomRoutineModal({
                     placeholder="https://servidor.radio:porta/stream ou http://..."
                     value={audioStreamUrl}
                     onChange={(e) => setAudioStreamUrl(e.target.value)}
-                    className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
+                    className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
                   />
                 )}
               </div>
@@ -5542,14 +5604,14 @@ function RoomRoutineModal({
 
             {/* Configuração de Playlist */}
             {audioType === "playlist" && (
-              <div className="bg-neutral-900/50 p-2.5 rounded-[2px] border border-neutral-800/80">
+              <div className="bg-neutral-900/50 p-2.5 rounded-none border border-neutral-800/80">
                 <label className="text-[10px] text-neutral-400 font-medium block mb-1">
                   Selecione a Lista de Músicas da Sala:
                 </label>
                 <select
                   value={audioPlaylist}
                   onChange={(e) => setAudioPlaylist(e.target.value)}
-                  className="w-full rounded-[2px] border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+                  className="w-full rounded-none border border-neutral-800 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
                 >
                   <option value="">Selecione uma playlist...</option>
                   {audioPlaylists.map((pl) => (
@@ -5568,7 +5630,7 @@ function RoomRoutineModal({
                   <span className="text-[11px] font-semibold text-neutral-300">
                     Volume Livre do Áudio:
                   </span>
-                  <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-[2px] border border-neutral-800">
+                  <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-800">
                     {audioVolume}%
                   </span>
                 </div>
@@ -5584,7 +5646,7 @@ function RoomRoutineModal({
                       key={p.val}
                       type="button"
                       onClick={() => setAudioVolume(p.val)}
-                      className={`px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-semibold border transition ${
+                      className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
                         audioVolume === p.val
                           ? "bg-white text-black border-white font-bold"
                           : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-700"
@@ -5604,7 +5666,7 @@ function RoomRoutineModal({
                     <button
                       type="button"
                       onClick={() => setAudioStatus("playing")}
-                      className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-1.5 ${
+                      className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-1.5 ${
                         audioStatus === "playing"
                           ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-bold"
                           : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5616,7 +5678,7 @@ function RoomRoutineModal({
                     <button
                       type="button"
                       onClick={() => setAudioStatus("paused")}
-                      className={`p-2 rounded-[2px] border text-center transition flex items-center justify-center gap-1.5 ${
+                      className={`p-2 rounded-none border text-center transition flex items-center justify-center gap-1.5 ${
                         audioStatus === "paused"
                           ? "bg-amber-500/20 border-amber-500/40 text-amber-300 font-bold"
                           : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
@@ -5637,14 +5699,14 @@ function RoomRoutineModal({
           <button
             type="button"
             onClick={onClose}
-            className="min-h-[36px] px-3.5 rounded-[2px] border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition"
+            className="min-h-[36px] px-3.5 rounded-none border border-neutral-800 bg-neutral-900 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition"
           >
             Cancelar
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="min-h-[36px] flex items-center gap-2 px-4 rounded-[2px] bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
+            className="min-h-[36px] flex items-center gap-2 px-4 rounded-none bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
           >
             <Check className="h-4 w-4" />
             <span>{isEditing ? "Salvar Alterações" : "Criar Rotina Base"}</span>
