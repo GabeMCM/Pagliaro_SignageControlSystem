@@ -141,7 +141,7 @@ function AdminLayout() {
                     title={
                       systemInfo.db.driver === "mongodb"
                         ? `Conectado com sucesso ao banco '${systemInfo.db.database}' no MongoDB Atlas.`
-                        : (systemInfo.db.error || "Armazenamento local em JSON.")
+                        : ((systemInfo.db as any).error || "Armazenamento local em JSON.")
                     }
                   >
                     {systemInfo.db.driver === "mongodb" ? "MongoDB Atlas" : "JSON Local"}
