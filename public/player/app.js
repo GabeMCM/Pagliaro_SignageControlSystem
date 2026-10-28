@@ -1449,11 +1449,15 @@ function fetchStandbyWeather(force) {
 var isStandbyActive = false;
 var standbyClockInterval = null;
 var standbyWeatherInterval = null;
-var standbyJitterInterval = null;
 var standbyNowPlayingInterval = null;
 
 function applyStandbyMode(active) {
-  isStandbyActive = Boolean(active);
+  var target = Boolean(active);
+  if (target === isStandbyActive) {
+    // Já está no modo standby (ou já está desativado). Não reinicia timers nem reseta a posição ao centro!
+    return;
+  }
+  isStandbyActive = target;
   var overlay = document.getElementById('standby-blackout-overlay');
 
   if (isStandbyActive) {
@@ -1469,7 +1473,7 @@ function applyStandbyMode(active) {
     tickStandbyClock();
     rotateStandbyBackground();
 
-    // Posiciona no centro imediatamente no primeiro frame sem transição
+    // Posiciona no centro apenas na ativação inicial
     standbyPosIndex = 0;
     var content = document.getElementById('standby-content');
     if (content) {
@@ -1494,7 +1498,7 @@ function applyStandbyMode(active) {
     if (standbyBgInterval) clearInterval(standbyBgInterval);
     standbyBgInterval = setInterval(rotateStandbyBackground, 48000);
 
-    // Primeiro roaming aos 10s para ver a movimentação em ação imediatamente
+    // Primeiro roaming inteligente aos 10s para ver a movimentação em ação imediatamente
     if (standbyFirstRoamTimer) clearTimeout(standbyFirstRoamTimer);
     standbyFirstRoamTimer = setTimeout(function() {
       if (isStandbyActive) {
@@ -1507,9 +1511,6 @@ function applyStandbyMode(active) {
     standbyRoamInterval = setInterval(function() {
       shiftStandbyPosition(false);
     }, 30000);
-
-    if (standbyJitterInterval) clearInterval(standbyJitterInterval);
-    standbyJitterInterval = setInterval(shiftStandbyMicroJitter, 8000);
 
     fetchStandbyWeather(false);
     if (standbyWeatherInterval) clearInterval(standbyWeatherInterval);
@@ -1530,7 +1531,6 @@ function applyStandbyMode(active) {
     if (standbyNowPlayingInterval) { clearInterval(standbyNowPlayingInterval); standbyNowPlayingInterval = null; }
     if (standbyBgInterval) { clearInterval(standbyBgInterval); standbyBgInterval = null; }
     if (standbyRoamInterval) { clearInterval(standbyRoamInterval); standbyRoamInterval = null; }
-    if (standbyJitterInterval) { clearInterval(standbyJitterInterval); standbyJitterInterval = null; }
     if (standbyWeatherInterval) { clearInterval(standbyWeatherInterval); standbyWeatherInterval = null; }
 
     syncAudioVolume();
