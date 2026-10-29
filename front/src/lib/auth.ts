@@ -321,7 +321,7 @@ export function useAuth() {
       );
 
       if (!user) {
-        return { success: false, message: "Operador não localizado." };
+        return { success: false, message: "Usuário ou PIN incorreto." };
       }
 
       const checkPin = clean2 || clean1;
@@ -331,7 +331,7 @@ export function useAuth() {
         return { success: true, user, mustChangePin: Boolean(user.mustChangePin) };
       }
 
-      return { success: false, message: "PIN incorreto. Deve conter 6 dígitos." };
+      return { success: false, message: "Usuário ou PIN incorreto." };
     },
     [users, refresh]
   );

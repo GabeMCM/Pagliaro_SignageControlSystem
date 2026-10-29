@@ -5,10 +5,8 @@ import {
   Shield,
   Check,
   AlertCircle,
-  Users,
-  ChevronRight,
+  User,
   Lock,
-  ArrowRight,
   LogOut,
 } from "lucide-react";
 import { useAuth, ROLE_LABELS, type AppUser } from "@/lib/auth";
@@ -28,37 +26,31 @@ export function LoginModal({
 }: LoginModalProps) {
   if (!isOpen) return null;
 
-  const { currentUser, users, login, logout } = useAuth();
+  const { currentUser, login, logout } = useAuth();
 
-  const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
+  const [usernameInput, setUsernameInput] = useState("");
   const [pinInput, setPinInput] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const hiddenInputRef = useRef<HTMLInputElement>(null);
+
+  const usernameRef = useRef<HTMLInputElement>(null);
+  const pinRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setSelectedUser(null);
+    setUsernameInput("");
     setPinInput("");
     setErrorMessage(null);
     setSuccessMessage(null);
+    setTimeout(() => usernameRef.current?.focus(), 50);
   }, [isOpen]);
-
-  const handleSelectUser = (u: AppUser) => {
-    setSelectedUser(u);
-    setPinInput("");
-    setErrorMessage(null);
-    setTimeout(() => {
-      hiddenInputRef.current?.focus();
-    }, 100);
-  };
 
   const handleKeypadPress = (digit: string) => {
     setErrorMessage(null);
     if (pinInput.length < 6) {
       const nextPin = pinInput + digit;
       setPinInput(nextPin);
-      if (nextPin.length === 6) {
-        processLogin(nextPin, selectedUser);
+      if (nextPin.length === 6 && usernameInput.trim()) {
+        processLogin(usernameInput.trim(), nextPin);
       }
     }
   };
@@ -73,38 +65,48 @@ export function LoginModal({
     setPinInput("");
   };
 
-  const processLogin = (pinToSubmit: string, userToLogin: AppUser | null) => {
+  const processLogin = (username: string, pin: string) => {
     setErrorMessage(null);
 
-    const res = userToLogin
-      ? login(userToLogin.id, pinToSubmit)
-      : login(pinToSubmit);
+    const cleanUser = username.trim();
+    const cleanPin = pin.trim();
+
+    if (!cleanUser) {
+      setErrorMessage("Informe o usuário do operador.");
+      usernameRef.current?.focus();
+      return;
+    }
+
+    if (cleanPin.length !== 6) {
+      setErrorMessage("O PIN deve conter exatamente 6 dígitos numéricos.");
+      pinRef.current?.focus();
+      return;
+    }
+
+    const res = login(cleanUser, cleanPin);
 
     if (res.success) {
-      const authenticatedUser = res.user || userToLogin;
+      const authUser = res.user;
       setSuccessMessage(
         res.mustChangePin
-          ? `Conectado como ${authenticatedUser?.name}. Primeiro acesso: redefina seu PIN.`
-          : `Conectado como ${authenticatedUser?.name}`
+          ? `Conectado como ${authUser?.name}. Primeiro acesso detectado.`
+          : `Conectado como ${authUser?.name}`
       );
 
       setTimeout(() => {
-        onSuccess?.(authenticatedUser || undefined, res.mustChangePin);
+        onSuccess?.(authUser || undefined, res.mustChangePin);
         onClose();
-      }, 700);
+      }, 600);
     } else {
-      setErrorMessage(res.message || "PIN inválido. Deve conter 6 dígitos.");
+      setErrorMessage(res.message || "Usuário ou PIN incorreto.");
       setPinInput("");
+      pinRef.current?.focus();
     }
   };
 
-  const handleFormSubmit = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (pinInput.length !== 6) {
-      setErrorMessage("Digite o PIN completo de 6 dígitos.");
-      return;
-    }
-    processLogin(pinInput, selectedUser);
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    processLogin(usernameInput, pinInput);
   };
 
   return (
@@ -118,10 +120,10 @@ export function LoginModal({
             </div>
             <div>
               <h3 className="text-sm font-bold text-white tracking-tight uppercase font-mono">
-                Autenticação de Operador
+                Alternar Operador
               </h3>
               <p className="text-[10px] text-neutral-400 font-mono">
-                Acesso por PIN numérico de 6 dígitos
+                Digite o usuário e o PIN de 6 dígitos
               </p>
             </div>
           </div>
@@ -196,272 +198,137 @@ export function LoginModal({
           </div>
         )}
 
-        {/* PASSO 1: Selecionar Operador ou Entrada Rápida de PIN */}
-        {!selectedUser ? (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <span className="text-[10px] uppercase font-mono text-neutral-400 block">
-                Selecione o operador ou digite o PIN direto:
-              </span>
-              <div className="divide-y divide-neutral-900 border border-neutral-900 bg-black max-h-56 overflow-y-auto">
-                {users.map((u) => {
-                  const isCurrent = u.id === currentUser?.id;
-                  return (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => handleSelectUser(u)}
-                      className={`w-full p-2.5 text-left flex items-center justify-between gap-2 hover:bg-neutral-900 transition ${
-                        isCurrent ? "bg-neutral-900/50" : ""
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
-                          <span>{u.name}</span>
-                          {isCurrent && (
-                            <span className="text-[9px] font-mono text-emerald-400">
-                              (Ativo)
-                            </span>
-                          )}
-                          {u.mustChangePin && (
-                            <span className="text-[9px] font-mono text-amber-400 px-1 border border-amber-900/50 bg-amber-950/30">
-                              Troca pendente
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[10px] font-mono text-neutral-400 flex items-center gap-2 mt-0.5">
-                          <span>{ROLE_LABELS[u.role]?.title}</span>
-                          <span>•</span>
-                          <span>@{u.username}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1 text-neutral-400 flex-shrink-0">
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-neutral-900 text-neutral-300">
-                          PIN 6D
-                        </span>
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Ou digite seu PIN de 6 dígitos diretamente */}
-            <div className="pt-2 border-t border-neutral-900 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono text-neutral-400">
-                  Ou digite seu PIN de 6 dígitos:
-                </span>
-                <span className="text-[10px] font-mono text-neutral-500">
-                  {pinInput.length}/6
-                </span>
-              </div>
-
-              {/* Indicador de 6 bolinhas */}
-              <div
-                onClick={() => hiddenInputRef.current?.focus()}
-                className="p-2 bg-black border border-neutral-900 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {Array.from({ length: 6 }).map((_, i) => {
-                  const filled = i < pinInput.length;
-                  return (
-                    <span
-                      key={i}
-                      className={`h-3 w-3 border transition-colors ${
-                        filled
-                          ? "bg-white border-white"
-                          : "bg-black border-neutral-800"
-                      }`}
-                    />
-                  );
-                })}
-              </div>
-
-              {/* Teclado numérico na tela */}
-              <div className="grid grid-cols-3 gap-1.5 font-mono text-base font-bold">
-                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => handleKeypadPress(n)}
-                    className="h-10 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none"
-                  >
-                    {n}
-                  </button>
-                ))}
-
-                <button
-                  type="button"
-                  onClick={handleKeypadClear}
-                  className="h-10 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
-                >
-                  Limpar
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleKeypadPress("0")}
-                  className="h-10 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none"
-                >
-                  0
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleKeypadBackspace}
-                  className="h-10 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
-                >
-                  Apagar
-                </button>
-              </div>
-            </div>
+        {/* Formulário: Usuário + PIN de 6 dígitos */}
+        <form onSubmit={handleFormSubmit} className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-[11px] font-mono text-neutral-300 flex items-center gap-1.5">
+              <User className="h-3 w-3 text-neutral-400" />
+              <span>Usuário / Login:</span>
+            </label>
+            <input
+              ref={usernameRef}
+              type="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck="false"
+              required
+              placeholder="ex: admin ou operador"
+              value={usernameInput}
+              onChange={(e) => setUsernameInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  pinRef.current?.focus();
+                }
+              }}
+              className="w-full bg-black border border-neutral-900 p-2 text-xs text-white outline-none focus:border-neutral-500 font-mono tracking-wider transition"
+            />
           </div>
-        ) : (
-          /* PASSO 2: Digitar PIN do operador selecionado */
-          <form onSubmit={handleFormSubmit} className="space-y-3">
-            <div className="p-3 border border-neutral-900 bg-black flex items-center justify-between gap-2">
-              <div>
-                <span className="text-[10px] uppercase font-mono text-neutral-500 block">
-                  Operador Selecionado:
-                </span>
-                <span className="text-xs font-bold text-white font-mono">
-                  {selectedUser.name}
-                </span>
-                <span className="text-[10px] font-mono text-neutral-400 block">
-                  @{selectedUser.username}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedUser(null);
-                  setPinInput("");
-                  setErrorMessage(null);
-                }}
-                className="text-[10px] font-mono text-neutral-400 hover:text-white underline"
-              >
-                Trocar operador
-              </button>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-mono text-neutral-300">
+              <label className="flex items-center gap-1.5">
+                <Key className="h-3 w-3 text-neutral-400" />
+                <span>PIN de 6 dígitos:</span>
+              </label>
+              <span className="text-[10px] font-mono text-neutral-500">
+                {pinInput.length}/6
+              </span>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-[11px] font-mono text-neutral-300 block">
-                  Digite o PIN de 6 dígitos:
-                </label>
-                <span className="text-[10px] font-mono text-neutral-500">
-                  {pinInput.length}/6
-                </span>
-              </div>
-
-              {/* Indicador de 6 bolinhas */}
-              <div
-                onClick={() => hiddenInputRef.current?.focus()}
-                className="p-2.5 bg-black border border-neutral-900 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {Array.from({ length: 6 }).map((_, i) => {
-                  const filled = i < pinInput.length;
-                  return (
-                    <span
-                      key={i}
-                      className={`h-3 w-3 border transition-colors ${
-                        filled
-                          ? "bg-white border-white"
-                          : "bg-black border-neutral-800"
-                      }`}
-                    />
-                  );
-                })}
-              </div>
-
-              {/* Input escondido para capturar digitação física de teclado */}
-              <input
-                ref={hiddenInputRef}
-                type="password"
-                inputMode="numeric"
-                autoFocus
-                value={pinInput}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, "").slice(0, 6);
-                  setPinInput(val);
-                  if (val.length === 6) {
-                    processLogin(val, selectedUser);
-                  }
-                }}
-                className="opacity-0 h-0 w-0 absolute pointer-events-none"
-              />
+            {/* Marcadores de 6 bolinhas */}
+            <div
+              onClick={() => pinRef.current?.focus()}
+              className="p-2.5 bg-black border border-neutral-900 flex items-center justify-center gap-2 cursor-pointer hover:border-neutral-800 transition"
+            >
+              {Array.from({ length: 6 }).map((_, i) => {
+                const filled = i < pinInput.length;
+                return (
+                  <span
+                    key={i}
+                    className={`h-3 w-3 border transition-colors ${
+                      filled
+                        ? "bg-white border-white"
+                        : "bg-black border-neutral-800"
+                    }`}
+                  />
+                );
+              })}
             </div>
 
-            {/* Teclado numérico virtual */}
-            <div className="grid grid-cols-3 gap-1.5 font-mono text-base font-bold">
-              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => handleKeypadPress(n)}
-                  className="h-10 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none"
-                >
-                  {n}
-                </button>
-              ))}
+            {/* Input real para digitação física via teclado */}
+            <input
+              ref={pinRef}
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              value={pinInput}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+                setPinInput(val);
+                if (val.length === 6 && usernameInput.trim()) {
+                  processLogin(usernameInput.trim(), val);
+                }
+              }}
+              className="opacity-0 h-0 w-0 absolute pointer-events-none"
+            />
+          </div>
 
+          {/* Teclado numérico virtual para telas touch */}
+          <div className="grid grid-cols-3 gap-1.5 font-mono text-base font-bold pt-0.5">
+            {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
               <button
+                key={n}
                 type="button"
-                onClick={handleKeypadClear}
-                className="h-10 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
+                onClick={() => handleKeypadPress(n)}
+                className="h-10 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none active:bg-neutral-800"
               >
-                Limpar
+                {n}
               </button>
+            ))}
 
-              <button
-                type="button"
-                onClick={() => handleKeypadPress("0")}
-                className="h-10 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none"
-              >
-                0
-              </button>
+            <button
+              type="button"
+              onClick={handleKeypadClear}
+              className="h-10 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
+            >
+              Limpar
+            </button>
 
-              <button
-                type="button"
-                onClick={handleKeypadBackspace}
-                className="h-10 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
-              >
-                Apagar
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => handleKeypadPress("0")}
+              className="h-10 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none active:bg-neutral-800"
+            >
+              0
+            </button>
 
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedUser(null);
-                  setPinInput("");
-                  setErrorMessage(null);
-                }}
-                className="min-h-[36px] bg-neutral-900 hover:bg-neutral-850 border border-neutral-900 text-neutral-300 hover:text-white text-xs font-mono transition rounded-none"
-              >
-                Voltar
-              </button>
-              <button
-                type="submit"
-                className="min-h-[36px] bg-white text-black font-bold text-xs font-mono uppercase hover:bg-neutral-200 transition rounded-none flex items-center justify-center gap-1"
-              >
-                <Lock className="h-3.5 w-3.5" />
-                <span>Confirmar</span>
-              </button>
-            </div>
-          </form>
-        )}
+            <button
+              type="button"
+              onClick={handleKeypadBackspace}
+              className="h-10 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
+            >
+              Apagar
+            </button>
+          </div>
 
-        {/* Rodapé informativo */}
-        <div className="pt-2 border-t border-neutral-900 text-[10px] font-mono text-neutral-500 flex flex-col gap-0.5">
-          <span>PINs padrão de fábrica (6 dígitos):</span>
-          <span className="text-neutral-400">
-            Admin: 123456 • Operador: 000000 • Recepção: 111111
-          </span>
-        </div>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-[36px] bg-neutral-900 hover:bg-neutral-850 border border-neutral-900 text-neutral-300 hover:text-white text-xs font-mono transition rounded-none"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="min-h-[36px] bg-white text-black font-bold text-xs font-mono uppercase hover:bg-neutral-200 transition rounded-none flex items-center justify-center gap-1"
+            >
+              <Lock className="h-3.5 w-3.5" />
+              <span>Entrar</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
