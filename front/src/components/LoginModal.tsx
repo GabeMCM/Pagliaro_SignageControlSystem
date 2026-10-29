@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Lock,
   ArrowRight,
+  LogOut,
 } from "lucide-react";
 import { useAuth, ROLE_LABELS, type AppUser } from "@/lib/auth";
 
@@ -27,7 +28,7 @@ export function LoginModal({
 }: LoginModalProps) {
   if (!isOpen) return null;
 
-  const { currentUser, users, login } = useAuth();
+  const { currentUser, users, login, logout } = useAuth();
 
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [pinInput, setPinInput] = useState("");
@@ -147,20 +148,36 @@ export function LoginModal({
                 </span>
               </div>
             </div>
-            {onOpenChangePin && (
+            <div className="flex items-center gap-1">
+              {onOpenChangePin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenChangePin();
+                  }}
+                  className="text-[10px] font-mono px-2 py-1 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-900 transition flex items-center gap-1"
+                  title="Mudar meu PIN de 6 dígitos"
+                >
+                  <Key className="h-3 w-3" />
+                  <span>Mudar PIN</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
-                  onClose();
-                  onOpenChangePin();
+                  if (confirm("Encerrar a sessão do operador atual?")) {
+                    logout();
+                    onClose();
+                  }
                 }}
-                className="text-[10px] font-mono px-2 py-1 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-900 transition flex items-center gap-1"
-                title="Mudar meu PIN de 6 dígitos"
+                className="text-[10px] font-mono px-2 py-1 bg-neutral-900 hover:bg-red-950/40 text-neutral-400 hover:text-red-300 border border-neutral-900 hover:border-red-900/50 transition flex items-center gap-1"
+                title="Encerrar Sessão (Logout)"
               >
-                <Key className="h-3 w-3" />
-                <span>Mudar PIN</span>
+                <LogOut className="h-3 w-3" />
+                <span>Sair</span>
               </button>
-            )}
+            </div>
           </div>
         )}
 

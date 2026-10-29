@@ -7,6 +7,7 @@ import { useAuth, ROLE_LABELS } from "@/lib/auth";
 import { UserPermissionsModal } from "@/components/UserPermissionsModal";
 import { LoginModal } from "@/components/LoginModal";
 import { ChangePinModal } from "@/components/ChangePinModal";
+import { LoginScreen } from "@/components/LoginScreen";
 import {
   Radio,
   Plus,
@@ -63,7 +64,7 @@ function AdminLayout() {
     queryFn: signageApi.getIp,
   });
 
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
   const [creating, setCreating] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -98,6 +99,31 @@ function AdminLayout() {
     }
   };
 
+  // Barreira de autenticação obrigatória: se não houver operador logado, exibe a Tela de Login
+  if (!currentUser) {
+    return (
+      <>
+        <LoginScreen
+          onSuccess={(_user, mustChange) => {
+            if (mustChange || _user?.mustChangePin) {
+              setChangePinModalOpen(true);
+            }
+          }}
+        />
+        {/* Modal de Primeiro Acesso para definição de PIN pessoal se necessário */}
+        <ChangePinModal
+          isOpen={changePinModalOpen}
+          isMandatory={true}
+          onClose={() => setChangePinModalOpen(false)}
+          onOpenSwitchUser={() => {
+            setChangePinModalOpen(false);
+            logout();
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="flex flex-col md:flex-row h-screen h-[100dvh] w-full bg-black text-neutral-100 font-sans antialiased overflow-hidden selection:bg-neutral-800">
       {/* Mobile Top Header - Ultra-compact, clean brand and active room */}
@@ -118,17 +144,33 @@ function AdminLayout() {
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setLoginModalOpen(true)}
-          className="flex items-center gap-1.5 px-2 py-1 bg-neutral-900 border border-neutral-900 hover:border-neutral-700 text-neutral-300 hover:text-white transition flex-shrink-0"
-          title="Trocar operador de plantão (Login / PIN)"
-        >
-          <User className="h-3 w-3 text-neutral-400" />
-          <span className="text-[10px] font-mono font-semibold truncate max-w-[100px]">
-            {currentUser?.name || "Operador"}
-          </span>
-        </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setLoginModalOpen(true)}
+            className="flex items-center gap-1.5 px-2 py-1 bg-neutral-900 border border-neutral-900 hover:border-neutral-700 text-neutral-300 hover:text-white transition"
+            title="Trocar operador de plantão (Login / PIN)"
+          >
+            <User className="h-3 w-3 text-neutral-400" />
+            <span className="text-[10px] font-mono font-semibold truncate max-w-[90px]">
+              {currentUser?.name || "Operador"}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm("Deseja sair do sistema (Logout)?")) {
+                logout();
+              }
+            }}
+            className="px-2 py-1 bg-neutral-900 hover:bg-red-950/40 border border-neutral-900 hover:border-red-900/60 text-neutral-400 hover:text-red-300 transition flex items-center gap-1 font-mono text-[10px]"
+            title="Encerrar Sessão (Logout)"
+          >
+            <LogOut className="h-3 w-3" />
+            <span>Sair</span>
+          </button>
+        </div>
       </div>
 
       {/* Sidebar (Desktop only - Mobile uses bottom bar & direct modals) */}
@@ -339,7 +381,45 @@ function AdminLayout() {
                 >
                   <Settings className="h-3.5 w-3.5" />
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm("Deseja sair do sistema (Logout)?")) {
+                      logout();
+                    }
+                  }}
+                  className="text-neutral-400 hover:text-red-400 p-1 hover:bg-neutral-900 transition"
+                  title="Encerrar Sessão (Logout)"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                </button>
               </div>
+            </div>
+          )}
+
+          {/* User Session Widget (Collapsed) */}
+          {collapsed && (
+            <div className="pt-1 flex flex-col items-center gap-1 border-t border-neutral-900/60">
+              <button
+                type="button"
+                onClick={() => setLoginModalOpen(true)}
+                className="h-7 w-7 bg-neutral-900 border border-neutral-900 text-neutral-200 flex items-center justify-center text-[10px] font-bold"
+                title={`${currentUser?.name} (${ROLE_LABELS[currentUser?.role || "operator"]?.badge || "Operador"})`}
+              >
+                {currentUser?.name ? currentUser.name.substring(0, 2).toUpperCase() : "OP"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm("Deseja encerrar a sessão (Logout)?")) {
+                    logout();
+                  }
+                }}
+                className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-neutral-900 transition"
+                title="Encerrar Sessão (Logout)"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
             </div>
           )}
         </div>

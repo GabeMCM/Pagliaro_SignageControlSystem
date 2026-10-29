@@ -182,24 +182,25 @@ export function saveUsers(users: AppUser[]): void {
   }
 }
 
-export function getCurrentUser(): AppUser {
+export function getCurrentUser(): AppUser | null {
   const users = getUsers();
-  if (typeof window === "undefined") return users[0] || DEFAULT_USERS[0];
+  if (typeof window === "undefined") return null;
   try {
     const activeId = localStorage.getItem(STORAGE_SESSION_KEY);
-    if (activeId) {
-      const found = users.find((u) => u.id === activeId && u.isActive);
-      if (found) return found;
-    }
-    // Padrão: primeira conta admin ativa
-    const firstAdmin = users.find((u) => u.role === "admin" && u.isActive) || users[0];
-    if (firstAdmin) {
-      localStorage.setItem(STORAGE_SESSION_KEY, firstAdmin.id);
-      return firstAdmin;
-    }
-    return DEFAULT_USERS[0];
+    if (!activeId) return null;
+    const found = users.find((u) => u.id === activeId && u.isActive);
+    return found || null;
   } catch {
-    return DEFAULT_USERS[0];
+    return null;
+  }
+}
+
+export function logoutUser(): void {
+  try {
+    localStorage.removeItem(STORAGE_SESSION_KEY);
+    window.dispatchEvent(new CustomEvent(AUTH_CHANGE_EVENT));
+  } catch (err) {
+    console.error("Erro ao efetuar logout:", err);
   }
 }
 
@@ -272,7 +273,7 @@ export function canUserAccessRoom(user: AppUser | null, roomSlug: string): boole
 }
 
 export function useAuth() {
-  const [currentUser, setLocalCurrentUser] = useState<AppUser>(() => getCurrentUser());
+  const [currentUser, setLocalCurrentUser] = useState<AppUser | null>(() => getCurrentUser());
   const [users, setLocalUsers] = useState<AppUser[]>(() => getUsers());
 
   const refresh = useCallback(() => {
@@ -450,7 +451,7 @@ export function useAuth() {
       const target = currentList.find((u) => u.id === id);
       if (!target) return { success: false, message: "Usuário não encontrado." };
 
-      if (target.id === currentUser.id) {
+      if (currentUser && target.id === currentUser.id) {
         return { success: false, message: "Você não pode excluir o usuário que está atualmente logado." };
       }
 
@@ -459,8 +460,13 @@ export function useAuth() {
       refresh();
       return { success: true };
     },
-    [currentUser.id, refresh]
+    [currentUser?.id, refresh]
   );
+
+  const logout = useCallback(() => {
+    logoutUser();
+    refresh();
+  }, [refresh]);
 
   const resetAllToDefault = useCallback(() => {
     localStorage.removeItem(STORAGE_USERS_KEY);
@@ -494,6 +500,7 @@ export function useAuth() {
     changePin,
     adminSetPin,
     switchUser,
+    logout,
     addUser,
     editUser,
     removeUser,
