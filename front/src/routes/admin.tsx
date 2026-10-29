@@ -3,6 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { signageApi, type Room } from "@/lib/signage-api";
 import { copyToClipboard } from "@/lib/clipboard";
+import { useAuth, ROLE_LABELS } from "@/lib/auth";
+import { UserPermissionsModal } from "@/components/UserPermissionsModal";
+import { LoginModal } from "@/components/LoginModal";
 import {
   Radio,
   Plus,
@@ -59,11 +62,13 @@ function AdminLayout() {
     queryFn: signageApi.getIp,
   });
 
+  const { currentUser } = useAuth();
   const [creating, setCreating] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
 
   // active slug from URL
   const params = useParams({ strict: false }) as { slug?: string };
@@ -94,23 +99,34 @@ function AdminLayout() {
   return (
     <div className="flex flex-col md:flex-row h-screen h-[100dvh] w-full bg-black text-neutral-100 font-sans antialiased overflow-hidden selection:bg-neutral-800">
       {/* Mobile Top Header - Ultra-compact, clean brand and active room */}
-      <div className="md:hidden flex items-center justify-between border-b border-neutral-900 bg-black px-3.5 py-2.5 flex-shrink-0 z-30">
-        <Link to="/admin" className="flex items-center gap-1.5 flex-shrink-0">
-          <span className="text-[11px] font-bold tracking-[0.25em] text-white uppercase font-mono">
-            PAGLIARO
-          </span>
-          <span className="text-[9px] uppercase tracking-wider text-neutral-400 font-mono">
-            CMS
-          </span>
-        </Link>
-        {activeRoom && (
-          <div className="flex items-center gap-1.5 pl-2 border-l border-neutral-900 min-w-0">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-            <span className="text-[11px] font-mono text-neutral-300 truncate">
-              {activeRoom.name}
+      <div className="md:hidden flex items-center justify-between border-b border-neutral-900 bg-black px-3 py-2 flex-shrink-0 z-30">
+        <div className="flex items-center gap-2 min-w-0">
+          <Link to="/admin" className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-[11px] font-bold tracking-[0.25em] text-white uppercase font-mono">
+              PAGLIARO
             </span>
-          </div>
-        )}
+          </Link>
+          {activeRoom && (
+            <div className="flex items-center gap-1.5 pl-2 border-l border-neutral-900 min-w-0">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+              <span className="text-[11px] font-mono text-neutral-300 truncate">
+                {activeRoom.name}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setLoginModalOpen(true)}
+          className="flex items-center gap-1.5 px-2 py-1 bg-neutral-900 border border-neutral-900 hover:border-neutral-700 text-neutral-300 hover:text-white transition flex-shrink-0"
+          title="Trocar operador de plantão (Login / PIN)"
+        >
+          <User className="h-3 w-3 text-neutral-400" />
+          <span className="text-[10px] font-mono font-semibold truncate max-w-[100px]">
+            {currentUser?.name || "Operador"}
+          </span>
+        </button>
       </div>
 
       {/* Sidebar (Desktop only - Mobile uses bottom bar & direct modals) */}
@@ -283,28 +299,32 @@ function AdminLayout() {
             </button>
           )}
 
-          {/* User Session Widget (Preparation for Future User/Permissions Feature) */}
+          {/* User Session Widget */}
           {!collapsed && (
-            <div className="pt-1 border-t border-neutral-900/60 flex items-center justify-between text-xs">
+            <div className="pt-1 border-t border-neutral-900/60 flex items-center justify-between text-xs font-mono">
               <button
                 type="button"
-                onClick={() => setPermissionsModalOpen(true)}
+                onClick={() => setLoginModalOpen(true)}
                 className="flex items-center gap-2 text-left min-w-0 flex-1 hover:opacity-80 transition py-1"
-                title="Visualizar permissões e gestão de usuários"
+                title="Clique para alternar operador ou autenticar"
               >
-                <div className="h-6 w-6 bg-neutral-900 border border-neutral-900 text-neutral-200 flex items-center justify-center font-mono text-[10px] font-bold flex-shrink-0">
-                  AD
+                <div className="h-6 w-6 bg-neutral-900 border border-neutral-900 text-neutral-200 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                  {currentUser?.name ? currentUser.name.substring(0, 2).toUpperCase() : "OP"}
                 </div>
                 <div className="min-w-0 truncate">
-                  <div className="text-[11px] font-semibold text-white truncate">Administrador</div>
-                  <div className="text-[9px] text-neutral-400 font-mono uppercase tracking-wider">Acesso Total</div>
+                  <div className="text-[11px] font-semibold text-white truncate">
+                    {currentUser?.name || "Operador"}
+                  </div>
+                  <div className="text-[9px] text-neutral-400 uppercase tracking-wider">
+                    {ROLE_LABELS[currentUser?.role || "operator"]?.badge || "Operador"}
+                  </div>
                 </div>
               </button>
               <button
                 type="button"
                 onClick={() => setPermissionsModalOpen(true)}
-                className="text-neutral-400 hover:text-white p-1"
-                title="Configurações de Acesso"
+                className="text-neutral-400 hover:text-white p-1 hover:bg-neutral-900 transition"
+                title="Gestão de Usuários & Permissões"
               >
                 <Settings className="h-3.5 w-3.5" />
               </button>
@@ -391,9 +411,16 @@ function AdminLayout() {
       />
 
       {/* Modal de Gestão de Usuários & Permissões */}
-      <UsersPermissionsModal
+      <UserPermissionsModal
         isOpen={permissionsModalOpen}
         onClose={() => setPermissionsModalOpen(false)}
+        availableRooms={rooms.map((r) => ({ slug: r.slug, name: r.name }))}
+      />
+
+      {/* Modal de Login e Troca Rápida de Operador */}
+      <LoginModal
+        isOpen={loginModalOpen}
+        onClose={() => setLoginModalOpen(false)}
       />
     </div>
   );
@@ -560,108 +587,3 @@ function CreateRoomModal({
   );
 }
 
-/**
- * Modal de Usuários & Permissões (Planejado para distribuição do sistema para outros operadores)
- */
-function UsersPermissionsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-lg bg-neutral-950 border border-neutral-900 p-4 sm:p-5 flex flex-col space-y-3.5 my-auto max-h-[92dvh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-2 border-b border-neutral-900">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-neutral-900 border border-neutral-900 text-white">
-              <Shield className="h-4 w-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white tracking-tight">
-                Gestão de Usuários & Permissões
-              </h3>
-              <p className="text-[10px] text-neutral-400 font-mono">
-                Controle de acesso baseado em papéis (RBAC)
-              </p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-white transition">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Sessão Ativa */}
-        <div className="space-y-1 bg-neutral-900/40 p-3 border border-neutral-900">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-400">
-              Sessão Atual:
-            </span>
-            <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-              Ativo
-            </span>
-          </div>
-          <div className="text-xs font-bold text-white pt-1">
-            Administrador Geral (Superuser)
-          </div>
-          <p className="text-[11px] text-neutral-400">
-            Acesso irrestrito a todas as salas, aparelhos, rotinas automáticas e configurações de áudio.
-          </p>
-        </div>
-
-        {/* Lista de Papéis e Perfis Planejados */}
-        <div className="space-y-2">
-          <div className="text-[10px] uppercase font-mono tracking-wider text-neutral-400">
-            Perfis de Acesso no Sistema:
-          </div>
-
-          <div className="divide-y divide-neutral-900 border border-neutral-900 text-xs">
-            <div className="p-2.5 flex items-center justify-between">
-              <div>
-                <div className="font-semibold text-white">Administrador (Admin)</div>
-                <div className="text-[10px] text-neutral-400">Pode criar/excluir salas, vincular telas e editar rotinas</div>
-              </div>
-              <span className="text-[10px] font-mono text-neutral-400">Todas as salas</span>
-            </div>
-
-            <div className="p-2.5 flex items-center justify-between">
-              <div>
-                <div className="font-semibold text-white">Operador de Cerimonial</div>
-                <div className="text-[10px] text-neutral-400">Apenas controla o áudio e mídias das salas autorizadas</div>
-              </div>
-              <span className="text-[10px] font-mono text-neutral-400">Salas restritas</span>
-            </div>
-
-            <div className="p-2.5 flex items-center justify-between">
-              <div>
-                <div className="font-semibold text-white">Recepção / Monitoramento</div>
-                <div className="text-[10px] text-neutral-400">Somente visualização do status das telas sem edição</div>
-              </div>
-              <span className="text-[10px] font-mono text-neutral-400">Leitura</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Nota Informativa de Atualização */}
-        <div className="text-[11px] text-neutral-400 bg-neutral-900/20 p-2.5 border border-neutral-900 space-y-1">
-          <div className="text-white font-medium text-xs flex items-center gap-1.5">
-            <Key className="h-3 w-3 text-neutral-400" />
-            <span>Módulo de Autenticação Preparado</span>
-          </div>
-          <p>
-            Na próxima etapa, cada operador terá seu próprio login e senha individuais. O administrador poderá convidar usuários e escolher exatamente quais salas cada um pode operar.
-          </p>
-        </div>
-
-        {/* Rodapé */}
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-neutral-900">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-900 text-white text-xs font-semibold transition"
-          >
-            Fechar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

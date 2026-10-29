@@ -67,11 +67,14 @@ import {
   Save,
   Bookmark,
   BookmarkCheck,
+  Lock,
 } from "lucide-react";
 import { AdiauSection } from "@/components/AdiauSection";
 import { RoutineModal } from "@/components/RoutineModal";
 import { AdiauDeceasedPicker } from "@/components/AdiauDeceasedPicker";
+import { LoginModal } from "@/components/LoginModal";
 import { useSavedRadios } from "@/lib/saved-radios";
+import { useAuth, ROLE_LABELS } from "@/lib/auth";
 import {
   VERIFIED_GOSPEL_PRESETS,
   DEFAULT_ADIAU_URLS,
@@ -670,6 +673,11 @@ function RoomOperator() {
   const qc = useQueryClient();
   const router = useRouter();
 
+  // Autenticação & Permissões do Operador
+  const { currentUser, canAccessRoom, hasPermission } = useAuth();
+  const [operatorLoginModalOpen, setOperatorLoginModalOpen] = useState(false);
+  const canControlMedia = hasPermission("control_playback", slug);
+
   // Controle de Versão Autoritativa do Servidor e Filas FIFO de Eventos (Entrada e Saída)
   const serverVersionRef = useRef<number>(0);
   const outgoingQueueRef = useRef<Promise<any>>(Promise.resolve());
@@ -1077,6 +1085,7 @@ function RoomOperator() {
     radios: savedRadios,
     saveRadio,
     deleteRadio,
+    resetToDefaults,
     isSaved: isRadioSavedInStore,
   } = useSavedRadios();
   const [isAddingCustomRadio, setIsAddingCustomRadio] = useState(false);
@@ -1818,7 +1827,45 @@ function RoomOperator() {
   const devicesCount = devicesQ.data?.count ?? currentRoom?.clientsCount ?? 0;
   const maxDevices = devicesQ.data?.max ?? currentRoom?.maxClients ?? 2;
   const isRoomFull = devicesCount >= maxDevices;
-  const isRoomOnline = Boolean(currentRoom?.online || devicesCount > 0);
+  // Guarda de Permissão por Sala (RBAC)
+  if (!canAccessRoom(slug)) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-4 text-center font-mono space-y-4 bg-neutral-950">
+        <div className="p-3 bg-neutral-900 border border-neutral-900 text-amber-400">
+          <Lock className="h-6 w-6" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-sm sm:text-base font-bold text-white uppercase tracking-wider">
+            Acesso Restrito a Esta Sala
+          </h2>
+          <p className="text-xs text-neutral-400 max-w-sm">
+            O operador <strong>{currentUser?.name}</strong> (@{currentUser?.username}) não possui permissão para operar os monitores da sala <strong>{currentRoom?.name || slug}</strong>.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 pt-2">
+          <Link
+            to="/admin"
+            className="px-3.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-900 text-xs font-mono text-white transition"
+          >
+            Voltar para Salas
+          </Link>
+          <button
+            type="button"
+            onClick={() => setOperatorLoginModalOpen(true)}
+            className="px-3.5 py-1.5 bg-white text-black text-xs font-mono font-bold uppercase hover:bg-neutral-200 transition"
+          >
+            Trocar Operador
+          </button>
+        </div>
+
+        <LoginModal
+          isOpen={operatorLoginModalOpen}
+          onClose={() => setOperatorLoginModalOpen(false)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col text-neutral-100 font-sans antialiased overflow-y-auto overflow-x-hidden w-full max-w-full bg-neutral-950 overscroll-contain">
@@ -2990,14 +3037,31 @@ function RoomOperator() {
                       </span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingCustomRadio(!isAddingCustomRadio)}
-                      className="px-2.5 py-1 text-[11px] font-mono bg-neutral-900 hover:bg-neutral-850 border border-neutral-900 text-neutral-300 hover:text-white transition flex items-center gap-1.5"
-                    >
-                      <Plus className="h-3 w-3" />
-                      <span>{isAddingCustomRadio ? "Fechar Formulário" : "Salvar Nova Rádio"}</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm("Deseja restaurar as rádios gospel padrão recomendadas?")) {
+                            resetToDefaults();
+                            setRadioStatusMsg("Rádios padrão restauradas com sucesso.");
+                            setTimeout(() => setRadioStatusMsg(null), 3000);
+                          }
+                        }}
+                        className="px-2 py-1 text-[10px] font-mono bg-neutral-950 hover:bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-white transition"
+                        title="Restaurar lista original de rádios gospel recomendadas"
+                      >
+                        Restaurar Padrões
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingCustomRadio(!isAddingCustomRadio)}
+                        className="px-2.5 py-1 text-[11px] font-mono bg-neutral-900 hover:bg-neutral-850 border border-neutral-900 text-neutral-300 hover:text-white transition flex items-center gap-1.5"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <span>{isAddingCustomRadio ? "Fechar Formulário" : "Salvar Nova Rádio"}</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Formulário de Adicionar Nova Rádio Salva */}
@@ -3070,91 +3134,108 @@ function RoomOperator() {
                   )}
 
                   {/* Grid de Rádios Salvas */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
-                    {savedRadios.map((station) => {
-                      const isThisActive =
-                        isAudioStreamActive &&
-                        (stateQ.data?.audioStreamUrl || "").trim() === station.url.trim();
+                  {savedRadios.length === 0 ? (
+                    <div className="p-4 border border-neutral-900 bg-neutral-950 text-center space-y-2">
+                      <p className="text-xs text-neutral-400 font-mono">
+                        Nenhuma rádio salva na sua lista. Você pode buscar novas emissoras abaixo ou restaurar as rádios recomendadas.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetToDefaults();
+                          setRadioStatusMsg("Rádios padrão restauradas.");
+                          setTimeout(() => setRadioStatusMsg(null), 3000);
+                        }}
+                        className="px-3 py-1.5 text-xs font-mono bg-neutral-900 border border-neutral-900 text-white hover:bg-neutral-800 transition"
+                      >
+                        Restaurar Rádios Padrão
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+                      {savedRadios.map((station) => {
+                        const isThisActive =
+                          isAudioStreamActive &&
+                          (stateQ.data?.audioStreamUrl || "").trim() === station.url.trim();
 
-                      return (
-                        <div
-                          key={station.id || station.url}
-                          className={`rounded-none border p-2.5 flex items-center justify-between gap-2.5 transition ${
-                            isThisActive
-                              ? "border-emerald-500/60 bg-emerald-950/25 shadow-xs"
-                              : "border-neutral-900 bg-neutral-900/60 hover:border-neutral-700"
-                          }`}
-                        >
-                          <div className="min-w-0 flex-1 space-y-0.5">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-xs font-bold text-white truncate">
-                                {station.name}
-                              </span>
-                              {station.isCustom ? (
-                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none border border-neutral-800 bg-neutral-950 text-neutral-300">
-                                  Minha Rádio
+                        return (
+                          <div
+                            key={station.id || station.url}
+                            className={`rounded-none border p-2.5 flex items-center justify-between gap-2.5 transition ${
+                              isThisActive
+                                ? "border-emerald-500/60 bg-emerald-950/25 shadow-xs"
+                                : "border-neutral-900 bg-neutral-900/60 hover:border-neutral-700"
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1 space-y-0.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-bold text-white truncate">
+                                  {station.name}
                                 </span>
-                              ) : (
-                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none border border-neutral-900 bg-neutral-950 text-neutral-400">
-                                  Verificada
-                                </span>
-                              )}
-                              {isThisActive && (
-                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none bg-emerald-500 text-black">
-                                  No Ar
-                                </span>
-                              )}
+                                {station.isCustom ? (
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none border border-neutral-800 bg-neutral-950 text-neutral-300">
+                                    Minha Rádio
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none border border-neutral-900 bg-neutral-950 text-neutral-400">
+                                    Verificada
+                                  </span>
+                                )}
+                                {isThisActive && (
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none bg-emerald-500 text-black">
+                                    No Ar
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-neutral-400 line-clamp-1">
+                                {station.desc}
+                              </p>
                             </div>
-                            <p className="text-[11px] text-neutral-400 line-clamp-1">
-                              {station.desc}
-                            </p>
-                          </div>
 
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            {station.isCustom && (
+                            <div className="flex items-center gap-1 flex-shrink-0">
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (confirm(`Deseja remover "${station.name}" das suas rádios salvas?`)) {
+                                  if (confirm(`Deseja remover "${station.name}" da sua lista de rádios?`)) {
                                     deleteRadio(station.id);
                                   }
                                 }}
                                 className="p-2 rounded-none bg-neutral-900 hover:bg-red-950 hover:text-red-300 border border-neutral-900 text-neutral-400 transition"
-                                title="Remover dos favoritos"
+                                title="Excluir rádio da lista"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
-                            )}
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleTuneRadioStation({
-                                  id: station.id,
-                                  name: station.name,
-                                  category: station.isCustom ? "Salvas" : "Gospel",
-                                  description: station.desc || "",
-                                  streamUrl: station.url,
-                                  codec: "MP3/AAC",
-                                  bitrate: 128,
-                                  country: "BR",
-                                })
-                              }
-                              disabled={setState.isPending}
-                              className={`px-3 py-2 rounded-none text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition ${
-                                isThisActive
-                                  ? "bg-emerald-500 text-black hover:bg-emerald-400"
-                                  : "bg-white text-black hover:bg-neutral-200"
-                              }`}
-                            >
-                              <RadioIcon className="h-3.5 w-3.5" />
-                              <span>{isThisActive ? "No Ar" : "Sintonizar"}</span>
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleTuneRadioStation({
+                                    id: station.id,
+                                    name: station.name,
+                                    category: station.isCustom ? "Salvas" : "Gospel",
+                                    description: station.desc || "",
+                                    streamUrl: station.url,
+                                    codec: "MP3/AAC",
+                                    bitrate: 128,
+                                    country: "BR",
+                                  })
+                                }
+                                disabled={setState.isPending}
+                                className={`px-3 py-2 rounded-none text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition ${
+                                  isThisActive
+                                    ? "bg-emerald-500 text-black hover:bg-emerald-400"
+                                    : "bg-white text-black hover:bg-neutral-200"
+                                }`}
+                              >
+                                <RadioIcon className="h-3.5 w-3.5" />
+                                <span>{isThisActive ? "No Ar" : "Sintonizar"}</span>
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* 2. BUSCAR OUTRAS RÁDIOS AO VIVO NO DIRETÓRIO MUNDIAL */}
@@ -3663,6 +3744,11 @@ function RoomOperator() {
             }
           }
         }}
+      />
+
+      <LoginModal
+        isOpen={operatorLoginModalOpen}
+        onClose={() => setOperatorLoginModalOpen(false)}
       />
     </div>
   );

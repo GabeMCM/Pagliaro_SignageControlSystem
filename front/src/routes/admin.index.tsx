@@ -21,8 +21,11 @@ import {
   ExternalLink,
   Sliders,
   Tv,
+  Lock,
+  Shield,
 } from "lucide-react";
 import React, { useMemo, useState } from "react";
+import { useAuth, ROLE_LABELS } from "@/lib/auth";
 
 export const Route = createFileRoute("/admin/")({
   head: () => ({
@@ -132,6 +135,10 @@ function RoomDashboardCard({
   const currentVolume = typeof state?.audioVolume === "number" ? state.audioVolume : 25;
   const isAudioPlaying = state?.audioStatus === "playing";
   const hasAudioStream = Boolean(state?.audioStreamUrl);
+
+  const { canAccessRoom, hasPermission } = useAuth();
+  const isRoomAllowed = canAccessRoom(room.slug);
+  const canControlPlayback = hasPermission("control_playback", room.slug);
 
   // Local optimistic states para cliques rápidos
   const [optimisticVolume, setOptimisticVolume] = useState<number | null>(null);
@@ -256,6 +263,15 @@ function RoomDashboardCard({
               </span>
               <span className="text-neutral-700">•</span>
               <span className="text-neutral-500">{room.slug}</span>
+              {!isRoomAllowed && (
+                <>
+                  <span className="text-neutral-700">•</span>
+                  <span className="text-amber-400 font-semibold flex items-center gap-0.5">
+                    <Lock className="h-2.5 w-2.5" />
+                    <span>Restrita</span>
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -280,9 +296,11 @@ function RoomDashboardCard({
             <button
               type="button"
               onClick={() => toggleStandby.mutate(!displayStandby)}
-              disabled={toggleStandby.isPending}
+              disabled={toggleStandby.isPending || !isRoomAllowed || !canControlPlayback}
               className={`w-full min-h-[34px] px-2 py-1 border text-xs font-mono font-bold transition flex items-center justify-center gap-1.5 ${
-                displayStandby
+                !isRoomAllowed || !canControlPlayback
+                  ? "bg-neutral-950 text-neutral-600 border-neutral-900 cursor-not-allowed opacity-50"
+                  : displayStandby
                   ? "bg-amber-950/40 text-amber-300 border-amber-600/40 hover:bg-amber-950/60"
                   : "bg-neutral-900 text-neutral-200 border-neutral-900 hover:bg-neutral-850 hover:text-white"
               }`}
@@ -311,7 +329,7 @@ function RoomDashboardCard({
               <button
                 type="button"
                 onClick={() => handleVolumeStep(-5)}
-                disabled={displayVolume <= 0 || changeVolume.isPending}
+                disabled={displayVolume <= 0 || changeVolume.isPending || !isRoomAllowed || !canControlPlayback}
                 className="min-h-[34px] flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-900 disabled:opacity-30 transition border-r border-neutral-900"
                 title="Diminuir volume (-5%)"
               >
@@ -321,7 +339,8 @@ function RoomDashboardCard({
               <button
                 type="button"
                 onClick={handleToggleMute}
-                className="min-h-[34px] flex items-center justify-center font-mono text-xs font-bold text-neutral-200 hover:text-white hover:bg-neutral-900 transition border-r border-neutral-900"
+                disabled={!isRoomAllowed || !canControlPlayback}
+                className="min-h-[34px] flex items-center justify-center font-mono text-xs font-bold text-neutral-200 hover:text-white hover:bg-neutral-900 disabled:opacity-30 transition border-r border-neutral-900"
                 title="Clique para alternar mudo"
               >
                 {displayVolume === 0 ? (
@@ -334,7 +353,7 @@ function RoomDashboardCard({
               <button
                 type="button"
                 onClick={() => handleVolumeStep(5)}
-                disabled={displayVolume >= 100 || changeVolume.isPending}
+                disabled={displayVolume >= 100 || changeVolume.isPending || !isRoomAllowed || !canControlPlayback}
                 className="min-h-[34px] flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-900 disabled:opacity-30 transition"
                 title="Aumentar volume (+5%)"
               >

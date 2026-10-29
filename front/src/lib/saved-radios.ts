@@ -28,13 +28,13 @@ export function getSavedRadios(): SavedRadio[] {
   if (typeof window === "undefined") return getInitialPresets();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
+    if (raw === null) {
       const presets = getInitialPresets();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
       return presets;
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       return parsed;
     }
     const presets = getInitialPresets();
@@ -44,6 +44,12 @@ export function getSavedRadios(): SavedRadio[] {
     console.error("Erro ao carregar rádios salvas:", err);
     return getInitialPresets();
   }
+}
+
+export function resetSavedRadiosToDefaults(): SavedRadio[] {
+  const presets = getInitialPresets();
+  persistSavedRadios(presets);
+  return presets;
 }
 
 function persistSavedRadios(radios: SavedRadio[]) {
@@ -142,10 +148,16 @@ export function useSavedRadios() {
     return isRadioSaved(url);
   }, []);
 
+  const reset = useCallback(() => {
+    resetSavedRadiosToDefaults();
+    refresh();
+  }, [refresh]);
+
   return {
     radios,
     saveRadio: add,
     deleteRadio: remove,
+    resetToDefaults: reset,
     isSaved: checkSaved,
     refresh,
   };
