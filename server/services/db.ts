@@ -1,5 +1,6 @@
 import { join } from "@std/path";
 import { MongoClient, type Db } from "npm:mongodb";
+import { createDefaultUsers } from "./auth.ts";
 
 // Carrega arquivo .env local caso exista
 try {
@@ -132,6 +133,21 @@ async function migrateLocalDataIfEmpty() {
         await schedCol.insertMany(clean);
       }
     }
+
+    // 6. Migra Usuários se a coleção estiver vazia
+    const usersCol = mongoDb.collection("users");
+    const usersCount = await usersCol.countDocuments();
+    if (usersCount === 0) {
+      const localUsers = (await readJson("users.json")) || [];
+      if (localUsers.length > 0) {
+        console.log(`[MongoDB] Migrando ${localUsers.length} usuários locais para o MongoDB Atlas...`);
+        const clean = localUsers.map((u: any) => {
+          const { _id, ...rest } = u;
+          return rest;
+        });
+        await usersCol.insertMany(clean);
+      }
+    }
   } catch (e) {
     console.warn("[MongoDB] Aviso durante migração inicial de dados:", e);
   }
@@ -167,6 +183,7 @@ export async function tryConnectMongo(): Promise<boolean> {
       roomsCache = null;
       playlistsCache = null;
       stateCache = null;
+      usersCache = null;
 
       await migrateLocalDataIfEmpty();
       return true;
@@ -202,6 +219,7 @@ async function ensureMongoConnected() {
 let roomsCache: any[] | null = null;
 let playlistsCache: any[] | null = null;
 let stateCache: Record<string, any> | null = null;
+let usersCache: any[] | null = null;
 
 export const db = {
   /**
@@ -624,11 +642,158 @@ export const db = {
   },
 
   /**
+   * Retorna a lista de todos os usuários cadastrados
+   */
+  getUsers: async (): Promise<any[]> => {
+    await ensureMongoConnected();
+    if (usersCache) return usersCache;
+    let list: any[] = [];
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        list = await mongoDb.collection("users").find({}, { projection: { _id: 0 } }).toArray();
+      } catch (e) {
+        console.error("[MongoDB] Erro ao buscar usuários:", e);
+      }
+    } else {
+      list = (await readJson("users.json")) || [];
+    }
+
+    // Se estiver vazio, popula automaticamente com usuários padrão de fábrica devidamente hasheados
+    if (!list || list.length === 0) {
+      list = await createDefaultUsers();
+      if (isConnectedToMongo && mongoDb) {
+        try {
+          await mongoDb.collection("users").insertMany(list.map((u) => {
+            const { _id, ...rest } = u;
+            return rest;
+          }));
+        } catch (e) {
+          console.error("[MongoDB] Erro ao semear usuários padrão:", e);
+        }
+      }
+      await writeJson("users.json", list);
+    }
+
+    usersCache = list;
+    return list;
+  },
+
+  /**
+   * Retorna um usuário pelo ID
+   */
+  getUserById: async (id: string): Promise<any | null> => {
+    const users = await db.getUsers();
+    return users.find((u: any) => u.id === id) || null;
+  },
+
+  /**
+   * Retorna um usuário por username, login com arroba, nome completo ou papel
+   */
+  getUserByIdentifier: async (identifier: string): Promise<any | null> => {
+    const users = await db.getUsers();
+    const clean = (identifier || "").trim().toLowerCase().replace(/^@/, "");
+    const cleanNoAccents = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    return users.find((u: any) => {
+      if (!u.isActive) return false;
+      const uId = (u.id || "").toLowerCase();
+      const uUsername = (u.username || "").toLowerCase().replace(/^@/, "");
+      const uName = (u.name || "").toLowerCase();
+      const uNameNoAccents = uName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const uRole = (u.role || "").toLowerCase();
+
+      return (
+        uId === clean ||
+        uUsername === clean ||
+        uName === clean ||
+        uNameNoAccents === cleanNoAccents ||
+        uRole === clean ||
+        uName.startsWith(clean) ||
+        uNameNoAccents.startsWith(cleanNoAccents) ||
+        (clean === "admin" && (uRole === "admin" || uUsername === "admin")) ||
+        (clean === "operador" && (uRole === "operator" || uUsername === "operador")) ||
+        (clean === "recepcao" && (uRole === "reception" || uUsername === "recepcao"))
+      );
+    }) || null;
+  },
+
+  /**
+   * Salva ou atualiza um usuário no banco
+   */
+  saveUser: async (user: any): Promise<boolean> => {
+    if (!user || !user.id) return false;
+    usersCache = null;
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        const { _id, ...rest } = user;
+        await mongoDb.collection("users").updateOne(
+          { id: user.id },
+          { $set: rest },
+          { upsert: true }
+        );
+        return true;
+      } catch (e) {
+        console.error("[MongoDB] Erro ao salvar usuário:", e);
+        return false;
+      }
+    }
+    const list: any[] = (await readJson("users.json")) || [];
+    const idx = list.findIndex((u) => u.id === user.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...user };
+    } else {
+      list.push(user);
+    }
+    return writeJson("users.json", list);
+  },
+
+  /**
+   * Remove um usuário do banco
+   */
+  deleteUser: async (id: string): Promise<boolean> => {
+    usersCache = null;
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        await mongoDb.collection("users").deleteOne({ id });
+        return true;
+      } catch (e) {
+        console.error("[MongoDB] Erro ao deletar usuário:", e);
+        return false;
+      }
+    }
+    let list: any[] = (await readJson("users.json")) || [];
+    list = list.filter((u) => u.id !== id);
+    return writeJson("users.json", list);
+  },
+
+  /**
+   * Restaura todos os usuários para os padrões de fábrica devidamente hasheados
+   */
+  resetUsersToDefault: async (): Promise<any[]> => {
+    usersCache = null;
+    const defaults = await createDefaultUsers();
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        await mongoDb.collection("users").deleteMany({});
+        await mongoDb.collection("users").insertMany(defaults.map((u) => {
+          const { _id, ...rest } = u;
+          return rest;
+        }));
+      } catch (e) {
+        console.error("[MongoDB] Erro ao resetar usuários padrão:", e);
+      }
+    }
+    await writeJson("users.json", defaults);
+    usersCache = defaults;
+    return defaults;
+  },
+
+  /**
    * Retorna o status da conexão atual com detalhes de diagnóstico
    */
   getStatus: async () => {
     const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
-    if (!isConnectedToMongo && currentUri && !isConnecting) {
+    if (!isConnectedToMongo && currentUri && !connectPromise) {
       await tryConnectMongo();
     }
     const currentDbName = Deno.env.get("MONGODB_DB_NAME") || MONGODB_DB_NAME;
@@ -640,3 +805,4 @@ export const db = {
     };
   },
 };
+

@@ -30,6 +30,11 @@ import {
   proxyRadioStream,
   searchRadioStations,
 } from "../services/radio.ts";
+import {
+  hashSecret,
+  verifyUserCredentials,
+  sanitizeUser,
+} from "../services/auth.ts";
 
 export const api = new Hono();
 
@@ -1046,3 +1051,217 @@ api.on(["GET", "HEAD"], "/radio/stream", async (c) => {
   }
   return await proxyRadioStream(url, c.req.method);
 });
+
+// ========================
+// AUTENTICAÇÃO E USUÁRIOS (RBAC & Hashes Salvos no Banco)
+// ========================
+
+// 1. Login com identificador (username, @username, nome) e PIN/Senha
+api.post("/auth/login", async (c) => {
+  try {
+    const body = await c.req.json();
+    const identifier = (body?.identifier || body?.username || "").trim();
+    const secret = (body?.secret || body?.pin || body?.password || "").trim();
+
+    if (!identifier) {
+      return c.json({ success: false, error: "Identificador (usuário ou login) é obrigatório." }, 400);
+    }
+    if (!secret) {
+      return c.json({ success: false, error: "PIN ou senha é obrigatório." }, 400);
+    }
+
+    const user = await db.getUserByIdentifier(identifier);
+    if (!user || !user.isActive) {
+      return c.json({ success: false, error: "Usuário ou PIN incorreto." }, 401);
+    }
+
+    const isValid = await verifyUserCredentials(user, secret);
+    if (!isValid) {
+      return c.json({ success: false, error: "Usuário ou PIN incorreto." }, 401);
+    }
+
+    // Auto-migra hashes para usuários padrão que ainda não tinham salt
+    if (!user.passwordHash || !user.pinHash) {
+      const salt = user.salt || crypto.randomUUID();
+      user.salt = salt;
+      user.pinHash = await hashSecret(secret, salt);
+      user.passwordHash = await hashSecret(secret, salt);
+    }
+
+    user.lastLoginAt = Date.now();
+    await db.saveUser(user);
+
+    const token = crypto.randomUUID();
+    return c.json({
+      success: true,
+      token,
+      user: sanitizeUser(user),
+      mustChangePin: Boolean(user.mustChangePin),
+    });
+  } catch (err: any) {
+    console.error("Erro no /auth/login:", err);
+    return c.json({ success: false, error: err.message || "Erro interno no servidor." }, 500);
+  }
+});
+
+// 2. Troca de PIN / Senha pessoal pelo operador
+api.post("/auth/change-pin", async (c) => {
+  try {
+    const body = await c.req.json();
+    const userId = (body?.userId || "").trim();
+    const newPin = (body?.newPin || body?.newSecret || "").trim();
+    const currentSecret = (body?.currentSecret || "").trim();
+
+    if (!userId || !newPin) {
+      return c.json({ success: false, error: "ID do usuário e novo PIN são obrigatórios." }, 400);
+    }
+
+    const user = await db.getUserById(userId);
+    if (!user) {
+      return c.json({ success: false, error: "Usuário não encontrado." }, 404);
+    }
+
+    // Se forneceu PIN/senha atual, valida antes de trocar
+    if (currentSecret) {
+      const isValid = await verifyUserCredentials(user, currentSecret);
+      if (!isValid) {
+        return c.json({ success: false, error: "PIN/Senha atual incorreto." }, 400);
+      }
+    }
+
+    const salt = crypto.randomUUID();
+    const newHash = await hashSecret(newPin, salt);
+    user.salt = salt;
+    user.pinHash = newHash;
+    user.passwordHash = newHash;
+    user.mustChangePin = false;
+    user.updatedAt = Date.now();
+
+    await db.saveUser(user);
+
+    return c.json({
+      success: true,
+      user: sanitizeUser(user),
+      message: "PIN atualizado com sucesso!",
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message || "Erro ao atualizar PIN." }, 500);
+  }
+});
+
+// 3. Listagem de usuários (Sanitizada sem expor hashes de senha ou salt)
+api.get("/users", async (c) => {
+  const users = await db.getUsers();
+  return c.json(users.map(sanitizeUser));
+});
+
+// 4. Criação de usuário
+api.post("/users", async (c) => {
+  try {
+    const body = await c.req.json();
+    const name = (body?.name || "").trim();
+    const username = (body?.username || "").trim().toLowerCase().replace(/^@/, "");
+    const role = body?.role || "operator";
+    const rawPin = (body?.pin || "123456").trim();
+
+    if (!name || !username) {
+      return c.json({ error: "Nome e login (username) são obrigatórios." }, 400);
+    }
+
+    const existingUsers = await db.getUsers();
+    if (existingUsers.some((u: any) => u.username.toLowerCase() === username)) {
+      return c.json({ error: "Já existe outro usuário com este mesmo login." }, 400);
+    }
+
+    const salt = crypto.randomUUID();
+    const pinHash = await hashSecret(rawPin, salt);
+    const passwordHash = body?.password ? await hashSecret(body.password.trim(), salt) : pinHash;
+
+    const newUser = {
+      id: crypto.randomUUID(),
+      username,
+      name,
+      role,
+      salt,
+      pinHash,
+      passwordHash,
+      mustChangePin: body?.mustChangePin !== false,
+      allowedRooms: Array.isArray(body?.allowedRooms) ? body.allowedRooms : ["*"],
+      customPermissions: Array.isArray(body?.customPermissions) ? body.customPermissions : [],
+      isActive: body?.isActive !== false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    await db.saveUser(newUser);
+    return c.json({ success: true, user: sanitizeUser(newUser) }, 201);
+  } catch (err: any) {
+    return c.json({ error: err.message || "Erro ao criar usuário." }, 500);
+  }
+});
+
+// 5. Atualização de usuário
+api.put("/users/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const user = await db.getUserById(id);
+    if (!user) {
+      return c.json({ error: "Usuário não encontrado." }, 404);
+    }
+
+    const body = await c.req.json();
+    if (body.username) {
+      const cleanUsername = body.username.trim().toLowerCase().replace(/^@/, "");
+      const existing = (await db.getUsers()).find((u: any) => u.username.toLowerCase() === cleanUsername && u.id !== id);
+      if (existing) {
+        return c.json({ error: "Login já está em uso por outro usuário." }, 400);
+      }
+      user.username = cleanUsername;
+    }
+
+    if (body.name) user.name = body.name.trim();
+    if (body.role) user.role = body.role;
+    if (Array.isArray(body.allowedRooms)) user.allowedRooms = body.allowedRooms;
+    if (Array.isArray(body.customPermissions)) user.customPermissions = body.customPermissions;
+    if (typeof body.isActive === "boolean") user.isActive = body.isActive;
+    if (typeof body.mustChangePin === "boolean") user.mustChangePin = body.mustChangePin;
+
+    // Se forneceu novo PIN ou nova senha na edição
+    if (body.pin || body.password) {
+      const secret = (body.pin || body.password).trim();
+      const salt = crypto.randomUUID();
+      const hash = await hashSecret(secret, salt);
+      user.salt = salt;
+      user.pinHash = hash;
+      user.passwordHash = hash;
+    }
+
+    user.updatedAt = Date.now();
+    await db.saveUser(user);
+
+    return c.json({ success: true, user: sanitizeUser(user) });
+  } catch (err: any) {
+    return c.json({ error: err.message || "Erro ao atualizar usuário." }, 500);
+  }
+});
+
+// 6. Exclusão de usuário
+api.delete("/users/:id", async (c) => {
+  const id = c.req.param("id");
+  const user = await db.getUserById(id);
+  if (!user) {
+    return c.json({ error: "Usuário não encontrado." }, 404);
+  }
+  if (user.username === "admin") {
+    return c.json({ error: "O administrador principal do sistema não pode ser removido." }, 400);
+  }
+  await db.deleteUser(id);
+  return c.json({ success: true });
+});
+
+// 7. Resetar usuários para os padrões de fábrica
+api.post("/users/reset-defaults", async (c) => {
+  const users = await db.resetUsersToDefault();
+  return c.json({ success: true, users: users.map(sanitizeUser) });
+});
+

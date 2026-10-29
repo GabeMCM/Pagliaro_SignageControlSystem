@@ -33,6 +33,8 @@ export function LoginModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const [loading, setLoading] = useState(false);
+
   const usernameRef = useRef<HTMLInputElement>(null);
   const pinRef = useRef<HTMLInputElement>(null);
 
@@ -41,6 +43,7 @@ export function LoginModal({
     setPinInput("");
     setErrorMessage(null);
     setSuccessMessage(null);
+    setLoading(false);
     setTimeout(() => usernameRef.current?.focus(), 50);
   }, [isOpen]);
 
@@ -59,7 +62,7 @@ export function LoginModal({
     setPinInput("");
   };
 
-  const processLogin = (username: string, pin: string) => {
+  const processLogin = async (username: string, pin: string) => {
     setErrorMessage(null);
 
     const cleanUser = username.trim();
@@ -77,30 +80,39 @@ export function LoginModal({
       return;
     }
 
-    const res = login(cleanUser, cleanPin);
+    setLoading(true);
+    try {
+      const res = await login(cleanUser, cleanPin);
 
-    if (res.success) {
-      const authUser = res.user;
-      setSuccessMessage(
-        res.mustChangePin
-          ? `Conectado como ${authUser?.name}. Primeiro acesso detectado.`
-          : `Conectado como ${authUser?.name}`
-      );
+      if (res.success) {
+        const authUser = res.user;
+        setSuccessMessage(
+          res.mustChangePin
+            ? `Conectado como ${authUser?.name}. Primeiro acesso detectado.`
+            : `Conectado como ${authUser?.name}`
+        );
 
-      setTimeout(() => {
-        onSuccess?.(authUser || undefined, res.mustChangePin);
-        onClose();
-      }, 600);
-    } else {
-      setErrorMessage(res.message || "Usuário ou PIN incorreto.");
-      setPinInput("");
-      pinRef.current?.focus();
+        setTimeout(() => {
+          onSuccess?.(authUser || undefined, res.mustChangePin);
+          onClose();
+        }, 500);
+      } else {
+        setErrorMessage(res.message || "Usuário ou credencial incorreta.");
+        setPinInput("");
+        pinRef.current?.focus();
+      }
+    } catch (_err) {
+      setErrorMessage("Erro de conexão com o servidor.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    processLogin(usernameInput, pinInput);
+    if (!loading) {
+      processLogin(usernameInput, pinInput);
+    }
   };
 
   return (
@@ -289,10 +301,11 @@ export function LoginModal({
             </button>
             <button
               type="submit"
-              className="min-h-[36px] bg-white text-black font-bold text-xs font-mono uppercase hover:bg-neutral-200 transition rounded-none flex items-center justify-center gap-1"
+              disabled={loading}
+              className="min-h-[36px] bg-white text-black font-bold text-xs font-mono uppercase hover:bg-neutral-200 transition rounded-none flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Lock className="h-3.5 w-3.5" />
-              <span>Entrar</span>
+              <span>{loading ? "Verificando..." : "Entrar"}</span>
             </button>
           </div>
         </form>

@@ -89,7 +89,7 @@ export function ChangePinModal({
     else setConfirmPin("");
   };
 
-  const handleSubmit = (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setErrorMsg(null);
 
@@ -123,7 +123,7 @@ export function ChangePinModal({
       return;
     }
 
-    const res = changePin(newPin, isMandatory ? undefined : currentPin);
+    const res = await changePin(newPin, isMandatory ? undefined : currentPin);
     if (res.success) {
       setSuccessMsg("PIN de 6 dígitos alterado com sucesso!");
       setTimeout(() => {

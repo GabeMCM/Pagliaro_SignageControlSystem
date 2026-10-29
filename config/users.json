@@ -1,0 +1,66 @@
+[
+  {
+    "id": "user-admin-01",
+    "username": "admin",
+    "name": "Administrador Geral",
+    "role": "admin",
+    "salt": "be03d06d-9a85-4a7e-b802-c6321f77f992",
+    "pinHash": "be2cd13516997ed71168805882250c369ba5243f535d3fbfea805658bb979273",
+    "passwordHash": "5686f035e8b32106740ad72628db26f05c07aaf12a93e7b9d28284784e86047a",
+    "mustChangePin": false,
+    "allowedRooms": [
+      "*"
+    ],
+    "customPermissions": [
+      "manage_users",
+      "manage_rooms",
+      "control_playback",
+      "manage_radios",
+      "manage_playlists",
+      "manage_automations",
+      "view_only"
+    ],
+    "isActive": true,
+    "createdAt": 1700000000000
+  },
+  {
+    "id": "user-operator-01",
+    "username": "operador",
+    "name": "Operador de Cerimonial",
+    "role": "operator",
+    "salt": "b38a905b-2f4e-4470-9f21-0b1e9c6d7eff",
+    "pinHash": "15c5cbcb16d848e66796101c18e2ffa04882a9f374a91ab3770b06d8cefa6c6d",
+    "passwordHash": "9f2ee30234d5eb4aa44b65e87c41e2eff1b2848ae0d852cbb4591f7ee26f4f50",
+    "mustChangePin": false,
+    "allowedRooms": [
+      "*"
+    ],
+    "customPermissions": [
+      "control_playback",
+      "manage_radios",
+      "manage_playlists",
+      "manage_automations",
+      "view_only"
+    ],
+    "isActive": true,
+    "createdAt": 1700000000001
+  },
+  {
+    "id": "user-reception-01",
+    "username": "recepcao",
+    "name": "Recepção Central",
+    "role": "reception",
+    "salt": "b0b1cc2c-2ad1-4730-98f8-38e9572a9170",
+    "pinHash": "5fbf690e8f2f833dd31110d9bf6f9037537a7d1978c1d75795c08d689092e9e5",
+    "passwordHash": "693f7f138344b9f5bc77356e0367c899a9281fb3890a21d69ecaee5794fd86d3",
+    "mustChangePin": false,
+    "allowedRooms": [
+      "*"
+    ],
+    "customPermissions": [
+      "view_only"
+    ],
+    "isActive": true,
+    "createdAt": 1700000000002
+  }
+]

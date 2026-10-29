@@ -21,6 +21,8 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const [loading, setLoading] = useState(false);
+
   const usernameRef = useRef<HTMLInputElement>(null);
   const pinRef = useRef<HTMLInputElement>(null);
 
@@ -44,7 +46,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
     setPinInput("");
   };
 
-  const processLogin = (username: string, pin: string) => {
+  const processLogin = async (username: string, pin: string) => {
     setErrorMessage(null);
 
     const cleanUser = username.trim();
@@ -62,28 +64,37 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
       return;
     }
 
-    const res = login(cleanUser, cleanPin);
+    setLoading(true);
+    try {
+      const res = await login(cleanUser, cleanPin);
 
-    if (res.success) {
-      const authUser = res.user;
-      setSuccessMessage(
-        res.mustChangePin
-          ? `Autenticado como ${authUser?.name}. Primeiro acesso detectado.`
-          : `Bem-vindo, ${authUser?.name}`
-      );
+      if (res.success) {
+        const authUser = res.user;
+        setSuccessMessage(
+          res.mustChangePin
+            ? `Autenticado como ${authUser?.name}. Primeiro acesso detectado.`
+            : `Bem-vindo, ${authUser?.name}`
+        );
 
-      setTimeout(() => {
-        onSuccess?.(authUser || undefined, res.mustChangePin);
-      }, 400);
-    } else {
-      setErrorMessage(res.message || "Usuário ou PIN incorreto.");
-      pinRef.current?.focus();
+        setTimeout(() => {
+          onSuccess?.(authUser || undefined, res.mustChangePin);
+        }, 300);
+      } else {
+        setErrorMessage(res.message || "Usuário ou credencial incorreta.");
+        pinRef.current?.focus();
+      }
+    } catch (_err) {
+      setErrorMessage("Falha na comunicação com o servidor.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    processLogin(usernameInput, pinInput);
+    if (!loading) {
+      processLogin(usernameInput, pinInput);
+    }
   };
 
   return (
@@ -217,10 +228,11 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
           {/* Botão de Envio */}
           <button
             type="submit"
-            className="w-full min-h-[42px] bg-white text-black font-bold text-xs font-mono uppercase hover:bg-neutral-200 transition rounded-none flex items-center justify-center gap-2 mt-2 shadow-sm"
+            disabled={loading}
+            className="w-full min-h-[42px] bg-white text-black font-bold text-xs font-mono uppercase hover:bg-neutral-200 transition rounded-none flex items-center justify-center gap-2 mt-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Lock className="h-3.5 w-3.5" />
-            <span>Entrar no Painel</span>
+            <span>{loading ? "Verificando..." : "Entrar no Painel"}</span>
           </button>
         </form>
 

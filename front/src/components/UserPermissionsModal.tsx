@@ -106,7 +106,7 @@ export function UserPermissionsModal({
     );
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       alert("Por favor, preencha o nome do usuário.");
@@ -142,7 +142,7 @@ export function UserPermissionsModal({
 
     if (editingUserId) {
       // Edição
-      editUser(editingUserId, {
+      await editUser(editingUserId, {
         name: name.trim(),
         username: cleanUsername,
         role,
@@ -154,17 +154,22 @@ export function UserPermissionsModal({
       setFeedbackMsg({ text: `Usuário "${name.trim()}" atualizado com sucesso!` });
     } else {
       // Criação
-      addUser({
-        name: name.trim(),
-        username: cleanUsername,
-        role,
-        pin: cleanPin || "123456",
-        mustChangePin,
-        allowedRooms: allowed,
-        customPermissions: customPerms,
-        isActive: true,
-      });
-      setFeedbackMsg({ text: `Usuário "${name.trim()}" cadastrado com sucesso (PIN provisório: ${cleanPin || "123456"})!` });
+      try {
+        await addUser({
+          name: name.trim(),
+          username: cleanUsername,
+          role,
+          pin: cleanPin || "123456",
+          mustChangePin,
+          allowedRooms: allowed,
+          customPermissions: customPerms,
+          isActive: true,
+        });
+        setFeedbackMsg({ text: `Usuário "${name.trim()}" cadastrado com sucesso (PIN provisório: ${cleanPin || "123456"})!` });
+      } catch (err: any) {
+        alert(err.message || "Erro ao salvar usuário.");
+        return;
+      }
     }
 
     resetForm();
@@ -172,13 +177,13 @@ export function UserPermissionsModal({
     setTimeout(() => setFeedbackMsg(null), 3500);
   };
 
-  const handleDeleteUser = (user: AppUser) => {
+  const handleDeleteUser = async (user: AppUser) => {
     if (user.id === currentUser?.id) {
       alert("Você não pode excluir o usuário conectado nesta sessão.");
       return;
     }
     if (confirm(`Tem certeza que deseja excluir o usuário "${user.name}" (@${user.username})?`)) {
-      const res = removeUser(user.id);
+      const res = await removeUser(user.id);
       if (res.success) {
         setFeedbackMsg({ text: `Usuário "${user.name}" excluído.` });
         setTimeout(() => setFeedbackMsg(null), 3000);
@@ -364,9 +369,9 @@ export function UserPermissionsModal({
               <span>Para alternar rapidamente de operador, clique no seu nome no menu.</span>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   if (confirm("Deseja restaurar as contas padrão originais (admin, operador, recepção)?")) {
-                    resetAllToDefault();
+                    await resetAllToDefault();
                   }
                 }}
                 className="text-[10px] text-neutral-400 hover:text-white underline flex items-center gap-1"
