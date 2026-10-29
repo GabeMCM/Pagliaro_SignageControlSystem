@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useMemo } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   Monitor,
   Tv,
@@ -223,11 +224,12 @@ function DevicesAdminPage() {
     },
   });
 
-  const handleCopyId = (id: string) => {
-    navigator.clipboard.writeText(id).then(() => {
+  const handleCopyId = async (id: string) => {
+    const success = await copyToClipboard(id);
+    if (success) {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
-    });
+    }
   };
 
   const devices = devicesQ.data || [];

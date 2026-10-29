@@ -15,12 +15,12 @@ import {
 } from "lucide-react";
 import type { RoomRoutine, Playlist } from "@/lib/signage-api";
 import {
-  VERIFIED_GOSPEL_PRESETS,
   DEFAULT_ADIAU_URLS,
   ROUTINE_DAYS,
   formatRoutineDaysSummary,
   VOLUME_PRESETS,
 } from "@/lib/constants";
+import { useSavedRadios } from "@/lib/saved-radios";
 
 export interface RoutineModalProps {
   isOpen: boolean;
@@ -81,19 +81,21 @@ export function RoutineModal({
     return "radio";
   });
 
+  const { radios: savedRadios } = useSavedRadios();
+
   const [selectedRadioPreset, setSelectedRadioPreset] = useState<string>(() => {
     if (initialData?.actions?.audioStreamUrl) {
-      const match = VERIFIED_GOSPEL_PRESETS.find(
+      const match = savedRadios.find(
         (p) => p.url === initialData.actions.audioStreamUrl
       );
       return match ? match.url : "custom";
     }
-    return VERIFIED_GOSPEL_PRESETS[0]?.url || "";
+    return savedRadios[0]?.url || "";
   });
 
   const [customRadioUrl, setCustomRadioUrl] = useState<string>(() => {
     if (initialData?.actions?.audioStreamUrl) {
-      const match = VERIFIED_GOSPEL_PRESETS.find(
+      const match = savedRadios.find(
         (p) => p.url === initialData.actions.audioStreamUrl
       );
       return match ? "" : initialData.actions.audioStreamUrl;
@@ -501,9 +503,9 @@ export function RoutineModal({
                   onChange={(e) => setSelectedRadioPreset(e.target.value)}
                   className="w-full rounded-none border border-neutral-900 bg-black px-2 py-1 text-white text-xs font-mono outline-none focus:border-neutral-600"
                 >
-                  {VERIFIED_GOSPEL_PRESETS.map((p) => (
-                    <option key={p.url} value={p.url}>
-                      {p.name}
+                  {savedRadios.map((p) => (
+                    <option key={p.id || p.url} value={p.url}>
+                      {p.name} {p.isCustom ? "(Salva)" : ""}
                     </option>
                   ))}
                   <option value="custom">-- Link Personalizado de Rádio --</option>

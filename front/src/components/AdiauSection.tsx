@@ -27,6 +27,7 @@ import {
   formatAdiauDateTime,
   DEFAULT_ADIAU_CONFIG,
 } from "../lib/adiau";
+import { copyToClipboard } from "../lib/clipboard";
 
 interface AdiauSectionProps {
   currentSiteUrl?: string | null;
@@ -132,11 +133,13 @@ export function AdiauSection({
   };
 
   // Copia o link da transmissão
-  const handleCopyLink = (att: AdiauAttendance) => {
+  const handleCopyLink = async (att: AdiauAttendance) => {
     const finalUrl = buildAdiauTransmissionUrl(activeType, config, att, clientInfo);
-    navigator.clipboard.writeText(finalUrl);
-    setCopiedId(String(att.id));
-    setTimeout(() => setCopiedId(null), 2500);
+    const ok = await copyToClipboard(finalUrl);
+    if (ok) {
+      setCopiedId(String(att.id));
+      setTimeout(() => setCopiedId(null), 2500);
+    }
   };
 
   return (

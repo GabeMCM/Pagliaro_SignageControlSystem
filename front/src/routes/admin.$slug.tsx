@@ -65,9 +65,13 @@ import {
   Zap,
   AlertCircle,
   Save,
+  Bookmark,
+  BookmarkCheck,
 } from "lucide-react";
 import { AdiauSection } from "@/components/AdiauSection";
 import { RoutineModal } from "@/components/RoutineModal";
+import { AdiauDeceasedPicker } from "@/components/AdiauDeceasedPicker";
+import { useSavedRadios } from "@/lib/saved-radios";
 import {
   VERIFIED_GOSPEL_PRESETS,
   DEFAULT_ADIAU_URLS,
@@ -1069,6 +1073,16 @@ function RoomOperator() {
     queryFn: signageApi.getRadioPresets,
     staleTime: 600000,
   });
+  const {
+    radios: savedRadios,
+    saveRadio,
+    deleteRadio,
+    isSaved: isRadioSavedInStore,
+  } = useSavedRadios();
+  const [isAddingCustomRadio, setIsAddingCustomRadio] = useState(false);
+  const [newRadioName, setNewRadioName] = useState("");
+  const [newRadioUrl, setNewRadioUrl] = useState("");
+  const [newRadioDesc, setNewRadioDesc] = useState("");
   const [radioSearchQuery, setRadioSearchQuery] = useState("");
   const [radioSearchResults, setRadioSearchResults] = useState<RadioStationItem[]>([]);
   const [isSearchingRadio, setIsSearchingRadio] = useState(false);
@@ -2964,26 +2978,107 @@ function RoomOperator() {
                   </div>
                 )}
 
-                {/* 1. ESTAÇÕES GOSPEL 24H VERIFICADAS (SINTONIZAR EM 1 CLIQUE) */}
+                {/* 1. MINHAS RÁDIOS SALVAS & FAVORITAS */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300">
-                      Estações Gospel & Instrumental 24h Verificadas (1 Clique)
-                    </span>
-                    <span className="text-[10px] text-neutral-400">
-                      Proxy HTTPS compatível com todas as Smart TVs
-                    </span>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300 block">
+                        Minhas Rádios Salvas & Favoritas ({savedRadios.length})
+                      </span>
+                      <span className="text-[10px] text-neutral-400">
+                        Sintonize em 1 clique ou gerencie suas emissoras prediletas
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingCustomRadio(!isAddingCustomRadio)}
+                      className="px-2.5 py-1 text-[11px] font-mono bg-neutral-900 hover:bg-neutral-850 border border-neutral-900 text-neutral-300 hover:text-white transition flex items-center gap-1.5"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>{isAddingCustomRadio ? "Fechar Formulário" : "Salvar Nova Rádio"}</span>
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {(radioPresetsQ.data?.presets || []).map((station) => {
+                  {/* Formulário de Adicionar Nova Rádio Salva */}
+                  {isAddingCustomRadio && (
+                    <div className="p-3 border border-neutral-900 bg-neutral-950 space-y-2">
+                      <div className="text-xs font-bold text-white font-mono flex items-center gap-1.5">
+                        <Bookmark className="h-3.5 w-3.5 text-neutral-400" />
+                        <span>Cadastrar Rádio nos Favoritos</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Nome da Rádio (ex: Rádio Suave Louvor)"
+                          value={newRadioName}
+                          onChange={(e) => setNewRadioName(e.target.value)}
+                          className="bg-black border border-neutral-900 px-2.5 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-600 font-mono"
+                        />
+                        <input
+                          type="url"
+                          placeholder="Link da Rádio (https://... / Icecast / Zeno)"
+                          value={newRadioUrl}
+                          onChange={(e) => setNewRadioUrl(e.target.value)}
+                          className="bg-black border border-neutral-900 px-2.5 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-600 font-mono"
+                        />
+                      </div>
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                        <input
+                          type="text"
+                          placeholder="Descrição ou estilo (opcional)"
+                          value={newRadioDesc}
+                          onChange={(e) => setNewRadioDesc(e.target.value)}
+                          className="flex-1 bg-black border border-neutral-900 px-2.5 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-600 font-mono"
+                        />
+                        <div className="flex items-center gap-1.5 justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setIsAddingCustomRadio(false)}
+                            className="px-3 py-1.5 text-xs font-mono bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-white"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!newRadioUrl.trim()) {
+                                alert("Por favor, informe a URL da rádio.");
+                                return;
+                              }
+                              const clean = cleanAudioUrl(newRadioUrl);
+                              saveRadio({
+                                name: newRadioName.trim() || "Minha Rádio",
+                                url: clean,
+                                desc: newRadioDesc.trim() || "Rádio salva pelo operador",
+                                isCustom: true,
+                              });
+                              setNewRadioName("");
+                              setNewRadioUrl("");
+                              setNewRadioDesc("");
+                              setIsAddingCustomRadio(false);
+                              setRadioStatusMsg("Rádio salva com sucesso nos seus favoritos!");
+                              setTimeout(() => setRadioStatusMsg(null), 3000);
+                            }}
+                            className="px-3 py-1.5 text-xs font-mono bg-white text-black font-bold uppercase hover:bg-neutral-200"
+                          >
+                            Salvar Rádio
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Grid de Rádios Salvas */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+                    {savedRadios.map((station) => {
                       const isThisActive =
                         isAudioStreamActive &&
-                        (stateQ.data?.audioStreamUrl || "").trim() === station.streamUrl;
+                        (stateQ.data?.audioStreamUrl || "").trim() === station.url.trim();
 
                       return (
                         <div
-                          key={station.id}
+                          key={station.id || station.url}
                           className={`rounded-none border p-2.5 flex items-center justify-between gap-2.5 transition ${
                             isThisActive
                               ? "border-emerald-500/60 bg-emerald-950/25 shadow-xs"
@@ -2995,36 +3090,67 @@ function RoomOperator() {
                               <span className="text-xs font-bold text-white truncate">
                                 {station.name}
                               </span>
-                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none border border-neutral-900 bg-neutral-950 text-neutral-300">
-                                {station.category}
-                              </span>
+                              {station.isCustom ? (
+                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none border border-neutral-800 bg-neutral-950 text-neutral-300">
+                                  Minha Rádio
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none border border-neutral-900 bg-neutral-950 text-neutral-400">
+                                  Verificada
+                                </span>
+                              )}
                               {isThisActive && (
                                 <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none bg-emerald-500 text-black">
-                                  Tocando
+                                  No Ar
                                 </span>
                               )}
                             </div>
                             <p className="text-[11px] text-neutral-400 line-clamp-1">
-                              {station.description}
+                              {station.desc}
                             </p>
-                            <div className="text-[10px] text-neutral-500 font-mono">
-                              {station.codec} • {station.bitrate} kbps • 24h Ao Vivo
-                            </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => handleTuneRadioStation(station)}
-                            disabled={setState.isPending}
-                            className={`px-3 py-2 rounded-none text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0 transition ${
-                              isThisActive
-                                ? "bg-emerald-500 text-black hover:bg-emerald-400"
-                                : "bg-white text-black hover:bg-neutral-200"
-                            }`}
-                          >
-                            <RadioIcon className="h-3.5 w-3.5" />
-                            <span>{isThisActive ? "No Ar" : "Sintonizar"}</span>
-                          </button>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {station.isCustom && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`Deseja remover "${station.name}" das suas rádios salvas?`)) {
+                                    deleteRadio(station.id);
+                                  }
+                                }}
+                                className="p-2 rounded-none bg-neutral-900 hover:bg-red-950 hover:text-red-300 border border-neutral-900 text-neutral-400 transition"
+                                title="Remover dos favoritos"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleTuneRadioStation({
+                                  id: station.id,
+                                  name: station.name,
+                                  category: station.isCustom ? "Salvas" : "Gospel",
+                                  description: station.desc || "",
+                                  streamUrl: station.url,
+                                  codec: "MP3/AAC",
+                                  bitrate: 128,
+                                  country: "BR",
+                                })
+                              }
+                              disabled={setState.isPending}
+                              className={`px-3 py-2 rounded-none text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition ${
+                                isThisActive
+                                  ? "bg-emerald-500 text-black hover:bg-emerald-400"
+                                  : "bg-white text-black hover:bg-neutral-200"
+                              }`}
+                            >
+                              <RadioIcon className="h-3.5 w-3.5" />
+                              <span>{isThisActive ? "No Ar" : "Sintonizar"}</span>
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -3103,13 +3229,53 @@ function RoomOperator() {
                                 {station.codec} • {station.bitrate || 128} kbps • {station.country}
                               </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleTuneRadioStation(station)}
-                              className="px-2.5 py-1.5 rounded-none bg-white text-black text-[11px] font-bold uppercase hover:bg-neutral-200 flex-shrink-0 transition"
-                            >
-                              {isThisActive ? "No Ar" : "Sintonizar"}
-                            </button>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (isRadioSavedInStore(station.streamUrl)) {
+                                    deleteRadio(station.streamUrl);
+                                  } else {
+                                    saveRadio({
+                                      name: station.name,
+                                      url: station.streamUrl,
+                                      desc: `${station.codec} • ${station.bitrate || 128} kbps • ${station.country}`,
+                                      isCustom: true,
+                                    });
+                                  }
+                                }}
+                                className={`px-2 py-1.5 rounded-none border text-[11px] font-mono transition flex items-center gap-1 ${
+                                  isRadioSavedInStore(station.streamUrl)
+                                    ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/50"
+                                    : "bg-black text-neutral-400 border-neutral-900 hover:text-white"
+                                }`}
+                                title={
+                                  isRadioSavedInStore(station.streamUrl)
+                                    ? "Remover dos Favoritos"
+                                    : "Salvar nos Favoritos"
+                                }
+                              >
+                                {isRadioSavedInStore(station.streamUrl) ? (
+                                  <>
+                                    <BookmarkCheck className="h-3 w-3" />
+                                    <span>Salva</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Bookmark className="h-3 w-3" />
+                                    <span>Salvar</span>
+                                  </>
+                                )}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleTuneRadioStation(station)}
+                                className="px-2.5 py-1.5 rounded-none bg-white text-black text-[11px] font-bold uppercase hover:bg-neutral-200 transition"
+                              >
+                                {isThisActive ? "No Ar" : "Sintonizar"}
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -3131,6 +3297,29 @@ function RoomOperator() {
                       onKeyDown={(e) => e.key === "Enter" && handleApplyAudioStream()}
                       className="flex-1 rounded-none border border-neutral-900 bg-neutral-950 px-3 py-2 text-xs text-white outline-none focus:border-neutral-500 font-mono"
                     />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!audioStreamInputUrl.trim()) return;
+                        const name = prompt("Nome da Rádio para salvar nos favoritos:", "Minha Rádio");
+                        if (name) {
+                          saveRadio({
+                            name: name.trim(),
+                            url: cleanAudioUrl(audioStreamInputUrl),
+                            desc: "Salva via link manual",
+                            isCustom: true,
+                          });
+                          setRadioStatusMsg(`Rádio "${name.trim()}" salva nos seus favoritos!`);
+                          setTimeout(() => setRadioStatusMsg(null), 3500);
+                        }
+                      }}
+                      disabled={!audioStreamInputUrl.trim()}
+                      className="min-h-[36px] px-3 py-2 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-850 disabled:opacity-40 transition flex items-center justify-center gap-1 text-xs font-mono"
+                      title="Salvar esta rádio para usar em outras salas e rotinas"
+                    >
+                      <Bookmark className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Salvar</span>
+                    </button>
                     <button
                       onClick={handleApplyAudioStream}
                       disabled={!audioStreamInputUrl.trim() || setState.isPending || isProbingRadio}
@@ -4399,6 +4588,7 @@ function CeremonyWizardModal({
 
   const [startTime, setStartTime] = useState(defaultStartTime);
   const [memorialUrl, setMemorialUrl] = useState(currentSiteUrl || "");
+  const [deceasedName, setDeceasedName] = useState("");
   const [startPlaylist, setStartPlaylist] = useState(audioPlaylists[0]?.id || "");
   const [startVolume, setStartVolume] = useState(0);
 
@@ -4417,7 +4607,7 @@ function CeremonyWizardModal({
       // 1. Recepção
       await signageApi.createSchedule({
         roomSlug: slug,
-        title: "Recepção & Abertura da Cerimônia",
+        title: deceasedName ? `Recepção & Homenagem (${deceasedName})` : "Recepção & Abertura da Cerimônia",
         scheduledAt: toUtcIsoString(startTime),
         enabled: true,
         actions: {
@@ -4532,14 +4722,14 @@ function CeremonyWizardModal({
 
             <div>
               <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-                Link do Memorial / Homenagem (Foto/Vídeo):
+                Falecido / Homenagem da Recepção (Adiaŭ ou Link):
               </label>
-              <input
-                type="url"
-                placeholder="https://exemplo.com.br/homenagem"
+              <AdiauDeceasedPicker
                 value={memorialUrl}
-                onChange={(e) => setMemorialUrl(e.target.value)}
-                className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
+                onChange={(url, name) => {
+                  setMemorialUrl(url);
+                  if (name) setDeceasedName(name);
+                }}
               />
             </div>
 
@@ -4811,19 +5001,21 @@ function ScheduleModal({
     return "radio";
   });
 
+  const { radios: savedRadios } = useSavedRadios();
+
   const [selectedRadioPreset, setSelectedRadioPreset] = useState<string>(() => {
     if (initialData?.actions.audioStreamUrl) {
-      const match = VERIFIED_GOSPEL_PRESETS.find(
+      const match = savedRadios.find(
         (p) => p.url === initialData.actions.audioStreamUrl
       );
       return match ? match.url : "custom";
     }
-    return VERIFIED_GOSPEL_PRESETS[0]?.url || "";
+    return savedRadios[0]?.url || "";
   });
 
   const [customRadioUrl, setCustomRadioUrl] = useState<string>(() => {
     if (initialData?.actions.audioStreamUrl) {
-      const match = VERIFIED_GOSPEL_PRESETS.find(
+      const match = savedRadios.find(
         (p) => p.url === initialData.actions.audioStreamUrl
       );
       return match ? "" : initialData.actions.audioStreamUrl;
@@ -4998,44 +5190,19 @@ function ScheduleModal({
             </div>
           </div>
 
-          {/* Link do Memorial */}
+          {/* Falecido / Homenagem da Adiaŭ ou Link do Memorial */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-semibold text-neutral-300 font-mono">
-                Link do Memorial / Site (Opcional):
-              </label>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setSiteUrl(DEFAULT_ADIAU_URLS[0].url)}
-                  className="text-[9px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white"
-                >
-                  Adiaŭ Flores
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSiteUrl(DEFAULT_ADIAU_URLS[1].url)}
-                  className="text-[9px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white"
-                >
-                  Adiaŭ Info
-                </button>
-                {currentSiteUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setSiteUrl(currentSiteUrl)}
-                    className="text-[9px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white"
-                  >
-                    Atual
-                  </button>
-                )}
-              </div>
-            </div>
-            <input
-              type="url"
-              placeholder="https://www.adiau.com.br/v2/messages/..."
+            <label className="text-[11px] font-semibold text-neutral-300 font-mono block">
+              Memorial / Homenagem na Tela (Adiaŭ ou Link):
+            </label>
+            <AdiauDeceasedPicker
               value={siteUrl}
-              onChange={(e) => setSiteUrl(e.target.value)}
-              className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
+              onChange={(url, deceasedName) => {
+                setSiteUrl(url);
+                if (deceasedName && !title) {
+                  setTitle(`Homenagem: ${deceasedName}`);
+                }
+              }}
             />
           </div>
 
@@ -5096,9 +5263,9 @@ function ScheduleModal({
                   onChange={(e) => setSelectedRadioPreset(e.target.value)}
                   className="w-full rounded-none border border-neutral-900 bg-black px-2 py-1 text-white text-xs font-mono outline-none focus:border-neutral-600"
                 >
-                  {VERIFIED_GOSPEL_PRESETS.map((p) => (
-                    <option key={p.url} value={p.url}>
-                      {p.name}
+                  {savedRadios.map((p) => (
+                    <option key={p.id || p.url} value={p.url}>
+                      {p.name} {p.isCustom ? "(Salva)" : ""}
                     </option>
                   ))}
                   <option value="custom">-- Link Personalizado de Rádio --</option>

@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, Link, useParams, useRouter } from "@tanstack/r
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { signageApi, type Room } from "@/lib/signage-api";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   Radio,
   Plus,
@@ -82,9 +83,9 @@ function AdminLayout() {
   const cleanBase = rawBase.replace(/\/player\/?$/, "").replace(/\/+$/, "");
   const playerAccessUrl = `${cleanBase}/player`;
 
-  const handleCopyLink = () => {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(playerAccessUrl);
+  const handleCopyLink = async () => {
+    const success = await copyToClipboard(playerAccessUrl);
+    if (success) {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     }
