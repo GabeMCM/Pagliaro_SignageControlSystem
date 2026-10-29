@@ -56,7 +56,7 @@ export function UserPermissionsModal({
   const [username, setUsername] = useState("");
   const [role, setRole] = useState<UserRole>("operator");
   const [pin, setPin] = useState("");
-  const [password, setPassword] = useState("");
+  const [mustChangePin, setMustChangePin] = useState(true);
   const [allRoomsAllowed, setAllRoomsAllowed] = useState(true);
   const [selectedRooms, setSelectedRooms] = useState<string[]>([]);
   const [customPerms, setCustomPerms] = useState<PermissionKey[]>([]);
@@ -67,8 +67,8 @@ export function UserPermissionsModal({
     setName("");
     setUsername("");
     setRole("operator");
-    setPin("");
-    setPassword("");
+    setPin("123456");
+    setMustChangePin(true);
     setAllRoomsAllowed(true);
     setSelectedRooms([]);
     setCustomPerms([]);
@@ -85,8 +85,8 @@ export function UserPermissionsModal({
     setName(user.name);
     setUsername(user.username);
     setRole(user.role);
-    setPin(user.pin || "");
-    setPassword(user.password || "");
+    setPin(user.pin || "000000");
+    setMustChangePin(Boolean(user.mustChangePin));
     const isAll = user.allowedRooms.includes("*") || user.allowedRooms.length === 0;
     setAllRoomsAllowed(isAll);
     setSelectedRooms(isAll ? [] : user.allowedRooms);
@@ -128,6 +128,12 @@ export function UserPermissionsModal({
       return;
     }
 
+    const cleanPin = pin.trim() || (editingUserId ? undefined : "123456");
+    if (cleanPin && !/^\d{6}$/.test(cleanPin)) {
+      alert("O PIN de acesso deve conter exatamente 6 dígitos numéricos (ex: 123456).");
+      return;
+    }
+
     const allowed = allRoomsAllowed ? ["*"] : selectedRooms;
     if (!allRoomsAllowed && allowed.length === 0) {
       alert("Por favor, selecione ao menos uma sala autorizada para este operador.");
@@ -140,8 +146,8 @@ export function UserPermissionsModal({
         name: name.trim(),
         username: cleanUsername,
         role,
-        pin: pin.trim() || undefined,
-        password: password.trim() || undefined,
+        ...(cleanPin ? { pin: cleanPin } : {}),
+        mustChangePin,
         allowedRooms: allowed,
         customPermissions: customPerms,
       });
@@ -152,13 +158,13 @@ export function UserPermissionsModal({
         name: name.trim(),
         username: cleanUsername,
         role,
-        pin: pin.trim() || "0000",
-        password: password.trim() || undefined,
+        pin: cleanPin || "123456",
+        mustChangePin,
         allowedRooms: allowed,
         customPermissions: customPerms,
         isActive: true,
       });
-      setFeedbackMsg({ text: `Usuário "${name.trim()}" cadastrado com sucesso!` });
+      setFeedbackMsg({ text: `Usuário "${name.trim()}" cadastrado com sucesso (PIN provisório: ${cleanPin || "123456"})!` });
     }
 
     resetForm();
@@ -314,8 +320,16 @@ export function UserPermissionsModal({
                         <span>•</span>
                         <span className="flex items-center gap-1">
                           <Key className="h-3 w-3 text-neutral-500" />
-                          <span>PIN: {u.pin ? "Ativo" : "Não definido"}</span>
+                          <span>PIN: {u.pin ? "6 dígitos" : "Não definido"}</span>
                         </span>
+                        {u.mustChangePin && (
+                          <>
+                            <span>•</span>
+                            <span className="text-[9px] font-mono text-amber-400 bg-amber-950/40 border border-amber-800/40 px-1 py-0.2">
+                              Troca no 1º acesso pendente
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -397,7 +411,7 @@ export function UserPermissionsModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div className="space-y-1">
                 <label className="text-[11px] text-neutral-300 block">
                   Papel no Sistema:
@@ -415,31 +429,42 @@ export function UserPermissionsModal({
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] text-neutral-300 block">
-                  PIN Rápido (4 dígitos para TV):
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] text-neutral-300 block">
+                    PIN Provisório / Inicial (6 dígitos numéricos):
+                  </label>
+                  <span className="text-[10px] text-neutral-500 font-mono">
+                    {pin.length}/6
+                  </span>
+                </div>
                 <input
                   type="text"
                   maxLength={6}
-                  placeholder="ex: 1234"
+                  inputMode="numeric"
+                  placeholder="ex: 123456"
                   value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  className="w-full bg-black border border-neutral-900 p-2 text-white outline-none focus:border-neutral-500 font-mono"
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  className="w-full bg-black border border-neutral-900 p-2 text-white outline-none focus:border-neutral-500 font-mono tracking-widest"
                 />
               </div>
+            </div>
 
-              <div className="space-y-1">
-                <label className="text-[11px] text-neutral-300 block">
-                  Senha Tradicional (Opcional):
+            {/* Checkbox de Obrigatório Trocar PIN no Próximo Acesso */}
+            <div className="p-2.5 border border-neutral-900 bg-neutral-900/30 flex items-center justify-between">
+              <div>
+                <label className="text-xs font-bold text-white block">
+                  Exigir troca de PIN no próximo login do operador:
                 </label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-black border border-neutral-900 p-2 text-white outline-none focus:border-neutral-500 font-mono"
-                />
+                <span className="text-[10px] text-neutral-400 block mt-0.5">
+                  Ao entrar com o PIN provisório, o operador será obrigado a cadastrar seu PIN definitivo de 6 dígitos.
+                </span>
               </div>
+              <input
+                type="checkbox"
+                checked={mustChangePin}
+                onChange={(e) => setMustChangePin(e.target.checked)}
+                className="h-4 w-4 accent-white cursor-pointer flex-shrink-0 ml-3"
+              />
             </div>
 
             {/* SELEÇÃO DE SALAS AUTORIZADAS */}

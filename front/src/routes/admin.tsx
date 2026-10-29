@@ -6,6 +6,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { useAuth, ROLE_LABELS } from "@/lib/auth";
 import { UserPermissionsModal } from "@/components/UserPermissionsModal";
 import { LoginModal } from "@/components/LoginModal";
+import { ChangePinModal } from "@/components/ChangePinModal";
 import {
   Radio,
   Plus,
@@ -69,6 +70,7 @@ function AdminLayout() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [changePinModalOpen, setChangePinModalOpen] = useState(false);
 
   // active slug from URL
   const params = useParams({ strict: false }) as { slug?: string };
@@ -320,14 +322,24 @@ function AdminLayout() {
                   </div>
                 </div>
               </button>
-              <button
-                type="button"
-                onClick={() => setPermissionsModalOpen(true)}
-                className="text-neutral-400 hover:text-white p-1 hover:bg-neutral-900 transition"
-                title="Gestão de Usuários & Permissões"
-              >
-                <Settings className="h-3.5 w-3.5" />
-              </button>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => setChangePinModalOpen(true)}
+                  className="text-neutral-400 hover:text-white p-1 hover:bg-neutral-900 transition"
+                  title="Alterar Meu PIN (6 dígitos)"
+                >
+                  <Key className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPermissionsModalOpen(true)}
+                  className="text-neutral-400 hover:text-white p-1 hover:bg-neutral-900 transition"
+                  title="Gestão de Usuários & Permissões"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -421,6 +433,23 @@ function AdminLayout() {
       <LoginModal
         isOpen={loginModalOpen}
         onClose={() => setLoginModalOpen(false)}
+        onOpenChangePin={() => setChangePinModalOpen(true)}
+        onSuccess={(_user, mustChange) => {
+          if (mustChange || _user?.mustChangePin) {
+            setChangePinModalOpen(true);
+          }
+        }}
+      />
+
+      {/* Modal de Alteração de PIN (6 dígitos) */}
+      <ChangePinModal
+        isOpen={changePinModalOpen || Boolean(currentUser?.mustChangePin)}
+        isMandatory={Boolean(currentUser?.mustChangePin)}
+        onClose={() => setChangePinModalOpen(false)}
+        onOpenSwitchUser={() => {
+          setChangePinModalOpen(false);
+          setLoginModalOpen(true);
+        }}
       />
     </div>
   );

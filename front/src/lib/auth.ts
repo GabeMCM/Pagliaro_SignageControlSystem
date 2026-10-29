@@ -60,8 +60,8 @@ export interface AppUser {
   username: string;
   name: string;
   role: UserRole;
-  pin?: string;
-  password?: string;
+  pin: string; // 6 dígitos numéricos (ex: "123456")
+  mustChangePin?: boolean; // Se true, o operador é forçado a redefinir no primeiro login
   allowedRooms: string[]; // ["*"] para todas as salas ou lista de slugs ["sala-01", "sala-02"]
   customPermissions?: PermissionKey[];
   isActive: boolean;
@@ -98,8 +98,8 @@ const DEFAULT_USERS: AppUser[] = [
     username: "admin",
     name: "Administrador Geral",
     role: "admin",
-    pin: "1234",
-    password: "admin",
+    pin: "123456",
+    mustChangePin: false,
     allowedRooms: ["*"],
     isActive: true,
     createdAt: 1700000000000,
@@ -110,8 +110,8 @@ const DEFAULT_USERS: AppUser[] = [
     username: "operador",
     name: "Operador de Cerimonial",
     role: "operator",
-    pin: "0000",
-    password: "operador",
+    pin: "000000",
+    mustChangePin: false,
     allowedRooms: ["*"],
     isActive: true,
     createdAt: 1700000000001,
@@ -121,8 +121,8 @@ const DEFAULT_USERS: AppUser[] = [
     username: "recepcao",
     name: "Recepção Central",
     role: "reception",
-    pin: "1111",
-    password: "recepcao",
+    pin: "111111",
+    mustChangePin: false,
     allowedRooms: ["*"],
     isActive: true,
     createdAt: 1700000000002,
@@ -141,9 +141,29 @@ export function getUsers(): AppUser[] {
       localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(DEFAULT_USERS));
       return DEFAULT_USERS;
     }
-    const parsed = JSON.parse(raw);
+    const parsed: AppUser[] = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+      // Migração suave de PINs legados de 4 dígitos para 6 dígitos
+      let hasMigration = false;
+      const normalized = parsed.map((u) => {
+        let pin = (u.pin || "").trim();
+        if (pin.length < 6) {
+          if (pin === "1234") pin = "123456";
+          else if (pin === "0000") pin = "000000";
+          else if (pin === "1111") pin = "111111";
+          else pin = pin.padEnd(6, "0");
+          hasMigration = true;
+        }
+        return {
+          ...u,
+          pin,
+          mustChangePin: Boolean(u.mustChangePin),
+        };
+      });
+      if (hasMigration) {
+        localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(normalized));
+      }
+      return normalized;
     }
     localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(DEFAULT_USERS));
     return DEFAULT_USERS;
@@ -276,44 +296,108 @@ export function useAuth() {
     };
   }, [refresh]);
 
-  const loginWithPinOrPassword = useCallback(
-    (identifier: string, secret?: string): { success: boolean; message?: string } => {
-      const cleanIdent = identifier.trim().toLowerCase();
-      const cleanSecret = (secret || "").trim();
+  const loginWithPin = useCallback(
+    (identifierOrPin: string, pinInput?: string): { success: boolean; user?: AppUser; mustChangePin?: boolean; message?: string } => {
+      const clean1 = identifierOrPin.trim();
+      const clean2 = (pinInput || "").trim();
 
+      // Caso 1: Forneceu apenas o PIN de 6 dígitos direto (sem escolher usuário previamente)
+      if (!pinInput && /^\d{6}$/.test(clean1)) {
+        const found = users.find((u) => u.isActive && u.pin === clean1);
+        if (found) {
+          setCurrentUser(found.id);
+          refresh();
+          return { success: true, user: found, mustChangePin: Boolean(found.mustChangePin) };
+        }
+        return { success: false, message: "PIN de 6 dígitos não encontrado." };
+      }
+
+      // Caso 2: Escolheu usuário (por ID ou username) e digitou o PIN
       const user = users.find(
         (u) =>
           u.isActive &&
-          (u.username.toLowerCase() === cleanIdent ||
-            u.id === cleanIdent ||
-            u.pin === cleanIdent)
+          (u.id === clean1 || u.username.toLowerCase() === clean1.toLowerCase())
       );
 
       if (!user) {
-        return { success: false, message: "Usuário ou PIN não localizado." };
+        return { success: false, message: "Operador não localizado." };
       }
 
-      // Se for autenticação por PIN direto
-      if (!secret && user.pin === cleanIdent) {
+      const checkPin = clean2 || clean1;
+      if (user.pin === checkPin) {
         setCurrentUser(user.id);
         refresh();
-        return { success: true };
+        return { success: true, user, mustChangePin: Boolean(user.mustChangePin) };
       }
 
-      // Se informou senha ou PIN
-      if (
-        (user.password && user.password === cleanSecret) ||
-        (user.pin && user.pin === cleanSecret) ||
-        (!user.password && !user.pin)
-      ) {
-        setCurrentUser(user.id);
-        refresh();
-        return { success: true };
-      }
-
-      return { success: false, message: "Senha ou PIN incorreto." };
+      return { success: false, message: "PIN incorreto. Deve conter 6 dígitos." };
     },
     [users, refresh]
+  );
+
+  const changePin = useCallback(
+    (newPin: string, currentPin?: string): { success: boolean; message?: string } => {
+      const cleanNew = newPin.trim();
+      if (!/^\d{6}$/.test(cleanNew)) {
+        return { success: false, message: "O novo PIN deve conter exatamente 6 dígitos numéricos." };
+      }
+
+      const currentList = getUsers();
+      const idx = currentList.findIndex((u) => u.id === currentUser?.id);
+      if (idx < 0) {
+        return { success: false, message: "Usuário ativo não encontrado." };
+      }
+
+      const user = currentList[idx];
+
+      // Se informou PIN atual, valida se bate
+      if (currentPin !== undefined && !user.mustChangePin) {
+        if (user.pin !== currentPin.trim()) {
+          return { success: false, message: "O PIN atual digitado está incorreto." };
+        }
+      }
+
+      if (user.pin === cleanNew) {
+        return { success: false, message: "O novo PIN não pode ser igual ao PIN atual." };
+      }
+
+      currentList[idx] = {
+        ...user,
+        pin: cleanNew,
+        mustChangePin: false,
+      };
+
+      saveUsers(currentList);
+      refresh();
+      return { success: true };
+    },
+    [currentUser?.id, refresh]
+  );
+
+  const adminSetPin = useCallback(
+    (userId: string, newPin: string, mustChangeOnNextLogin: boolean = true): { success: boolean; message?: string } => {
+      const cleanNew = newPin.trim();
+      if (!/^\d{6}$/.test(cleanNew)) {
+        return { success: false, message: "O PIN deve conter exatamente 6 dígitos numéricos." };
+      }
+
+      const currentList = getUsers();
+      const idx = currentList.findIndex((u) => u.id === userId);
+      if (idx < 0) {
+        return { success: false, message: "Usuário não encontrado." };
+      }
+
+      currentList[idx] = {
+        ...currentList[idx],
+        pin: cleanNew,
+        mustChangePin: mustChangeOnNextLogin,
+      };
+
+      saveUsers(currentList);
+      refresh();
+      return { success: true };
+    },
+    [refresh]
   );
 
   const switchUser = useCallback(
@@ -330,6 +414,7 @@ export function useAuth() {
       const currentList = getUsers();
       const newUser: AppUser = {
         ...user,
+        pin: user.pin || "000000",
         id: `user-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         createdAt: Date.now(),
         isActive: true,
@@ -404,7 +489,10 @@ export function useAuth() {
     users,
     hasPermission,
     canAccessRoom,
-    login: loginWithPinOrPassword,
+    login: loginWithPin,
+    loginWithPin,
+    changePin,
+    adminSetPin,
     switchUser,
     addUser,
     editUser,
