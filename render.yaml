@@ -15,3 +15,5 @@ services:
         sync: false # O Render solicitará que você insira sua senha/URI com segurança pelo painel
       - key: MONGODB_DB_NAME
         value: cap-signage
+      - key: AUTH_SECRET
+        generateValue: true # O Render gera automaticamente uma chave criptográfica forte

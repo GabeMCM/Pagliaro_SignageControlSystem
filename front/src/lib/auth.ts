@@ -252,8 +252,28 @@ export function useAuth() {
     setLocalCurrentUser(getCurrentUser());
   }, []);
 
-  // Sincroniza usuários com o banco de dados na inicialização
+  // Sincroniza usuários com o banco de dados e valida integridade do token de sessão
   useEffect(() => {
+    const savedToken = typeof window !== "undefined" ? localStorage.getItem("pagliaro_auth_session_token_v2") : null;
+    if (savedToken) {
+      fetch(`${API_BASE}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${savedToken}` },
+      })
+        .then(async (res) => {
+          if (res.ok) {
+            const data = await res.json();
+            if (data.authenticated && data.user) {
+              localStorage.setItem(STORAGE_SESSION_USER_KEY, JSON.stringify(data.user));
+              setLocalCurrentUser(data.user);
+            }
+          } else if (res.status === 401) {
+            logoutUser();
+            setLocalCurrentUser(null);
+          }
+        })
+        .catch(() => {});
+    }
+
     fetchUsersFromApi().then((fresh) => {
       setLocalUsers(fresh);
       const cur = getCurrentUser();
@@ -310,6 +330,9 @@ export function useAuth() {
           const authUser: AppUser = data.user;
           localStorage.setItem(STORAGE_SESSION_KEY, authUser.id);
           localStorage.setItem(STORAGE_SESSION_USER_KEY, JSON.stringify(authUser));
+          if (data.token) {
+            localStorage.setItem("pagliaro_auth_session_token_v2", data.token);
+          }
           setLocalCurrentUser(authUser);
           window.dispatchEvent(new CustomEvent(AUTH_CHANGE_EVENT));
           return {

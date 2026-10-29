@@ -34,6 +34,8 @@ import {
   hashSecret,
   verifyUserCredentials,
   sanitizeUser,
+  generateSessionToken,
+  verifySessionToken,
 } from "../services/auth.ts";
 
 export const api = new Hono();
@@ -1091,11 +1093,12 @@ api.post("/auth/login", async (c) => {
     user.lastLoginAt = Date.now();
     await db.saveUser(user);
 
-    const token = crypto.randomUUID();
+    const safeUser = sanitizeUser(user);
+    const token = await generateSessionToken(safeUser!);
     return c.json({
       success: true,
       token,
-      user: sanitizeUser(user),
+      user: safeUser,
       mustChangePin: Boolean(user.mustChangePin),
     });
   } catch (err: any) {
@@ -1103,6 +1106,25 @@ api.post("/auth/login", async (c) => {
     return c.json({ success: false, error: err.message || "Erro interno no servidor." }, 500);
   }
 });
+
+// Validação de token de sessão ativo via HMAC AUTH_SECRET
+api.get("/auth/me", async (c) => {
+  const authHeader = c.req.header("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim() || c.req.query("token") || "";
+  if (!token) {
+    return c.json({ authenticated: false }, 401);
+  }
+  const result = await verifySessionToken(token);
+  if (!result.valid || !result.payload?.sub) {
+    return c.json({ authenticated: false, error: "Token inválido ou expirado." }, 401);
+  }
+  const user = await db.getUserById(result.payload.sub);
+  if (!user || !user.isActive) {
+    return c.json({ authenticated: false, error: "Usuário inativo ou inexistente." }, 401);
+  }
+  return c.json({ authenticated: true, user: sanitizeUser(user) });
+});
+
 
 // 2. Troca de PIN / Senha pessoal pelo operador
 api.post("/auth/change-pin", async (c) => {
