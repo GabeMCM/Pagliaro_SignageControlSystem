@@ -160,9 +160,10 @@ function AdminLayout() {
           <button
             type="button"
             onClick={() => {
-              if (confirm("Deseja sair do sistema (Logout)?")) {
-                logout();
-              }
+              setLoginModalOpen(false);
+              setChangePinModalOpen(false);
+              setPermissionsModalOpen(false);
+              logout();
             }}
             className="px-2 py-1 bg-neutral-900 hover:bg-red-950/40 border border-neutral-900 hover:border-red-900/60 text-neutral-400 hover:text-red-300 transition flex items-center gap-1 font-mono text-[10px]"
             title="Encerrar Sessão (Logout)"
@@ -384,9 +385,10 @@ function AdminLayout() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (confirm("Deseja sair do sistema (Logout)?")) {
-                      logout();
-                    }
+                    setLoginModalOpen(false);
+                    setChangePinModalOpen(false);
+                    setPermissionsModalOpen(false);
+                    logout();
                   }}
                   className="text-neutral-400 hover:text-red-400 p-1 hover:bg-neutral-900 transition"
                   title="Encerrar Sessão (Logout)"
@@ -411,9 +413,10 @@ function AdminLayout() {
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm("Deseja encerrar a sessão (Logout)?")) {
-                    logout();
-                  }
+                  setLoginModalOpen(false);
+                  setChangePinModalOpen(false);
+                  setPermissionsModalOpen(false);
+                  logout();
                 }}
                 className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-neutral-900 transition"
                 title="Encerrar Sessão (Logout)"

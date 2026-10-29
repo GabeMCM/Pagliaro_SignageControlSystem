@@ -235,11 +235,6 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
             <span>{loading ? "Verificando..." : "Entrar no Painel"}</span>
           </button>
         </form>
-
-        {/* Rodapé Informativo (Discreto) */}
-        <div className="pt-2 border-t border-neutral-900 text-[10px] font-mono text-neutral-500 flex flex-col gap-0.5 text-center">
-          <span>PIN padrão fábrica: Admin (123456) • Operador (000000) • Recepção (111111)</span>
-        </div>
       </div>
     </div>
   );

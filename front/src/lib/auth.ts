@@ -129,6 +129,7 @@ export const DEFAULT_USERS: AppUser[] = [
 const STORAGE_USERS_KEY = "pagliaro_auth_users_v2";
 const STORAGE_SESSION_KEY = "pagliaro_auth_session_v2";
 const STORAGE_SESSION_USER_KEY = "pagliaro_auth_session_user_v2";
+const STORAGE_TOKEN_KEY = "pagliaro_auth_session_token_v2";
 const AUTH_CHANGE_EVENT = "pagliaro:auth-changed";
 
 const API_BASE =
@@ -170,6 +171,8 @@ export function getUsers(): AppUser[] {
 export function getCurrentUser(): AppUser | null {
   if (typeof window === "undefined") return null;
   try {
+    const token = localStorage.getItem(STORAGE_TOKEN_KEY);
+    if (!token) return null;
     const rawUser = localStorage.getItem(STORAGE_SESSION_USER_KEY);
     if (rawUser) {
       const parsed = JSON.parse(rawUser);
@@ -188,6 +191,10 @@ export function logoutUser(): void {
   try {
     localStorage.removeItem(STORAGE_SESSION_KEY);
     localStorage.removeItem(STORAGE_SESSION_USER_KEY);
+    localStorage.removeItem(STORAGE_TOKEN_KEY);
+    localStorage.removeItem("pagliaro_auth_session_token");
+    localStorage.removeItem("pagliaro_auth_session_v1");
+    sessionStorage.clear();
     window.dispatchEvent(new CustomEvent(AUTH_CHANGE_EVENT));
   } catch (err) {
     console.error("Erro ao efetuar logout:", err);
@@ -254,7 +261,7 @@ export function useAuth() {
 
   // Sincroniza usuários com o banco de dados e valida integridade do token de sessão
   useEffect(() => {
-    const savedToken = typeof window !== "undefined" ? localStorage.getItem("pagliaro_auth_session_token_v2") : null;
+    const savedToken = typeof window !== "undefined" ? localStorage.getItem(STORAGE_TOKEN_KEY) : null;
     if (savedToken) {
       fetch(`${API_BASE}/api/auth/me`, {
         headers: { Authorization: `Bearer ${savedToken}` },
@@ -272,6 +279,8 @@ export function useAuth() {
           }
         })
         .catch(() => {});
+    } else {
+      setLocalCurrentUser(null);
     }
 
     fetchUsersFromApi().then((fresh) => {
@@ -289,7 +298,12 @@ export function useAuth() {
 
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_USERS_KEY || e.key === STORAGE_SESSION_KEY || e.key === STORAGE_SESSION_USER_KEY) {
+      if (
+        e.key === STORAGE_USERS_KEY ||
+        e.key === STORAGE_SESSION_KEY ||
+        e.key === STORAGE_SESSION_USER_KEY ||
+        e.key === STORAGE_TOKEN_KEY
+      ) {
         refresh();
       }
     };
@@ -514,6 +528,7 @@ export function useAuth() {
 
   const logout = useCallback(() => {
     logoutUser();
+    setLocalCurrentUser(null);
     refresh();
   }, [refresh]);
 

@@ -174,10 +174,8 @@ export function LoginModal({
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm("Encerrar a sessão do operador atual?")) {
-                    logout();
-                    onClose();
-                  }
+                  logout();
+                  onClose();
                 }}
                 className="text-[10px] font-mono px-2 py-1 bg-neutral-900 hover:bg-red-950/40 text-neutral-400 hover:text-red-300 border border-neutral-900 hover:border-red-900/50 transition flex items-center gap-1"
                 title="Encerrar Sessão (Logout)"
