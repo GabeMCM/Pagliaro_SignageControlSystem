@@ -46,13 +46,7 @@ export function LoginModal({
 
   const handleKeypadPress = (digit: string) => {
     setErrorMessage(null);
-    if (pinInput.length < 6) {
-      const nextPin = pinInput + digit;
-      setPinInput(nextPin);
-      if (nextPin.length === 6 && usernameInput.trim()) {
-        processLogin(usernameInput.trim(), nextPin);
-      }
-    }
+    setPinInput((prev) => prev + digit);
   };
 
   const handleKeypadBackspace = () => {
@@ -77,8 +71,8 @@ export function LoginModal({
       return;
     }
 
-    if (cleanPin.length !== 6) {
-      setErrorMessage("O PIN deve conter exatamente 6 dígitos numéricos.");
+    if (!cleanPin) {
+      setErrorMessage("Informe o PIN ou senha de acesso.");
       pinRef.current?.focus();
       return;
     }
@@ -229,48 +223,21 @@ export function LoginModal({
             <div className="flex items-center justify-between text-[11px] font-mono text-neutral-300">
               <label className="flex items-center gap-1.5">
                 <Key className="h-3 w-3 text-neutral-400" />
-                <span>PIN de 6 dígitos:</span>
+                <span>PIN ou Senha de Acesso:</span>
               </label>
               <span className="text-[10px] font-mono text-neutral-500">
-                {pinInput.length}/6
+                {pinInput.length > 0 ? `${pinInput.length} caracteres` : "6 dígitos"}
               </span>
             </div>
 
-            {/* Marcadores de 6 bolinhas */}
-            <div
-              onClick={() => pinRef.current?.focus()}
-              className="p-2.5 bg-black border border-neutral-900 flex items-center justify-center gap-2 cursor-pointer hover:border-neutral-800 transition"
-            >
-              {Array.from({ length: 6 }).map((_, i) => {
-                const filled = i < pinInput.length;
-                return (
-                  <span
-                    key={i}
-                    className={`h-3 w-3 border transition-colors ${
-                      filled
-                        ? "bg-white border-white"
-                        : "bg-black border-neutral-800"
-                    }`}
-                  />
-                );
-              })}
-            </div>
-
-            {/* Input real para digitação física via teclado */}
             <input
               ref={pinRef}
               type="password"
-              inputMode="numeric"
-              maxLength={6}
+              required
+              placeholder="Digite o PIN (ex: 123456) ou senha"
               value={pinInput}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, "").slice(0, 6);
-                setPinInput(val);
-                if (val.length === 6 && usernameInput.trim()) {
-                  processLogin(usernameInput.trim(), val);
-                }
-              }}
-              className="opacity-0 h-0 w-0 absolute pointer-events-none"
+              onChange={(e) => setPinInput(e.target.value)}
+              className="w-full bg-black border border-neutral-900 p-2 text-sm text-white outline-none focus:border-neutral-500 font-mono tracking-widest transition"
             />
           </div>
 

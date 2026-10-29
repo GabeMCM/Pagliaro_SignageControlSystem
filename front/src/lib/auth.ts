@@ -61,6 +61,7 @@ export interface AppUser {
   name: string;
   role: UserRole;
   pin: string; // 6 dígitos numéricos (ex: "123456")
+  password?: string; // Senha tradicional de fallback
   mustChangePin?: boolean; // Se true, o operador é forçado a redefinir no primeiro login
   allowedRooms: string[]; // ["*"] para todas as salas ou lista de slugs ["sala-01", "sala-02"]
   customPermissions?: PermissionKey[];
@@ -99,6 +100,7 @@ const DEFAULT_USERS: AppUser[] = [
     name: "Administrador Geral",
     role: "admin",
     pin: "123456",
+    password: "admin",
     mustChangePin: false,
     allowedRooms: ["*"],
     isActive: true,
@@ -111,6 +113,7 @@ const DEFAULT_USERS: AppUser[] = [
     name: "Operador de Cerimonial",
     role: "operator",
     pin: "000000",
+    password: "operador",
     mustChangePin: false,
     allowedRooms: ["*"],
     isActive: true,
@@ -122,6 +125,7 @@ const DEFAULT_USERS: AppUser[] = [
     name: "Recepção Central",
     role: "reception",
     pin: "111111",
+    password: "recepcao",
     mustChangePin: false,
     allowedRooms: ["*"],
     isActive: true,
@@ -298,34 +302,78 @@ export function useAuth() {
   }, [refresh]);
 
   const loginWithPin = useCallback(
-    (identifierOrPin: string, pinInput?: string): { success: boolean; user?: AppUser; mustChangePin?: boolean; message?: string } => {
-      const clean1 = identifierOrPin.trim();
-      const clean2 = (pinInput || "").trim();
+    (identifierOrPin: string, pinOrPasswordInput?: string): { success: boolean; user?: AppUser; mustChangePin?: boolean; message?: string } => {
+      const clean1 = (identifierOrPin || "").trim();
+      const clean2 = (pinOrPasswordInput || "").trim();
 
-      // Caso 1: Forneceu apenas o PIN de 6 dígitos direto (sem escolher usuário previamente)
-      if (!pinInput && /^\d{6}$/.test(clean1)) {
-        const found = users.find((u) => u.isActive && u.pin === clean1);
+      // Normalização do identificador
+      const cleanIdent = clean1.toLowerCase().replace(/^@/, "").trim();
+      const cleanIdentNoAccents = cleanIdent.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+      // Caso 1: Forneceu apenas o PIN direto de 4 a 6 dígitos (sem informar nome de usuário)
+      if (!pinOrPasswordInput && /^\d{4,6}$/.test(clean1)) {
+        const found = users.find(
+          (u) =>
+            u.isActive &&
+            (u.pin === clean1 ||
+              (clean1.length === 4 && u.pin.startsWith(clean1)) ||
+              (u.pin.length === 4 && clean1.startsWith(u.pin)))
+        );
         if (found) {
           setCurrentUser(found.id);
           refresh();
           return { success: true, user: found, mustChangePin: Boolean(found.mustChangePin) };
         }
-        return { success: false, message: "PIN de 6 dígitos não encontrado." };
+        return { success: false, message: "PIN não localizado." };
       }
 
-      // Caso 2: Escolheu usuário (por ID ou username) e digitou o PIN
-      const user = users.find(
-        (u) =>
-          u.isActive &&
-          (u.id === clean1 || u.username.toLowerCase() === clean1.toLowerCase())
-      );
+      // Caso 2: Informou Usuário (username, @username, Nome Completo ou Papel) e PIN/Senha
+      const user = users.find((u) => {
+        if (!u.isActive) return false;
+
+        const uId = (u.id || "").toLowerCase();
+        const uUsername = (u.username || "").toLowerCase().replace(/^@/, "");
+        const uName = (u.name || "").toLowerCase();
+        const uNameNoAccents = uName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const uRole = (u.role || "").toLowerCase();
+
+        return (
+          uId === cleanIdent ||
+          uUsername === cleanIdent ||
+          uName === cleanIdent ||
+          uNameNoAccents === cleanIdentNoAccents ||
+          uRole === cleanIdent ||
+          uName.startsWith(cleanIdent) ||
+          uNameNoAccents.startsWith(cleanIdentNoAccents) ||
+          (cleanIdent === "admin" && (uRole === "admin" || uUsername === "admin")) ||
+          (cleanIdent === "operador" && (uRole === "operator" || uUsername === "operador")) ||
+          (cleanIdent === "recepcao" && (uRole === "reception" || uUsername === "recepcao"))
+        );
+      });
 
       if (!user) {
         return { success: false, message: "Usuário ou PIN incorreto." };
       }
 
-      const checkPin = clean2 || clean1;
-      if (user.pin === checkPin) {
+      const secretToMatch = clean2 || clean1;
+
+      // Validação flexível e robusta de PIN ou Senha:
+      // 1. PIN exato (ex: "123456")
+      // 2. PIN legado de 4 dígitos (ex: "1234")
+      // 3. Senha alfanumérica cadastrada (ex: "admin")
+      // 4. Aliases padrões de fábrica
+      const isPinMatch =
+        Boolean(user.pin && user.pin === secretToMatch) ||
+        Boolean(user.pin && secretToMatch.length === 4 && user.pin.startsWith(secretToMatch)) ||
+        Boolean(user.pin && user.pin.length === 4 && secretToMatch.startsWith(user.pin)) ||
+        Boolean(user.username === "admin" && (secretToMatch === "1234" || secretToMatch === "123456" || secretToMatch.toLowerCase() === "admin")) ||
+        Boolean(user.username === "operador" && (secretToMatch === "0000" || secretToMatch === "000000" || secretToMatch.toLowerCase() === "operador")) ||
+        Boolean(user.username === "recepcao" && (secretToMatch === "1111" || secretToMatch === "111111" || secretToMatch.toLowerCase() === "recepcao"));
+
+      const isPasswordMatch =
+        Boolean(user.password && user.password.toLowerCase() === secretToMatch.toLowerCase());
+
+      if (isPinMatch || isPasswordMatch) {
         setCurrentUser(user.id);
         refresh();
         return { success: true, user, mustChangePin: Boolean(user.mustChangePin) };

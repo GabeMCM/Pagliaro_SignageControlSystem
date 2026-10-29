@@ -6,7 +6,6 @@ import {
   User,
   AlertCircle,
   CheckCircle2,
-  ArrowRight,
 } from "lucide-react";
 import { useAuth, type AppUser } from "@/lib/auth";
 
@@ -32,13 +31,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
 
   const handleKeypadPress = (digit: string) => {
     setErrorMessage(null);
-    if (pinInput.length < 6) {
-      const next = pinInput + digit;
-      setPinInput(next);
-      if (next.length === 6 && usernameInput.trim()) {
-        processLogin(usernameInput.trim(), next);
-      }
-    }
+    setPinInput((prev) => prev + digit);
   };
 
   const handleKeypadBackspace = () => {
@@ -58,13 +51,13 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
     const cleanPin = pin.trim();
 
     if (!cleanUser) {
-      setErrorMessage("Por favor, informe seu nome de usuário.");
+      setErrorMessage("Por favor, informe seu usuário ou login.");
       usernameRef.current?.focus();
       return;
     }
 
-    if (cleanPin.length !== 6) {
-      setErrorMessage("O PIN deve conter exatamente 6 dígitos numéricos.");
+    if (!cleanPin) {
+      setErrorMessage("Por favor, informe seu PIN ou senha.");
       pinRef.current?.focus();
       return;
     }
@@ -81,10 +74,9 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
 
       setTimeout(() => {
         onSuccess?.(authUser || undefined, res.mustChangePin);
-      }, 500);
+      }, 400);
     } else {
       setErrorMessage(res.message || "Usuário ou PIN incorreto.");
-      setPinInput("");
       pinRef.current?.focus();
     }
   };
@@ -131,7 +123,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
           </div>
         )}
 
-        {/* Formulário de Identificação: Usuário + PIN de 6 dígitos */}
+        {/* Formulário de Identificação Individual */}
         <form onSubmit={handleFormSubmit} className="space-y-3.5">
           {/* Campo 1: Usuário */}
           <div className="space-y-1">
@@ -146,7 +138,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
               autoCorrect="off"
               spellCheck="false"
               required
-              placeholder="Digite seu usuário (ex: admin, operador...)"
+              placeholder="ex: admin ou operador"
               value={usernameInput}
               onChange={(e) => setUsernameInput(e.target.value)}
               onKeyDown={(e) => {
@@ -159,57 +151,30 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
             />
           </div>
 
-          {/* Campo 2: PIN de 6 dígitos */}
+          {/* Campo 2: PIN ou Senha */}
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[11px] font-mono text-neutral-300">
               <label className="flex items-center gap-1.5">
                 <Key className="h-3.5 w-3.5 text-neutral-400" />
-                <span>PIN de Acesso (6 dígitos):</span>
+                <span>PIN ou Senha de Acesso:</span>
               </label>
               <span className="text-[10px] text-neutral-500 font-mono">
-                {pinInput.length}/6
+                {pinInput.length > 0 ? `${pinInput.length} caracteres` : "6 dígitos"}
               </span>
             </div>
 
-            {/* Marcadores visuais táteis dos 6 dígitos */}
-            <div
-              onClick={() => pinRef.current?.focus()}
-              className="p-3 bg-black border border-neutral-900 flex items-center justify-center gap-2.5 cursor-pointer hover:border-neutral-800 transition"
-            >
-              {Array.from({ length: 6 }).map((_, i) => {
-                const filled = i < pinInput.length;
-                return (
-                  <span
-                    key={i}
-                    className={`h-3.5 w-3.5 border transition-colors ${
-                      filled
-                        ? "bg-white border-white"
-                        : "bg-black border-neutral-800"
-                    }`}
-                  />
-                );
-              })}
-            </div>
-
-            {/* Input com foco real para teclado físico / leitor de código */}
             <input
               ref={pinRef}
               type="password"
-              inputMode="numeric"
-              maxLength={6}
+              required
+              placeholder="Digite o PIN (ex: 123456) ou senha"
               value={pinInput}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, "").slice(0, 6);
-                setPinInput(val);
-                if (val.length === 6 && usernameInput.trim()) {
-                  processLogin(usernameInput.trim(), val);
-                }
-              }}
-              className="opacity-0 h-0 w-0 absolute pointer-events-none"
+              onChange={(e) => setPinInput(e.target.value)}
+              className="w-full bg-black border border-neutral-900 p-2.5 text-sm text-white outline-none focus:border-neutral-500 font-mono tracking-widest transition"
             />
           </div>
 
-          {/* Teclado Numérico Virtual na Tela (Perfeito para Tablets / Celulares) */}
+          {/* Teclado Numérico Virtual na Tela (Opcional para Touch em Tablets/Celulares) */}
           <div className="pt-1">
             <div className="grid grid-cols-3 gap-1.5 font-mono text-base font-bold">
               {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
@@ -217,7 +182,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
                   key={n}
                   type="button"
                   onClick={() => handleKeypadPress(n)}
-                  className="h-11 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none active:bg-neutral-800"
+                  className="h-10 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none active:bg-neutral-800"
                 >
                   {n}
                 </button>
@@ -226,7 +191,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
               <button
                 type="button"
                 onClick={handleKeypadClear}
-                className="h-11 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
+                className="h-10 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
               >
                 Limpar
               </button>
@@ -234,7 +199,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
               <button
                 type="button"
                 onClick={() => handleKeypadPress("0")}
-                className="h-11 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none active:bg-neutral-800"
+                className="h-10 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none active:bg-neutral-800"
               >
                 0
               </button>
@@ -242,7 +207,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
               <button
                 type="button"
                 onClick={handleKeypadBackspace}
-                className="h-11 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
+                className="h-10 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
               >
                 Apagar
               </button>
@@ -260,8 +225,8 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
         </form>
 
         {/* Rodapé Informativo (Discreto) */}
-        <div className="pt-3 border-t border-neutral-900 text-[10px] font-mono text-neutral-500 flex flex-col gap-0.5 text-center">
-          <span>Identificação individual obrigatória por operador</span>
+        <div className="pt-2 border-t border-neutral-900 text-[10px] font-mono text-neutral-500 flex flex-col gap-0.5 text-center">
+          <span>PIN padrão fábrica: Admin (123456) • Operador (000000) • Recepção (111111)</span>
         </div>
       </div>
     </div>
