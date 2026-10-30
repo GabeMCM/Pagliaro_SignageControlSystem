@@ -36,5 +36,5 @@ pnpm-debug.log*
 # Arquivos unicos do projeto
 .rules/
 
-# Cache local de áudio do YouTube
+# Cache local de áudio
 media/audio-cache/

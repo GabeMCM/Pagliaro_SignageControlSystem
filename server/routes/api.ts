@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { db } from "../services/db.ts";
 import { wsManager, detectDeviceType } from "../ws/manager.ts";
-import { youtubeService } from "../services/youtube.ts";
 import { dropboxService } from "../services/dropbox.ts";
 import {
   clearAutomationOverride,
@@ -11,13 +10,6 @@ import {
   type ScheduleTask,
 } from "../services/scheduler.ts";
 import { roomEventQueue } from "../services/event-queue.ts";
-import {
-  ensureAudioCached,
-  getAudioCacheStatus,
-  getCachedAudio,
-  prefetchAudio,
-  serveCachedAudio,
-} from "../services/audio-cache.ts";
 import {
   getAdiauAsset,
   getAdiauData,
@@ -625,160 +617,6 @@ api.delete("/devices/:id", async (c) => {
   wsManager.broadcastDevicesUpdate();
   return c.json({ success: true, message: "Aparelho removido com sucesso." });
 });
-
-// ========================
-// YOUTUBE & STREAMING AUDIO (Zero Storage & Ad-Free)
-// ========================
-
-// 1. Pesquisa rápida no YouTube (títulos, artistas, hinos)
-api.get("/youtube/search", async (c) => {
-  const q = c.req.query("q") || "";
-  const limit = Math.min(30, Math.max(1, Number(c.req.query("limit")) || 15));
-  if (!q.trim()) {
-    return c.json({ success: true, results: [] });
-  }
-  try {
-    const results = await youtubeService.search(q, limit);
-    return c.json({ success: true, results });
-  } catch (err: any) {
-    return c.json({ success: false, error: err.message || "Erro ao pesquisar no YouTube" }, 500);
-  }
-});
-
-// 2. Extrai faixas de uma Playlist do YouTube
-api.get("/youtube/playlist", async (c) => {
-  const url = c.req.query("url") || c.req.query("id") || "";
-  if (!url.trim()) {
-    return c.json({ success: false, error: "URL ou ID da playlist é obrigatório." }, 400);
-  }
-  try {
-    const playlist = await youtubeService.getPlaylist(url);
-    return c.json({ success: true, playlist });
-  } catch (err: any) {
-    return c.json({ success: false, error: err.message || "Erro ao carregar playlist do YouTube." }, 400);
-  }
-});
-
-// 3. Extrai informações de um único vídeo
-api.get("/youtube/video", async (c) => {
-  const url = c.req.query("url") || c.req.query("id") || "";
-  if (!url.trim()) {
-    return c.json({ success: false, error: "URL ou ID do vídeo é obrigatório." }, 400);
-  }
-  try {
-    const video = await youtubeService.getVideo(url);
-    return c.json({ success: true, video });
-  } catch (err: any) {
-    return c.json({ success: false, error: err.message || "Erro ao carregar vídeo do YouTube." }, 400);
-  }
-});
-
-// 4. Proxy de Streaming Direto de Áudio (AAC/MP4 sem anúncios e com Zero Storage)
-api.options("/youtube/stream/:videoId", (c) => {
-  return c.body(null, 204, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-    "Access-Control-Allow-Headers": "Range, User-Agent, Content-Type",
-  });
-});
-
-api.get("/youtube/stream/:videoId", async (c) => {
-  const rawId = c.req.param("videoId");
-  const videoId = youtubeService.extractVideoId(rawId);
-  if (!videoId) {
-    return c.text("ID de vídeo do YouTube inválido.", 400);
-  }
-
-  const range = c.req.header("range");
-
-  // 1. Caminho principal: arquivo local em disco (estável em qualquer TV, com Range/206)
-  try {
-    let cached = await getCachedAudio(videoId);
-    if (!cached) {
-      // Aguarda o download em blocos (normalmente 1–4s para uma música). Se demorar demais,
-      // cai no proxy ao vivo enquanto o download continua em segundo plano.
-      cached = await Promise.race([
-        ensureAudioCached(videoId),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500)),
-      ]).catch(() => null);
-    }
-    if (cached) {
-      return await serveCachedAudio(c.req.method, range, cached);
-    }
-  } catch (err: any) {
-    console.warn(`[YouTube Stream] Cache indisponível para ${videoId}: ${err?.message}`);
-  }
-
-  // 2. Fallback: proxy ao vivo do googlevideo (UA fixo de desktop e Range sempre presente)
-  const fetchStream = async (bypassCache = false) => {
-    const { url, mimeType } = await youtubeService.getAudioStreamUrl(videoId, bypassCache);
-    const headers: Record<string, string> = {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-      "Range": range || "bytes=0-",
-    };
-    const res = await fetch(url, { headers });
-    return { res, mimeType };
-  };
-
-  try {
-    let { res, mimeType } = await fetchStream(false);
-    if (res.status === 403 || res.status === 410) {
-      await res.body?.cancel().catch(() => {});
-      youtubeService.invalidateCache(videoId);
-      ({ res, mimeType } = await fetchStream(true));
-    }
-
-    if (!res.ok && res.status !== 206) {
-      youtubeService.invalidateCache(videoId);
-      return c.text(`Erro ao buscar áudio do YouTube (${res.status})`, res.status as any);
-    }
-
-    const responseHeaders = new Headers();
-    responseHeaders.set("Content-Type", res.headers.get("content-type") || mimeType || "audio/mp4");
-    responseHeaders.set("Accept-Ranges", "bytes");
-    responseHeaders.set("Cache-Control", "public, max-age=3600");
-    responseHeaders.set("Access-Control-Allow-Origin", "*");
-    responseHeaders.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-    responseHeaders.set("Access-Control-Allow-Headers", "Range, User-Agent, Content-Type");
-
-    const contentRange = res.headers.get("content-range");
-    const outStatus = !range && res.status === 206 ? 200 : res.status;
-    if (contentRange && outStatus === 206) responseHeaders.set("Content-Range", contentRange);
-
-    const contentLength = res.headers.get("content-length");
-    if (contentLength) responseHeaders.set("Content-Length", contentLength);
-
-    if (c.req.method === "HEAD") {
-      await res.body?.cancel().catch(() => {});
-      return new Response(null, {
-        status: outStatus,
-        headers: responseHeaders,
-      });
-    }
-
-    return new Response(res.body, {
-      status: outStatus,
-      headers: responseHeaders,
-    });
-  } catch (err: any) {
-    console.warn(`[YouTube Stream Fail] Vídeo ${videoId}: ${err.message}`);
-    return c.json({
-      error: "Stream do YouTube indisponível via datacenter em nuvem.",
-      code: "STREAM_UNAVAILABLE",
-    }, 503);
-  }
-});
-
-// Pré-download de faixa (o player chama para a PRÓXIMA música enquanto a atual toca)
-api.get("/youtube/prefetch/:videoId", (c) => {
-  const videoId = youtubeService.extractVideoId(c.req.param("videoId"));
-  if (!videoId) return c.json({ ok: false }, 400);
-  prefetchAudio(videoId);
-  return c.json({ ok: true, videoId }, 202);
-});
-
-// Diagnóstico do cache de áudio
-api.get("/youtube/cache-status", (c) => c.json(getAudioCacheStatus()));
 
 // ========================
 // AGENDAMENTOS E AUTOMAÇÕES (Timeline de Cerimônias e Velórios)

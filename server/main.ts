@@ -7,7 +7,6 @@ import { wsRoute } from "./ws/index.ts";
 import { initScheduler } from "./services/scheduler.ts";
 import { db, tryConnectMongo } from "./services/db.ts";
 import { warmAdiauUrl } from "./services/adiau.ts";
-import { prefetchRoomAudio } from "./services/audio-cache.ts";
 
 const app = new Hono();
 
@@ -74,15 +73,12 @@ await tryConnectMongo().catch((err) => {
   console.error("⚠️ [Server] Aviso ao conectar ao MongoDB Atlas:", err);
 });
 
-// Pré-aquece o cache do Adiaŭ e o cache de áudio em disco para as salas já configuradas
+// Pré-aquece o cache do Adiaŭ para as salas já configuradas
 try {
   const initialState = await db.getState();
   for (const roomState of Object.values<any>(initialState || {})) {
     if (roomState?.siteUrl) {
       warmAdiauUrl(roomState.siteUrl);
-    }
-    if (roomState && typeof roomState === "object") {
-      prefetchRoomAudio(roomState);
     }
   }
 } catch (_e) {}

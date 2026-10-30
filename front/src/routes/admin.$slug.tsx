@@ -6,8 +6,6 @@ import {
   type Playlist,
   type PlaylistItem,
   type DeviceInfo,
-  type YoutubeTrackResult,
-  type YoutubePlaylistResult,
   type RadioStationItem,
   type DropboxTrack,
   type DropboxStatus,
@@ -98,7 +96,7 @@ export const Route = createFileRoute("/admin/$slug")({
 function cleanAudioUrl(rawUrl: string): string {
   let url = rawUrl.trim();
   if (!url) return url;
-  if (!/^https?:\/\//i.test(url) && !url.startsWith("youtube:")) {
+  if (!/^https?:\/\//i.test(url)) {
     url = "https://" + url;
   }
   const gdriveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
@@ -1064,28 +1062,15 @@ function RoomOperator() {
   const [siteInputUrl, setSiteInputUrl] = useState("");
   const [audioStreamInputUrl, setAudioStreamInputUrl] = useState("");
 
-  // Sub-modo de áudio no Modo Básico: dropbox, busca youtube, importar playlist, fila da sala ou web rádio
-  const [basicAudioTab, setBasicAudioTab] = useState<"dropbox" | "youtube" | "playlist_import" | "playlist" | "stream">("dropbox");
+  // Sub-modo de áudio: Meu Dropbox, Web Rádio 24h ou Fila da Sala
+  const [basicAudioTab, setBasicAudioTab] = useState<"dropbox" | "stream" | "playlist">("dropbox");
 
   // Inputs para adicionar faixa à playlist no Modo Básico
   const [newTrackUrl, setNewTrackUrl] = useState("");
   const [newTrackTitle, setNewTrackTitle] = useState("");
   const [multiLinksText, setMultiLinksText] = useState("");
   const [showMultiLinksModal, setShowMultiLinksModal] = useState(false);
-
-  // Estados para Busca Direta no YouTube
-  const [ytQuery, setYtQuery] = useState("");
-  const [ytResults, setYtResults] = useState<YoutubeTrackResult[]>([]);
-  const [isSearchingYt, setIsSearchingYt] = useState(false);
-  const [ytSearchError, setYtSearchError] = useState(null as string | null);
   const [addedSuccessId, setAddedSuccessId] = useState(null as string | null);
-
-  // Estados para Importação de Playlist / Álbum do YouTube
-  const [playlistInputUrl, setPlaylistInputUrl] = useState("");
-  const [loadedPlaylistPreview, setLoadedPlaylistPreview] = useState<YoutubePlaylistResult | null>(null);
-  const [isLoadingPlaylist, setIsLoadingPlaylist] = useState(false);
-  const [playlistError, setPlaylistError] = useState<string | null>(null);
-  const [importSuccessMsg, setImportSuccessMsg] = useState<string | null>(null);
 
   // Estados e Presets para Web Rádio 24h
   const radioPresetsQ = useQuery({
@@ -1566,230 +1551,17 @@ function RoomOperator() {
     }
   };
 
-  // ==========================================
-  // Ações de YouTube (Busca & Importação de Playlist)
-  // ==========================================
-  const handleSearchYt = async (termToSearch?: string) => {
-    const q = (termToSearch !== undefined ? termToSearch : ytQuery).trim();
-    if (!q) return;
-    if (termToSearch !== undefined) {
-      setYtQuery(termToSearch);
-    }
-    setIsSearchingYt(true);
-    setYtSearchError(null);
-    try {
-      const res = await signageApi.searchYoutube(q, 15);
-      setYtResults(res.results || []);
-      if ((res.results || []).length === 0) {
-        setYtSearchError("Nenhum resultado encontrado para esta busca.");
-      }
-    } catch (err: any) {
-      setYtSearchError(err.message || "Erro ao buscar no YouTube.");
-    } finally {
-      setIsSearchingYt(false);
-    }
-  };
-
-  const handleAddYtTrack = async (track: YoutubeTrackResult, playImmediately = false) => {
-    const newItem: PlaylistItem = {
-      url: track.url,
-      title: track.title,
-      type: "audio",
-      duration: track.durationSeconds,
-      muted: false,
-      volume: 100,
-    };
-
-    let targetPlaylistId = activeAudio?.id;
-    let targetItems = [...(activeAudio?.items || [])];
-
-    if (activeAudio) {
-      targetItems.push(newItem);
-      await signageApi.updatePlaylist(activeAudio.id, {
-        ...activeAudio,
-        items: targetItems,
-      });
-      if (stateQ.data?.audioStreamUrl) {
-        await signageApi.setState(slug, { audioStreamUrl: null, audioStatus: "playing" });
-      }
-    } else {
-      const playlistName = `Áudio - ${currentRoom?.name || slug}`;
-      const existingQueue = audioPlaylists.find((p) => p.name === playlistName);
-      if (existingQueue) {
-        targetPlaylistId = existingQueue.id;
-        targetItems = [...(existingQueue.items || []), newItem];
-        await signageApi.updatePlaylist(targetPlaylistId, {
-          ...existingQueue,
-          items: targetItems,
-        });
-        await signageApi.setState(slug, {
-          audioPlaylist: targetPlaylistId,
-          audioStreamUrl: null,
-          audioStatus: "playing",
-        });
-      } else {
-        const res = await signageApi.createPlaylist({
-          name: playlistName,
-          type: "audio",
-          items: [newItem],
-          loop: true,
-          loopMode: "all",
-          shuffle: false,
-        });
-        targetPlaylistId = res.playlist?.id;
-        if (targetPlaylistId) {
-          await signageApi.setState(slug, {
-            audioPlaylist: targetPlaylistId,
-            audioStreamUrl: null,
-            audioStatus: "playing",
-          });
-        }
-      }
-    }
-
-    setAddedSuccessId(track.id);
-    setTimeout(() => setAddedSuccessId(null), 2500);
-
-    if (playImmediately) {
-      const newIdx = targetItems.length - 1;
-      signageApi.setTrackIndex(slug, newIdx);
-      await signageApi.setState(slug, { audioStatus: "playing" });
-    }
-
-    qc.invalidateQueries({ queryKey: ["playlists"] });
-    qc.invalidateQueries({ queryKey: ["state", slug] });
-  };
-
-  const handleFetchPlaylistInfo = async () => {
-    if (!playlistInputUrl.trim()) return;
-    setIsLoadingPlaylist(true);
-    setPlaylistError(null);
-    setLoadedPlaylistPreview(null);
-    setImportSuccessMsg(null);
-    try {
-      const res = await signageApi.getYoutubePlaylist(playlistInputUrl.trim());
-      if (res.playlist && res.playlist.videos.length > 0) {
-        setLoadedPlaylistPreview(res.playlist);
-      } else {
-        setPlaylistError("A playlist do YouTube não possui vídeos disponíveis ou é privada.");
-      }
-    } catch (err: any) {
-      setPlaylistError(err.message || "Erro ao carregar playlist do YouTube. Verifique o link.");
-    } finally {
-      setIsLoadingPlaylist(false);
-    }
-  };
-
-  const handleImportPlaylistTracks = async (mode: "replace" | "append" | "new", limit?: number) => {
-    if (!loadedPlaylistPreview || loadedPlaylistPreview.videos.length === 0) return;
-    setIsLoadingPlaylist(true);
-    setPlaylistError(null);
-
-    const sourceVideos = limit
-      ? loadedPlaylistPreview.videos.slice(0, limit)
-      : loadedPlaylistPreview.videos;
-
-    const newItems: PlaylistItem[] = sourceVideos.map((v) => ({
-      url: v.url,
-      title: v.title,
-      type: "audio",
-      duration: v.durationSeconds,
-      muted: false,
-      volume: 100,
-    }));
-
-    try {
-      if (mode === "new" || !activeAudio) {
-        const res = await signageApi.createPlaylist({
-          name: loadedPlaylistPreview.title || `Playlist YouTube - ${currentRoom?.name || slug}`,
-          type: "audio",
-          items: newItems,
-          loop: true,
-          loopMode: "all",
-          shuffle: false,
-        });
-        if (res.playlist?.id) {
-          await signageApi.setState(slug, {
-            audioPlaylist: res.playlist.id,
-            audioStreamUrl: null,
-            audioStatus: "playing",
-            currentAudioIndex: 0,
-          });
-        }
-      } else if (mode === "append") {
-        const combined = [...(activeAudio.items || []), ...newItems];
-        await signageApi.updatePlaylist(activeAudio.id, {
-          ...activeAudio,
-          items: combined,
-        });
-        if (stateQ.data?.audioStreamUrl) {
-          await signageApi.setState(slug, { audioStreamUrl: null, audioStatus: "playing" });
-        }
-      } else if (mode === "replace") {
-        await signageApi.updatePlaylist(activeAudio.id, {
-          ...activeAudio,
-          name: loadedPlaylistPreview.title || activeAudio.name,
-          items: newItems,
-        });
-        await signageApi.setState(slug, {
-          audioStreamUrl: null,
-          audioStatus: "playing",
-          currentAudioIndex: 0,
-        });
-      }
-
-      setImportSuccessMsg(`${newItems.length} faixas importadas com sucesso para a sala!`);
-      setPlaylistInputUrl("");
-      setLoadedPlaylistPreview(null);
-      setTimeout(() => {
-        setBasicAudioTab("playlist");
-        setImportSuccessMsg(null);
-      }, 1500);
-
-      qc.invalidateQueries({ queryKey: ["playlists"] });
-      qc.invalidateQueries({ queryKey: ["state", slug] });
-    } catch (err: any) {
-      setPlaylistError(err.message || "Erro ao salvar faixas importadas.");
-    } finally {
-      setIsLoadingPlaylist(false);
-    }
-  };
-
   // Ações de Músicas / Playlist
   const handleAddTrack = async (rawUrl: string, customTitle?: string) => {
     if (!rawUrl.trim()) return;
     const cleaned = cleanAudioUrl(rawUrl);
-
-    // Se detectou playlist do YouTube, encaminha direto para a aba de importação
-    if (cleaned.includes("list=")) {
-      setPlaylistInputUrl(cleaned);
-      setBasicAudioTab("playlist_import");
-      return;
-    }
-
-    let title = customTitle?.trim() || "";
-    let duration: number | undefined;
-
-    // Se for link do YouTube e não foi passado título manual, obtém dados oficiais
-    if (!title && (cleaned.includes("youtube.com") || cleaned.includes("youtu.be"))) {
-      try {
-        const vidRes = await signageApi.getYoutubeVideo(cleaned);
-        if (vidRes.video?.title) {
-          title = vidRes.video.title;
-          duration = vidRes.video.durationSeconds;
-        }
-      } catch (_e) {}
-    }
-
-    if (!title) {
-      title = extractTrackTitle(cleaned, customTitle);
-    }
+    const title = customTitle?.trim() || extractTrackTitle(cleaned, customTitle);
 
     const newItem: PlaylistItem = {
       url: cleaned,
       title,
       type: "audio",
-      duration,
+      duration: undefined,
       muted: false,
       volume: 100,
     };
@@ -2406,7 +2178,7 @@ function RoomOperator() {
             {/* Campo Alternativo para Link Manual / Outro Site */}
             <div className="space-y-1.5 w-full pt-1 border-t border-neutral-900">
               <label className="text-xs font-semibold text-neutral-400 block font-mono">
-                Ou cole um link manual (YouTube, painel externo ou URL customizada):
+                Ou cole um link manual de site (painel externo ou URL customizada):
               </label>
               <div className="flex flex-col sm:flex-row items-stretch gap-1.5 w-full">
                 <input
@@ -2588,8 +2360,8 @@ function RoomOperator() {
               )}
             </div>
 
-            {/* Seletor de 5 Abas: Dropbox, Rádio, Fila, YouTube, Importar */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 bg-neutral-950 border border-neutral-900 p-0.5 rounded-none gap-1 w-full">
+            {/* Seletor de 3 Abas: Dropbox, Rádio, Fila */}
+            <div className="grid grid-cols-3 bg-neutral-950 border border-neutral-900 p-0.5 rounded-none gap-1 w-full">
               <button
                 onClick={() => setBasicAudioTab("dropbox")}
                 className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
@@ -2622,28 +2394,6 @@ function RoomOperator() {
               >
                 <ListMusic className="h-3.5 w-3.5 flex-shrink-0" />
                 <span className="truncate">Fila ({activeAudio?.items?.length || 0})</span>
-              </button>
-              <button
-                onClick={() => setBasicAudioTab("youtube")}
-                className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
-                  basicAudioTab === "youtube"
-                    ? "bg-neutral-800 text-white border border-neutral-900 shadow-sm font-bold"
-                    : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Search className="h-3.5 w-3.5 flex-shrink-0" />
-                <span className="truncate">Buscar YouTube</span>
-              </button>
-              <button
-                onClick={() => setBasicAudioTab("playlist_import")}
-                className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
-                  basicAudioTab === "playlist_import"
-                    ? "bg-neutral-800 text-white border border-neutral-900 shadow-sm font-bold"
-                    : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Disc className="h-3.5 w-3.5 flex-shrink-0" />
-                <span className="truncate">Importar Link</span>
               </button>
             </div>
 
@@ -3007,270 +2757,8 @@ function RoomOperator() {
               </div>
             )}
 
-            {/* ============================================================ */}
-            {/* SUB-ABA 1: PESQUISAR NO YOUTUBE                              */}
-            {/* ============================================================ */}
-            {basicAudioTab === "youtube" && (
-              <div className="space-y-2.5 w-full">
-                <div className="bg-neutral-950/70 p-3 sm:p-3.5 rounded-none border border-neutral-900 space-y-2.5">
-                  <div className="space-y-0.5">
-                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Search className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
-                      <span>Buscar Músicas e Artistas no YouTube</span>
-                    </span>
-                  </div>
 
-                  {/* Barra de Busca */}
-                  <div className="flex flex-col sm:flex-row items-stretch gap-1.5 w-full">
-                    <div className="relative flex-1">
-                      <input
-                        placeholder="Ex: Padre Marcelo Rossi, Harpa Cristã, Pe. Fábio de Melo..."
-                        value={ytQuery}
-                        onChange={(e) => setYtQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSearchYt()}
-                        className="w-full rounded-none border border-neutral-900 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500"
-                      />
-                    </div>
-                    <button
-                      onClick={() => handleSearchYt()}
-                      disabled={!ytQuery.trim() || isSearchingYt}
-                      className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-none bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm flex-shrink-0"
-                    >
-                      {isSearchingYt ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          <span>Buscando...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Search className="h-3.5 w-3.5" />
-                          <span>Buscar</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
 
-                {/* Mensagem de Erro na Busca */}
-                {ytSearchError && (
-                  <div className="p-2.5 rounded-none bg-neutral-900 border border-red-500/40 text-xs text-red-300 flex items-center gap-2">
-                    <Info className="h-3.5 w-3.5 flex-shrink-0 text-red-400" />
-                    <span>{ytSearchError}</span>
-                  </div>
-                )}
-
-                {/* Lista de Resultados da Busca */}
-                {ytResults.length > 0 && (
-                  <div className="space-y-1.5 w-full">
-                    <div className="flex items-center justify-between text-xs text-neutral-400 px-1">
-                      <span className="font-semibold text-neutral-300 text-[11px]">
-                        Resultados Encontrados ({ytResults.length})
-                      </span>
-                      <span className="text-[10px] text-neutral-500 hidden sm:inline">
-                        Adicione à fila ou toque imediatamente na sala
-                      </span>
-                    </div>
-
-                    <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-0.5">
-                      {ytResults.map((item) => {
-                        const isJustAdded = addedSuccessId === item.id;
-
-                        return (
-                          <div
-                            key={item.id}
-                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 sm:p-2.5 rounded-none border border-neutral-900 bg-neutral-950/60 hover:border-neutral-700 transition"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                              {/* Thumbnail com tempo */}
-                              {item.thumbnailUrl && (
-                                <div className="relative w-14 h-10 sm:w-16 sm:h-11 rounded-none overflow-hidden bg-neutral-900 flex-shrink-0">
-                                  <img
-                                    src={item.thumbnailUrl}
-                                    alt={item.title}
-                                    className="w-full h-full object-cover"
-                                    loading="lazy"
-                                  />
-                                  <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[9px] text-white px-1 rounded-none font-mono">
-                                    {item.durationFormatted}
-                                  </span>
-                                </div>
-                              )}
-
-                              <div className="min-w-0 flex-1">
-                                <h4 className="text-xs sm:text-sm font-medium text-white line-clamp-2 leading-tight">
-                                  {item.title}
-                                </h4>
-                                {item.author && (
-                                  <p className="text-[10px] text-neutral-400 mt-0.5 truncate">
-                                    {item.author}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Botões de Ação */}
-                            <div className="flex items-center gap-1.5 self-end sm:self-center flex-shrink-0">
-                              <button
-                                onClick={() => handleAddYtTrack(item, false)}
-                                className={`min-h-[32px] px-2.5 rounded-none text-xs font-semibold transition flex items-center gap-1 ${
-                                  isJustAdded
-                                    ? "bg-neutral-800 text-emerald-400 border border-emerald-500/40 font-bold"
-                                    : "bg-neutral-900 border border-neutral-900 text-neutral-300 hover:bg-neutral-800 hover:text-white"
-                                }`}
-                              >
-                                {isJustAdded ? (
-                                  <>
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    <span>Adicionado!</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Plus className="h-3 w-3" />
-                                    <span>+ Fila</span>
-                                  </>
-                                )}
-                              </button>
-                              <button
-                                onClick={() => handleAddYtTrack(item, true)}
-                                className="min-h-[32px] px-3 rounded-none bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center gap-1 shadow-sm"
-                                title="Adiciona e inicia a reprodução agora na TV"
-                              >
-                                <Play className="h-3 w-3 ml-0.5" />
-                                <span>Tocar Agora</span>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ============================================================ */}
-            {/* SUB-ABA 2: IMPORTAR PLAYLIST / ÁLBUM DO YOUTUBE               */}
-            {/* ============================================================ */}
-            {basicAudioTab === "playlist_import" && (
-              <div className="space-y-3 w-full">
-                <div className="bg-neutral-950/70 p-3 sm:p-3.5 rounded-none border border-neutral-900 space-y-2.5">
-                  <div className="space-y-0.5">
-                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Disc className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
-                      <span>Importar Playlist ou Álbum Inteiro do YouTube</span>
-                    </span>
-                    <p className="text-[11px] text-neutral-400">
-                      Cole o link de uma playlist pública (ex: Harpa Cristã, álbuns completos ou seleções). Todas as faixas são importadas em segundos.
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row items-stretch gap-1.5 w-full">
-                    <input
-                      placeholder="https://www.youtube.com/playlist?list=PLzWjmBOf3rY3hAXmvMI1..."
-                      value={playlistInputUrl}
-                      onChange={(e) => setPlaylistInputUrl(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleFetchPlaylistInfo()}
-                      className="w-full flex-1 rounded-none border border-neutral-900 bg-neutral-950 px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-500 font-mono"
-                    />
-                    <button
-                      onClick={handleFetchPlaylistInfo}
-                      disabled={!playlistInputUrl.trim() || isLoadingPlaylist}
-                      className="w-full sm:w-auto min-h-[36px] px-4 py-2 rounded-none bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm flex-shrink-0"
-                    >
-                      {isLoadingPlaylist ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          <span>Carregando...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Disc className="h-3.5 w-3.5" />
-                          <span>Carregar Playlist</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  <p className="text-[10px] text-neutral-500 flex items-center gap-1">
-                    <Info className="h-3 w-3 flex-shrink-0 text-neutral-500" />
-                    <span>Também funciona colando o link de um vídeo que faz parte de uma playlist (com &quot;&amp;list=...&quot;).</span>
-                  </p>
-                </div>
-
-                {/* Feedback de Erro */}
-                {playlistError && (
-                  <div className="p-2.5 rounded-none bg-neutral-900 border border-red-500/40 text-xs text-red-300 flex items-center gap-2">
-                    <Info className="h-3.5 w-3.5 flex-shrink-0 text-red-400" />
-                    <span>{playlistError}</span>
-                  </div>
-                )}
-
-                {/* Feedback de Sucesso */}
-                {importSuccessMsg && (
-                  <div className="p-2.5 rounded-none bg-neutral-900 border border-emerald-500/40 text-xs text-emerald-300 flex items-center gap-2">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 flex-shrink-0" />
-                    <span className="font-semibold">{importSuccessMsg}</span>
-                  </div>
-                )}
-
-                {/* Card de Pré-visualização da Playlist Encontrada */}
-                {loadedPlaylistPreview && (
-                  <div className="p-3 rounded-none border border-neutral-900 bg-neutral-900/50 space-y-2.5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-neutral-900 pb-2">
-                      <div>
-                        <span className="text-[9px] uppercase font-bold text-neutral-400 tracking-wider">
-                          Playlist Reconhecida
-                        </span>
-                        <h3 className="text-xs sm:text-sm font-bold text-white mt-0.5">
-                          {loadedPlaylistPreview.title}
-                        </h3>
-                        <p className="text-[11px] text-neutral-400 mt-0.5">
-                          {loadedPlaylistPreview.videoCount} músicas encontradas no YouTube
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <span className="text-xs font-semibold text-neutral-300 block">
-                        Como deseja importar para esta sala?
-                      </span>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                        <button
-                          onClick={() => handleImportPlaylistTracks("replace")}
-                          disabled={isLoadingPlaylist}
-                          className="min-h-[36px] px-3 py-2 rounded-none bg-white text-black font-bold text-xs hover:bg-neutral-200 transition flex items-center justify-center gap-1.5 shadow-sm"
-                        >
-                          <Disc className="h-3.5 w-3.5" />
-                          <span>Importar Todas ({loadedPlaylistPreview.videoCount} faixas)</span>
-                        </button>
-
-                        {activeAudio && (
-                          <button
-                            onClick={() => handleImportPlaylistTracks("append")}
-                            disabled={isLoadingPlaylist}
-                            className="min-h-[36px] px-3 py-2 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-200 font-semibold text-xs hover:text-white hover:bg-neutral-800 transition flex items-center justify-center gap-1.5"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            <span>Acrescentar à Fila Atual</span>
-                          </button>
-                        )}
-                      </div>
-
-                      {loadedPlaylistPreview.videoCount > 50 && (
-                        <button
-                          onClick={() => handleImportPlaylistTracks("replace", 50)}
-                          disabled={isLoadingPlaylist}
-                          className="w-full text-center text-[10px] text-neutral-400 hover:text-white pt-1"
-                        >
-                          Importar apenas as primeiras 50 faixas mais tocadas
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* ============================================================ */}
             {/* SUB-ABA 3: FILA DE MÚSICAS DA SALA                           */}
@@ -3406,7 +2894,7 @@ function RoomOperator() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 w-full">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
                       <Plus className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
-                      <span>Adicionar Link à Fila (YouTube / MP3)</span>
+                      <span>Adicionar Link Direto à Fila (MP3 / Áudio)</span>
                     </span>
                     <button
                       onClick={() => setShowMultiLinksModal(true)}
@@ -3419,7 +2907,7 @@ function RoomOperator() {
 
                   <div className="flex flex-col sm:grid sm:grid-cols-[1fr_180px_auto] gap-1.5 w-full">
                     <input
-                      placeholder="Cole link do YouTube ou áudio MP3..."
+                      placeholder="Cole link de arquivo MP3, AAC ou stream direto..."
                       value={newTrackUrl}
                       onChange={(e) => setNewTrackUrl(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleAddTrack(newTrackUrl, newTrackTitle)}
@@ -3570,18 +3058,18 @@ function RoomOperator() {
                       <div>Nenhuma música na lista no momento.</div>
                       <div className="flex items-center justify-center gap-2 pt-1">
                         <button
-                          onClick={() => setBasicAudioTab("youtube")}
-                          className="px-3 py-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-900 text-xs font-semibold hover:bg-neutral-800 hover:text-white transition flex items-center gap-1.5"
+                          onClick={() => setBasicAudioTab("dropbox")}
+                          className="px-3 py-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-800 text-xs font-semibold hover:bg-neutral-800 hover:text-white transition flex items-center gap-1.5"
                         >
-                          <Search className="h-3.5 w-3.5" />
-                          <span>Buscar no YouTube</span>
+                          <Cloud className="h-3.5 w-3.5" />
+                          <span>Buscar no Meu Dropbox</span>
                         </button>
                         <button
-                          onClick={() => setBasicAudioTab("playlist_import")}
-                          className="px-3 py-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-900 text-xs font-semibold hover:bg-neutral-800 hover:text-white transition flex items-center gap-1.5"
+                          onClick={() => setBasicAudioTab("stream")}
+                          className="px-3 py-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-800 text-xs font-semibold hover:bg-neutral-800 hover:text-white transition flex items-center gap-1.5"
                         >
-                          <Disc className="h-3.5 w-3.5" />
-                          <span>Importar Playlist</span>
+                          <RadioIcon className="h-3.5 w-3.5" />
+                          <span>Sintonizar Web Rádio</span>
                         </button>
                       </div>
                     </div>
@@ -4239,12 +3727,12 @@ function RoomOperator() {
             </div>
 
             <p className="text-xs text-neutral-400">
-              Cole sua lista de links do YouTube ou arquivos de áudio MP3 (um por linha). O sistema adiciona diretamente à fila da sala.
+              Cole sua lista de links de arquivos de áudio MP3, AAC ou streams (um por linha). O sistema adiciona diretamente à fila da sala.
             </p>
 
             <textarea
               rows={8}
-              placeholder={`https://www.youtube.com/watch?v=xV7ZzeBR3oc\nhttps://www.youtube.com/watch?v=QXX-O1U2ufY\nhttps://meusite.com/audio.mp3`}
+              placeholder={`https://meusite.com/musica1.mp3\nhttps://meusite.com/musica2.mp3\nhttps://exemplo.com/stream`}
               value={multiLinksText}
               onChange={(e) => setMultiLinksText(e.target.value)}
               className="w-full rounded-none border border-neutral-900 bg-neutral-950 p-3 text-xs text-white placeholder-neutral-600 outline-none focus:border-neutral-500 font-mono"

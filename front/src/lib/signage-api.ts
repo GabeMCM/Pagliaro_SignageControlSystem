@@ -37,7 +37,7 @@ export interface Room {
 export interface PlaylistItem {
   url: string;
   title?: string;
-  type?: "video" | "image" | "youtube" | "audio" | "web";
+  type?: "video" | "image" | "audio" | "web";
   duration?: number;
   muted?: boolean;
   volume?: number;
@@ -51,23 +51,6 @@ export interface Playlist {
   loop?: boolean;
   loopMode?: "all" | "one" | "none";
   shuffle?: boolean;
-}
-
-export interface YoutubeTrackResult {
-  id: string;
-  title: string;
-  author?: string;
-  durationSeconds: number;
-  durationFormatted: string;
-  thumbnailUrl?: string;
-  url: string;
-}
-
-export interface YoutubePlaylistResult {
-  id: string;
-  title: string;
-  videoCount: number;
-  videos: YoutubeTrackResult[];
 }
 
 export interface RadioStationItem {
@@ -355,21 +338,6 @@ export const signageApi = {
       method: "POST",
       body: JSON.stringify({ clientId, reason }),
     }),
-
-  searchYoutube: (query: string, limit = 15) =>
-    request<{ success: boolean; results: YoutubeTrackResult[] }>(
-      `/api/youtube/search?q=${encodeURIComponent(query)}&limit=${limit}`
-    ),
-
-  getYoutubePlaylist: (urlOrId: string) =>
-    request<{ success: boolean; playlist: YoutubePlaylistResult }>(
-      `/api/youtube/playlist?url=${encodeURIComponent(urlOrId)}`
-    ),
-
-  getYoutubeVideo: (urlOrId: string) =>
-    request<{ success: boolean; video: YoutubeTrackResult }>(
-      `/api/youtube/video?url=${encodeURIComponent(urlOrId)}`
-    ),
 
   getDropboxStatus: () => request<DropboxStatus>("/api/dropbox/status"),
 

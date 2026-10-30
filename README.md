@@ -2,7 +2,7 @@
 
 Um sistema de Digital Signage (Sinalização Digital) leve, rápido e em tempo real, construído com **Deno**, **React** e **WebSockets**.
 
-Este projeto permite gerenciar e controlar telas (Players/Kiosks) de forma remota a partir de um painel de administração centralizado. Ele suporta tanto a **exibição remota de Websites e Dashboards** quanto playlists de imagens, vídeos e YouTube, mantendo sempre o áudio de fundo (BGM) sincronizado e com volume ajustável remotamente.
+Este projeto permite gerenciar e controlar telas (Players/Kiosks) de forma remota a partir de um painel de administração centralizado. Ele suporta tanto a **exibição remota de Websites e Dashboards** quanto playlists de imagens e vídeos, Web Rádio ao vivo e integração com Dropbox para músicas, mantendo sempre o áudio de fundo (BGM) sincronizado e com volume ajustável remotamente.
 
 ## 🚀 Tecnologias Utilizadas
 
@@ -14,10 +14,10 @@ Este projeto permite gerenciar e controlar telas (Players/Kiosks) de forma remot
 ## ✨ Principais Funcionalidades
 
 - 🌐 **Exibição e Controle de Sites Remotos (Novo!):** Defina qualquer URL externa ou dashboard (Grafana, PowerBI, intranet, sites públicos) para rodar em tela cheia no display. Possui botão de recarregar site remoto sem reiniciar a TV e opção de alternar entre modo site e modo playlist a qualquer momento.
-- 🎵 **Áudio de Fundo Ininterrupto (BGM):** Enquanto a página web ou dashboard está na tela, a trilha sonora de áudio continua tocando de fundo sem interrupções.
+- 🎵 **Áudio de Fundo Ininterrupto (BGM):** Enquanto a página web ou dashboard está na tela, a trilha sonora de áudio continua tocando de fundo sem interrupções (Web Rádio ao vivo ou faixas da nuvem via Dropbox).
 - 🔊 **Controle Remoto de Volume Master:** Ajuste o volume das TVs diretamente pelo painel administrativo em tempo real via slider e botões mute/unmute.
 - 🟢 **Status Online/Offline das Telas:** Indicador em tempo real no painel que mostra quais salas estão conectadas e a quantidade de TVs ativas.
-- 📺 **Multi-formato de Mídia:** Suporte a websites/URLs, vídeos MP4/WebM, imagens com tempo de exibição configurável, e vídeos do YouTube.
+- 📺 **Multi-formato de Mídia:** Suporte a websites/URLs, vídeos MP4/WebM e imagens com tempo de exibição configurável.
 - 📁 **Galeria de Mídias do Servidor:** Visualize e reutilize arquivos de imagem, vídeo e áudio já enviados ao servidor sem precisar fazer upload repetido.
 - ✏️ **Edição Ágil de Playlists:** Botão de edição direta nos cards, reordenação de itens por arrastar e soltar (drag & drop) e miniaturas visuais na fila.
 - 🔄 **Hot-Reload e Sincronização em Tempo Real:** Atualizações feitas no painel refletem imediatamente nas TVs via WebSocket, com botão de "Force Reload TV" caso precise forçar um recarregamento completo da página.
