@@ -51,12 +51,140 @@ function promiseTimeout<T>(promise: Promise<T>, ms: number, message: string): Pr
   });
 }
 
+// Fallback de Busca via raspagem de ytInitialData (resiliente em datacenters em nuvem como Render)
+async function scrapeSearch(query: string, limit = 15): Promise<YoutubeTrack[]> {
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query.trim())}`;
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const html = await res.text();
+  const match = html.match(/ytInitialData\s*=\s*({.+?});<\/script>/);
+  if (!match) return [];
+  const data = JSON.parse(match[1]);
+  const contents =
+    data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents?.[0]
+      ?.itemSectionRenderer?.contents || [];
+
+  const results: YoutubeTrack[] = [];
+  for (const item of contents) {
+    const v = item.videoRenderer;
+    if (!v || !v.videoId) continue;
+    const durationText = v.lengthText?.simpleText || "";
+    let durationSeconds = 0;
+    if (durationText) {
+      const parts = durationText.split(":").map(Number);
+      if (parts.length === 2) durationSeconds = parts[0] * 60 + parts[1];
+      else if (parts.length === 3) durationSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    const title = v.title?.runs?.map((r: any) => r.text).join("") || v.title?.simpleText || "Sem título";
+    const author =
+      v.ownerText?.runs?.map((r: any) => r.text).join("") ||
+      v.shortBylineText?.runs?.map((r: any) => r.text).join("") ||
+      undefined;
+    const thumb = v.thumbnail?.thumbnails?.[0]?.url;
+
+    results.push({
+      id: v.videoId,
+      title,
+      author,
+      durationSeconds,
+      durationFormatted: durationText || formatDuration(durationSeconds),
+      thumbnailUrl: thumb,
+      url: `https://www.youtube.com/watch?v=${v.videoId}`,
+    });
+    if (results.length >= limit) break;
+  }
+  return results;
+}
+
+// Fallback de Metadados de Vídeo via oEmbed oficial do Google (nunca bloqueado em nuvem)
+async function fetchOEmbed(videoId: string): Promise<YoutubeTrack> {
+  const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+  const res = await fetch(oembedUrl);
+  if (!res.ok) throw new Error(`oEmbed HTTP ${res.status}`);
+  const data = await res.json();
+  return {
+    id: videoId,
+    title: data.title || "Vídeo do YouTube",
+    author: data.author_name || undefined,
+    durationSeconds: 0,
+    durationFormatted: "YouTube",
+    thumbnailUrl: data.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    url: `https://www.youtube.com/watch?v=${videoId}`,
+  };
+}
+
+// Fallback de Playlist via raspagem de ytInitialData
+async function scrapePlaylist(playlistId: string): Promise<YoutubePlaylistResult> {
+  const url = `https://www.youtube.com/playlist?list=${playlistId}`;
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept-Language": "pt-BR,pt;q=0.9",
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const html = await res.text();
+  const match = html.match(/ytInitialData\s*=\s*({.+?});<\/script>/);
+  if (!match) throw new Error("Não foi possível carregar dados da playlist.");
+  const data = JSON.parse(match[1]);
+  const plTitle = data.metadata?.playlistMetadataRenderer?.title || "Playlist do YouTube";
+  const tabs = data.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
+  const contents =
+    tabs[0]?.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents?.[0]
+      ?.playlistVideoListRenderer?.contents || [];
+
+  const videos: YoutubeTrack[] = [];
+  for (const item of contents) {
+    const v = item.playlistVideoRenderer;
+    if (!v || !v.videoId) continue;
+    const durSec = Number(v.lengthSeconds) || 0;
+    const title = v.title?.runs?.map((r: any) => r.text).join("") || v.title?.simpleText || "Sem título";
+    const author = v.shortBylineText?.runs?.map((r: any) => r.text).join("") || undefined;
+    const thumb = v.thumbnail?.thumbnails?.[0]?.url;
+
+    videos.push({
+      id: v.videoId,
+      title,
+      author,
+      durationSeconds: durSec,
+      durationFormatted: formatDuration(durSec),
+      thumbnailUrl: thumb,
+      url: `https://www.youtube.com/watch?v=${v.videoId}`,
+    });
+  }
+
+  return {
+    id: playlistId,
+    title: plTitle,
+    videoCount: videos.length,
+    videos,
+  };
+}
+
 class YoutubeService {
   private ytdl: Ytdl;
   private streamCache = new Map<string, StreamCacheEntry>();
 
   constructor() {
-    this.ytdl = new Ytdl();
+    const cookie = Deno.env.get("YOUTUBE_COOKIE");
+    if (cookie) {
+      try {
+        this.ytdl = new Ytdl({ cookie });
+        console.log("[YoutubeService] Ytdl inicializado com YOUTUBE_COOKIE fornecido");
+      } catch (e: any) {
+        console.warn("[YoutubeService] Falha ao inicializar com cookie, usando padrão:", e?.message);
+        this.ytdl = new Ytdl();
+      }
+    } else {
+      this.ytdl = new Ytdl();
+    }
   }
 
   /**
@@ -90,32 +218,47 @@ class YoutubeService {
   }
 
   /**
-   * Pesquisa vídeos no YouTube
+   * Pesquisa vídeos no YouTube (com fallback de raspagem se o datacenter for bloqueado)
    */
   public async search(query: string, limit = 15): Promise<YoutubeTrack[]> {
     if (!query || !query.trim()) return [];
-    try {
-      const searchRes: any = await this.ytdl.search(query.trim(), { limit });
-      if (!Array.isArray(searchRes)) return [];
 
-      return searchRes
-        .filter((item: any) => item && item.id)
-        .map((item: any): YoutubeTrack => {
-          const durationSec = Number(item.lengthSeconds) || 0;
-          return {
-            id: item.id,
-            title: item.title || "Sem título",
-            author: item.author?.name || undefined,
-            durationSeconds: durationSec,
-            durationFormatted: formatDuration(durationSec),
-            thumbnailUrl: item.thumbnails?.[0]?.url || undefined,
-            url: `https://www.youtube.com/watch?v=${item.id}`,
-          };
-        });
-    } catch (err) {
-      console.error("[YoutubeService] Erro na busca:", err);
-      throw err;
+    // 1. Tenta API do Ytdl
+    try {
+      const searchRes: any = await promiseTimeout(
+        this.ytdl.search(query.trim(), { limit }),
+        5000,
+        "Timeout ytdl search"
+      );
+      if (Array.isArray(searchRes) && searchRes.length > 0) {
+        return searchRes
+          .filter((item: any) => item && item.id)
+          .map((item: any): YoutubeTrack => {
+            const durationSec = Number(item.lengthSeconds) || 0;
+            return {
+              id: item.id,
+              title: item.title || "Sem título",
+              author: item.author?.name || undefined,
+              durationSeconds: durationSec,
+              durationFormatted: formatDuration(durationSec),
+              thumbnailUrl: item.thumbnails?.[0]?.url || undefined,
+              url: `https://www.youtube.com/watch?v=${item.id}`,
+            };
+          });
+      }
+    } catch (err: any) {
+      console.warn("[YoutubeService] ytdl.search indisponível em datacenter, acionando fallback de raspagem:", err?.message);
     }
+
+    // 2. Fallback resiliente: raspagem direta de ytInitialData (nunca falha no Render)
+    try {
+      const scraped = await scrapeSearch(query.trim(), limit);
+      if (scraped.length > 0) return scraped;
+    } catch (scrapeErr: any) {
+      console.error("[YoutubeService] Erro no fallback de raspagem de busca:", scrapeErr?.message);
+    }
+
+    return [];
   }
 
   /**
@@ -128,7 +271,11 @@ class YoutubeService {
     }
 
     try {
-      const pl: any = await this.ytdl.getPlaylist(playlistId);
+      const pl: any = await promiseTimeout(
+        this.ytdl.getPlaylist(playlistId),
+        6000,
+        "Timeout ytdl getPlaylist"
+      );
       const rawVideos = Array.isArray(pl.videos) ? pl.videos : [];
 
       const videos: YoutubeTrack[] = rawVideos
@@ -146,20 +293,29 @@ class YoutubeService {
           };
         });
 
-      return {
-        id: pl.id || playlistId,
-        title: pl.title || "Playlist do YouTube",
-        videoCount: videos.length,
-        videos,
-      };
+      if (videos.length > 0) {
+        return {
+          id: pl.id || playlistId,
+          title: pl.title || "Playlist do YouTube",
+          videoCount: videos.length,
+          videos,
+        };
+      }
     } catch (err: any) {
-      console.error("[YoutubeService] Erro ao carregar playlist:", err);
-      throw new Error(err.message || "Não foi possível carregar a playlist do YouTube.");
+      console.warn("[YoutubeService] ytdl.getPlaylist indisponível, acionando fallback de playlist:", err?.message);
+    }
+
+    // Fallback: raspagem de playlist
+    try {
+      return await scrapePlaylist(playlistId);
+    } catch (scrapeErr: any) {
+      console.error("[YoutubeService] Erro no fallback de playlist:", scrapeErr?.message);
+      throw new Error("Não foi possível carregar a playlist do YouTube.");
     }
   }
 
   /**
-   * Obtém informações de um único vídeo
+   * Obtém informações de um único vídeo (com fallback de oEmbed oficial)
    */
   public async getVideo(videoUrlOrId: string): Promise<YoutubeTrack> {
     const videoId = this.extractVideoId(videoUrlOrId);
@@ -167,8 +323,9 @@ class YoutubeService {
       throw new Error("URL ou ID de vídeo do YouTube inválido.");
     }
 
+    // 1. Tenta ytdl getInfo
     try {
-      const info = await this.ytdl.getInfo(videoId);
+      const info = await promiseTimeout(this.ytdl.getInfo(videoId), 4000, "Timeout ytdl getInfo");
       const details = info.videoDetails;
       const durationSec = Number(details.lengthSeconds) || 0;
 
@@ -182,8 +339,22 @@ class YoutubeService {
         url: `https://www.youtube.com/watch?v=${videoId}`,
       };
     } catch (err: any) {
-      console.error("[YoutubeService] Erro ao obter vídeo:", err);
-      throw new Error(err.message || "Não foi possível obter informações do vídeo.");
+      console.warn(`[YoutubeService] ytdl.getInfo indisponível para ${videoId} (${err?.message}), acionando oEmbed`);
+    }
+
+    // 2. Fallback de alta disponibilidade: oEmbed oficial do Google (100% livre de bloqueio em datacenter)
+    try {
+      return await fetchOEmbed(videoId);
+    } catch (oembedErr: any) {
+      console.error(`[YoutubeService] Falha no fallback de oEmbed para ${videoId}:`, oembedErr?.message);
+      return {
+        id: videoId,
+        title: `YouTube: ${videoId}`,
+        durationSeconds: 0,
+        durationFormatted: "YouTube",
+        thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+      };
     }
   }
 

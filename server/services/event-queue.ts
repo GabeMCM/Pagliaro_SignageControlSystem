@@ -78,7 +78,7 @@ class RoomEventQueueManager {
   /**
    * Processa atualização de estado (`POST /api/state/:roomSlug` ou Automação) na fila da sala.
    */
-  public enqueueSetState(room: string, body: any) {
+  public enqueueSetState(room: string, body: any, _source?: string) {
     return this.enqueue(room, async () => {
       const state = await db.getState();
       if (typeof state[room] === "string") {

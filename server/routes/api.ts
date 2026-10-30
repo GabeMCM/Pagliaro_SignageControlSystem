@@ -674,7 +674,7 @@ api.get("/youtube/video", async (c) => {
 
 // 4. Proxy de Streaming Direto de Áudio (AAC/MP4 sem anúncios e com Zero Storage)
 api.options("/youtube/stream/:videoId", (c) => {
-  return c.text("", 204, {
+  return c.body(null, 204, {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
     "Access-Control-Allow-Headers": "Range, User-Agent, Content-Type",
@@ -698,7 +698,7 @@ api.get("/youtube/stream/:videoId", async (c) => {
       // cai no proxy ao vivo enquanto o download continua em segundo plano.
       cached = await Promise.race([
         ensureAudioCached(videoId),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500)),
       ]).catch(() => null);
     }
     if (cached) {

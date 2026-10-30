@@ -349,10 +349,18 @@ var isYtReady = false;
 var isYtScriptLoaded = false;
 
 function ensureYouTubeApiLoaded() {
+  if (window.YT && window.YT.Player) {
+    isYtReady = true;
+    return;
+  }
   if (isYtScriptLoaded) return;
   isYtScriptLoaded = true;
+  var prevOnReady = window.onYouTubeIframeAPIReady;
   window.onYouTubeIframeAPIReady = function() {
     isYtReady = true;
+    if (typeof prevOnReady === 'function') {
+      try { prevOnReady(); } catch (e) {}
+    }
   };
   var tag = document.createElement('script');
   tag.src = 'https://www.youtube.com/iframe_api';
@@ -370,6 +378,10 @@ function extractYtId(url) {
   var match = String(url).match(regExp);
   return (match && match[2].length === 11) ? match[2] : null;
 }
+
+try {
+  ensureYouTubeApiLoaded();
+} catch (e) {}
 
 // --- MOTOR DE ÁUDIO ROBUSTO (100% ES5 - MODELO DE RECONCILIAÇÃO) ---
 // O servidor define o ESTADO DESEJADO (faixa, play/pause, volume) e este motor
@@ -436,9 +448,18 @@ function calculateTargetAudioVolume() {
   return finalVol;
 }
 
+var ytAudioPlayer = null;
+var ytAudioCurrentId = null;
+
 function syncAudioVolume() {
-  if (!ENABLE_AUDIO || !bgmPlayer) return;
-  try { bgmPlayer.volume = calculateTargetAudioVolume(); } catch (e) {}
+  if (!ENABLE_AUDIO) return;
+  var targetVol = calculateTargetAudioVolume();
+  if (bgmPlayer) {
+    try { bgmPlayer.volume = targetVol; } catch (e) {}
+  }
+  if (ytAudioPlayer && ytAudioPlayer.setVolume) {
+    try { ytAudioPlayer.setVolume(Math.round(targetVol * 100)); } catch (e) {}
+  }
 }
 
 function setMasterVolume(vol) {
@@ -449,9 +470,12 @@ function setMasterVolume(vol) {
 }
 
 function pauseCurrentAudio() {
-  if (!ENABLE_AUDIO || !bgmPlayer) return;
-  if (!bgmPlayer.paused) {
+  if (!ENABLE_AUDIO) return;
+  if (bgmPlayer && !bgmPlayer.paused) {
     try { bgmPlayer.pause(); } catch (e) {}
+  }
+  if (ytAudioPlayer && ytAudioPlayer.pauseVideo) {
+    try { ytAudioPlayer.pauseVideo(); } catch (e) {}
   }
 }
 
@@ -465,6 +489,117 @@ function getAudioYoutubeId(url) {
   var m = clean.match(/\/api\/youtube\/stream\/([a-zA-Z0-9_-]{11})/);
   if (m) return m[1];
   return extractYtId(clean);
+}
+
+function playYoutubeAudio(ytId) {
+  if (!ENABLE_AUDIO || !ytId) return;
+  ensureYouTubeApiLoaded();
+
+  // Pausa bgmPlayer para não sobrepor áudios
+  if (bgmPlayer && !bgmPlayer.paused) {
+    try { bgmPlayer.pause(); } catch (e) {}
+  }
+  if (bgmPlayer && bgmPlayer.src) {
+    try { bgmPlayer.removeAttribute('src'); bgmPlayer.load(); } catch (e) {}
+  }
+
+  var targetVol = Math.round(calculateTargetAudioVolume() * 100);
+
+  if (!isYtReady || typeof YT === 'undefined' || !YT.Player) {
+    setTimeout(function() {
+      if (AE.desiredYtId === ytId && !aIsPaused) {
+        playYoutubeAudio(ytId);
+      }
+    }, 200);
+    return;
+  }
+
+  if (!ytAudioPlayer) {
+    var c = document.getElementById('yt-audio-container');
+    if (!c) {
+      c = document.createElement('div');
+      c.id = 'yt-audio-container';
+      c.style.cssText = 'position:fixed;bottom:-200px;left:-200px;width:10px;height:10px;opacity:0.001;pointer-events:none;z-index:-10;';
+      c.innerHTML = '<div id="yt-audio-player"></div>';
+      document.body.appendChild(c);
+    }
+
+    try {
+      ytAudioCurrentId = ytId;
+      ytAudioPlayer = new YT.Player('yt-audio-player', {
+        height: '10',
+        width: '10',
+        videoId: ytId,
+        playerVars: {
+          autoplay: 1,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          rel: 0,
+          playsinline: 1
+        },
+        events: {
+          onReady: function(event) {
+            try { event.target.setVolume(targetVol); } catch (e) {}
+            if (!aIsPaused) {
+              try { event.target.playVideo(); } catch (e) {}
+            }
+          },
+          onStateChange: function(event) {
+            if (event.data === YT.PlayerState.PLAYING) {
+              setAudioReport('playing', 'YouTube');
+            } else if (event.data === YT.PlayerState.ENDED) {
+              var isLiveRadio = Boolean(currentRoomState.audioStreamUrl);
+              if (isLiveRadio) {
+                try { event.target.playVideo(); } catch (e) {}
+                return;
+              }
+              var loopMode = currentRoomState.audioLoopMode || (audioPlaylist && audioPlaylist.loopMode) || 'all';
+              if (loopMode === 'one' || audioItems.length === 1) {
+                try {
+                  event.target.seekTo(0);
+                  event.target.playVideo();
+                } catch (e) {}
+                return;
+              }
+              advanceToNextTrack(false);
+            }
+          },
+          onError: function(event) {
+            console.warn('[YT Audio Error] Código:', event.data);
+            setTimeout(function() {
+              if (AE.desiredYtId === ytId) {
+                advanceToNextTrack(true);
+              }
+            }, 2000);
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('[YT Audio] Falha ao instanciar player:', e);
+    }
+  } else {
+    try {
+      if (ytAudioPlayer.setVolume) ytAudioPlayer.setVolume(targetVol);
+      if (ytAudioCurrentId !== ytId) {
+        ytAudioCurrentId = ytId;
+        if (ytAudioPlayer.loadVideoById) {
+          ytAudioPlayer.loadVideoById(ytId);
+          if (aIsPaused && ytAudioPlayer.pauseVideo) {
+            ytAudioPlayer.pauseVideo();
+          }
+        }
+      } else {
+        if (!aIsPaused && ytAudioPlayer.playVideo) {
+          ytAudioPlayer.playVideo();
+        } else if (aIsPaused && ytAudioPlayer.pauseVideo) {
+          ytAudioPlayer.pauseVideo();
+        }
+      }
+    } catch (e) {
+      console.warn('[YT Audio] Falha ao atualizar player:', e);
+    }
+  }
 }
 
 function normalizeAudioUrl(url) {
@@ -518,6 +653,8 @@ function computeDesiredAudio() {
       key = 'pl|' + (audioPlaylist ? audioPlaylist.id : '') + '|' + aIndex + '|' + itUrl;
     }
   }
+  AE.desiredRaw = raw;
+  AE.desiredYtId = raw ? getAudioYoutubeId(raw) : null;
   AE.desiredSrc = raw ? resolveAudioSrc(raw, isLiveStream) : '';
   AE.desiredKey = raw ? key : '';
 }
@@ -544,6 +681,14 @@ function reportCurrentAudioState(force) {
   if (!AE.desiredKey) { setAudioReport('idle'); return; }
   if (aIsPaused) { setAudioReport('paused'); return; }
   if (AE.blocked) { setAudioReport('blocked', 'Toque na tela ou pressione OK no controle da TV'); return; }
+  if (AE.desiredYtId && ytAudioPlayer) {
+    var s = -1;
+    try { s = ytAudioPlayer.getPlayerState(); } catch (e) {}
+    if (s === 1) { setAudioReport('playing', 'YouTube'); return; }
+    if (s === 2) { setAudioReport('paused'); return; }
+    setAudioReport('loading', 'Carregando YouTube...');
+    return;
+  }
   if (bgmPlayer && !bgmPlayer.paused) { setAudioReport('playing'); return; }
   setAudioReport('loading');
 }
@@ -599,13 +744,21 @@ function unlockAudioFromGesture() {
 
   if (AE.desiredKey && !aIsPaused) {
     AE.primed = true;
-    if (bgmPlayer.paused || AE.blocked || !AE.key) {
-      AE.blocked = false;
-      hideAudioUnlockOverlay();
-      if (AE.key !== AE.desiredKey) {
-        audioLoad();
+    AE.blocked = false;
+    hideAudioUnlockOverlay();
+    if (AE.desiredYtId) {
+      if (ytAudioPlayer && ytAudioPlayer.playVideo) {
+        try { ytAudioPlayer.playVideo(); } catch (e) {}
+      } else {
+        playYoutubeAudio(AE.desiredYtId);
       }
-      audioTryPlay();
+    } else {
+      if (bgmPlayer.paused || !AE.key) {
+        if (AE.key !== AE.desiredKey) {
+          audioLoad();
+        }
+        audioTryPlay();
+      }
     }
   } else if (!AE.primed && !AE.key) {
     // Destrava o elemento <audio> com um WAV silencioso de 44 bytes (necessário em TVs / Safari / Silk / Android)
@@ -797,6 +950,10 @@ function reconcileAudio() {
       AE.key = '';
       AE.src = '';
     }
+    if (ytAudioPlayer && ytAudioPlayer.pauseVideo) {
+      try { ytAudioPlayer.pauseVideo(); } catch (e) {}
+    }
+    ytAudioCurrentId = null;
     AE.blocked = false;
     hideAudioUnlockOverlay();
     reportCurrentAudioState();
@@ -807,9 +964,7 @@ function reconcileAudio() {
   // conexão HTTP pendurada/expirada antes do usuário apertar Play.
   if (aIsPaused) {
     if (AE.retryTimer) { clearTimeout(AE.retryTimer); AE.retryTimer = null; }
-    if (!bgmPlayer.paused) {
-      try { bgmPlayer.pause(); } catch (e) {}
-    }
+    pauseCurrentAudio();
     if (currentRoomState.audioStreamUrl && AE.key) {
       // Em Web Rádio ao vivo, encerrar o socket ao pausar para reconectar ao vivo no próximo Play
       try { bgmPlayer.removeAttribute('src'); bgmPlayer.load(); } catch (e) {}
@@ -832,6 +987,27 @@ function reconcileAudio() {
   }
 
   // Quando DEVE TOCAR (!aIsPaused):
+  // 1. SE FOR FAIXA DO YOUTUBE: toca pelo reprodutor cliente (resiliente em Render / nuvem)
+  if (AE.desiredYtId) {
+    if (bgmPlayer && !bgmPlayer.paused) {
+      try { bgmPlayer.pause(); } catch (e) {}
+    }
+    if (bgmPlayer && bgmPlayer.src) {
+      try { bgmPlayer.removeAttribute('src'); bgmPlayer.load(); } catch (e) {}
+    }
+    AE.key = AE.desiredKey;
+    AE.lastKey = AE.desiredKey;
+    playYoutubeAudio(AE.desiredYtId);
+    reportCurrentAudioState();
+    return;
+  }
+
+  // 2. SE NÃO FOR YOUTUBE (Web Rádio / Arquivo MP3 HTML5):
+  if (ytAudioPlayer && ytAudioPlayer.pauseVideo) {
+    try { ytAudioPlayer.pauseVideo(); } catch (e) {}
+  }
+  ytAudioCurrentId = null;
+
   var mediaBroken = Boolean(bgmPlayer.error || bgmPlayer.networkState === 3);
   if (AE.key !== AE.desiredKey || mediaBroken) {
     if (AE.retryTimer && AE.lastKey !== AE.desiredKey) {
@@ -926,6 +1102,25 @@ if (ENABLE_AUDIO && bgmPlayer) {
   setInterval(function() {
     if (!AE.desiredKey || aIsPaused || AE.retryTimer) return;
     var t = nowMs();
+    if (AE.desiredYtId) {
+      if (ytAudioPlayer && ytAudioPlayer.getPlayerState) {
+        try {
+          var state = ytAudioPlayer.getPlayerState();
+          // BUFFERING = 3
+          if (state === 3) {
+            AE.ytBufferSecs = (AE.ytBufferSecs || 0) + 2;
+            if (AE.ytBufferSecs >= 16) {
+              console.warn('[YT Audio Watchdog] Áudio congelado em buffering por 16s. Avançando...');
+              AE.ytBufferSecs = 0;
+              advanceToNextTrack(true);
+            }
+          } else {
+            AE.ytBufferSecs = 0;
+          }
+        } catch (e) {}
+      }
+      return;
+    }
     if (AE.key !== AE.desiredKey) { reconcileAudio(); return; }
     if (bgmPlayer.paused) {
       if (bgmPlayer.ended || AE.blocked) return;

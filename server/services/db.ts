@@ -776,7 +776,7 @@ export const db = {
       try {
         await mongoDb.collection("users").deleteMany({});
         await mongoDb.collection("users").insertMany(defaults.map((u) => {
-          const { _id, ...rest } = u;
+          const { _id, ...rest } = u as any;
           return rest;
         }));
       } catch (e) {

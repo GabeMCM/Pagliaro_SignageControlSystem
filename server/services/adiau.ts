@@ -347,7 +347,7 @@ export async function getAdiauData(
     return { ready: false };
   }
 
-  let timeoutId: number | undefined;
+  let timeoutId: any;
   const timeoutPromise = new Promise<{ timeout: true }>((resolve) => {
     timeoutId = setTimeout(() => resolve({ timeout: true }), maxWaitMs);
   });
