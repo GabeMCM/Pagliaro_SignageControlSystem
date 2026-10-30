@@ -80,7 +80,6 @@ import {
   DEFAULT_ADIAU_URLS,
   ROUTINE_DAYS,
   formatRoutineDaysSummary,
-  VOLUME_PRESETS,
 } from "@/lib/constants";
 
 export const Route = createFileRoute("/admin/$slug")({
@@ -1827,6 +1826,7 @@ function RoomOperator() {
   const devicesCount = devicesQ.data?.count ?? currentRoom?.clientsCount ?? 0;
   const maxDevices = devicesQ.data?.max ?? currentRoom?.maxClients ?? 2;
   const isRoomFull = devicesCount >= maxDevices;
+  const isRoomOnline = Boolean(currentRoom?.online || devicesCount > 0);
   // Guarda de Permissão por Sala (RBAC)
   if (!canAccessRoom(slug)) {
     return (

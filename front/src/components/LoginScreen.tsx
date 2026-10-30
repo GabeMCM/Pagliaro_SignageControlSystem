@@ -31,20 +31,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
     usernameRef.current?.focus();
   }, []);
 
-  const handleKeypadPress = (digit: string) => {
-    setErrorMessage(null);
-    setPinInput((prev) => prev + digit);
-  };
 
-  const handleKeypadBackspace = () => {
-    setErrorMessage(null);
-    setPinInput((prev) => prev.slice(0, -1));
-  };
-
-  const handleKeypadClear = () => {
-    setErrorMessage(null);
-    setPinInput("");
-  };
 
   const processLogin = async (username: string, pin: string) => {
     setErrorMessage(null);
@@ -145,6 +132,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
             <input
               ref={usernameRef}
               type="text"
+              autoComplete="username"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck="false"
@@ -177,6 +165,9 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
             <input
               ref={pinRef}
               type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="current-password"
               required
               placeholder="Digite o PIN (ex: 123456) ou senha"
               value={pinInput}
@@ -185,51 +176,11 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
             />
           </div>
 
-          {/* Teclado Numérico Virtual na Tela (Opcional para Touch em Tablets/Celulares) */}
-          <div className="pt-1">
-            <div className="grid grid-cols-3 gap-1.5 font-mono text-base font-bold">
-              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => handleKeypadPress(n)}
-                  className="h-10 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none active:bg-neutral-800"
-                >
-                  {n}
-                </button>
-              ))}
-
-              <button
-                type="button"
-                onClick={handleKeypadClear}
-                className="h-10 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
-              >
-                Limpar
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleKeypadPress("0")}
-                className="h-10 bg-black border border-neutral-900 hover:bg-neutral-900 hover:text-white text-neutral-200 transition flex items-center justify-center rounded-none active:bg-neutral-800"
-              >
-                0
-              </button>
-
-              <button
-                type="button"
-                onClick={handleKeypadBackspace}
-                className="h-10 bg-neutral-950 border border-neutral-900 hover:bg-neutral-900 text-neutral-400 text-xs uppercase tracking-wider transition rounded-none"
-              >
-                Apagar
-              </button>
-            </div>
-          </div>
-
           {/* Botão de Envio */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full min-h-[42px] bg-white text-black font-bold text-xs font-mono uppercase hover:bg-neutral-200 transition rounded-none flex items-center justify-center gap-2 mt-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full min-h-[44px] bg-white text-black font-bold text-xs font-mono uppercase hover:bg-neutral-200 transition rounded-none flex items-center justify-center gap-2 mt-4 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Lock className="h-3.5 w-3.5" />
             <span>{loading ? "Verificando..." : "Entrar no Painel"}</span>
