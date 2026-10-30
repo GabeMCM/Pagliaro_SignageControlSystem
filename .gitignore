@@ -38,3 +38,7 @@ pnpm-debug.log*
 
 # Cache local de áudio
 media/audio-cache/
+
+# Configurações com credenciais locais
+config/settings.json
+
