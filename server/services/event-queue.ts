@@ -158,6 +158,10 @@ class RoomEventQueueManager {
       if (body.visualStatus !== undefined) current.visualStatus = body.visualStatus;
       if (body.audioStatus !== undefined) current.audioStatus = body.audioStatus;
 
+      if (body.audioPlaylist !== undefined || body.currentAudioIndex !== undefined || body.audioStreamUrl !== undefined) {
+        current.audioTitle = await this.resolveAudioTitle(current);
+      }
+
       current.version = this.getNextVersion(room, current.version);
       current.updatedAt = Date.now();
 
@@ -196,18 +200,13 @@ class RoomEventQueueManager {
 
       // Proteção contra avanço automático indevido (trackChanged) vindo de players:
       if (body.target === "audio" && body.command === "trackChanged") {
-        if (current.audioStatus !== "playing") {
-          return { ignored: true, reason: "Audio is not playing", state: current };
-        }
-        if (Number(body.value) === Number(current.currentAudioIndex || 0)) {
+        const nextIdx = Number(body.value ?? 0);
+        if (nextIdx === Number(current.currentAudioIndex || 0)) {
           return { ignored: true, reason: "Track already current", state: current };
         }
-        const now = Date.now();
-        const lastChange = this.lastAutoTrackChange.get(room) || 0;
-        if (now - lastChange < 8000) {
-          return { ignored: true, reason: "Rate limited auto trackChanged", state: current };
-        }
-        this.lastAutoTrackChange.set(room, now);
+        current.currentAudioIndex = nextIdx;
+        current.audioStatus = "playing";
+        this.lastAutoTrackChange.set(room, Date.now());
       }
 
       if (body.target === "site") {
@@ -265,7 +264,9 @@ class RoomEventQueueManager {
           this.lastAutoTrackChange.set(room, Date.now());
         } else if (body.command === "trackChanged") {
           current.currentAudioIndex = Number(body.value ?? 0);
+          current.audioStatus = "playing";
         }
+        current.audioTitle = await this.resolveAudioTitle(current);
       } else if (body.target === "room") {
         if (body.command === "setStandby") {
           current.standby = Boolean(body.value);
@@ -294,6 +295,26 @@ class RoomEventQueueManager {
 
       return { ignored: false, state: current };
     });
+  }
+
+  private async resolveAudioTitle(current: any): Promise<string> {
+    if (current.audioStreamUrl) {
+      return "Web Rádio Ao Vivo";
+    }
+    if (current.audioPlaylist) {
+      try {
+        const playlists = await db.getPlaylists();
+        const pl = playlists.find((p: any) => p.id === current.audioPlaylist);
+        if (pl && pl.items && pl.items.length > 0) {
+          const idx = Math.max(0, Math.min(pl.items.length - 1, Number(current.currentAudioIndex || 0)));
+          const it = pl.items[idx];
+          if (it) {
+            return it.title || it.name || ("Faixa " + (idx + 1));
+          }
+        }
+      } catch (_e) {}
+    }
+    return "";
   }
 }
 

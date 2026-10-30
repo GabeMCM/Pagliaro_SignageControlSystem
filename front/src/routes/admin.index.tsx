@@ -328,10 +328,10 @@ function RoomDashboardCard({
             <div className="grid grid-cols-3 items-center border border-neutral-900 bg-neutral-950">
               <button
                 type="button"
-                onClick={() => handleVolumeStep(-5)}
+                onClick={() => handleVolumeStep(-1)}
                 disabled={displayVolume <= 0 || changeVolume.isPending || !isRoomAllowed || !canControlPlayback}
                 className="min-h-[34px] flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-900 disabled:opacity-30 transition border-r border-neutral-900"
-                title="Diminuir volume (-5%)"
+                title="Diminuir volume (-1%)"
               >
                 <Minus className="h-3.5 w-3.5" />
               </button>
@@ -352,10 +352,10 @@ function RoomDashboardCard({
 
               <button
                 type="button"
-                onClick={() => handleVolumeStep(5)}
+                onClick={() => handleVolumeStep(1)}
                 disabled={displayVolume >= 100 || changeVolume.isPending || !isRoomAllowed || !canControlPlayback}
                 className="min-h-[34px] flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-900 disabled:opacity-30 transition"
-                title="Aumentar volume (+5%)"
+                title="Aumentar volume (+1%)"
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
@@ -419,7 +419,9 @@ function RoomDashboardCard({
                       <span>Web Rádio Ao Vivo</span>
                     </span>
                   ) : isAudioPlaying ? (
-                    <span className="text-white font-semibold">Trilha Sonora Ativa</span>
+                    <span className="text-white font-semibold truncate" title={state?.audioTitle || "Trilha Sonora Ativa"}>
+                      {state?.audioTitle ? state.audioTitle : "Trilha Sonora Ativa"}
+                    </span>
                   ) : (
                     <span className="text-neutral-500">Áudio Pausado</span>
                   )}

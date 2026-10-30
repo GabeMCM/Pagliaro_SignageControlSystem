@@ -362,7 +362,7 @@ var masterVolume = 0;
 var currentPlayingAudioType = 'html5';
 var bgmPlayer = document.getElementById('bgm-player');
 var audioCtx = null;
-var SILENT_WAV_URI = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+var SILENT_WAV_URI = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
 
 var AE = {
   key: '',            // faixa atualmente carregada no elemento <audio>
@@ -410,10 +410,56 @@ function calculateTargetAudioVolume() {
   return finalVol;
 }
 
-function syncAudioVolume() {
-  if (!ENABLE_AUDIO) return;
+// Fade suave para proteger alto-falantes contra transientes / DC offset ("batidas")
+var audioFadeTimer = null;
+
+function cancelAudioFade() {
+  if (audioFadeTimer) {
+    clearInterval(audioFadeTimer);
+    audioFadeTimer = null;
+  }
+}
+
+function fadeAudioVolumeTo(targetVol, durationMs, onComplete) {
+  cancelAudioFade();
+  if (!bgmPlayer) {
+    if (onComplete) onComplete();
+    return;
+  }
+  var startVol = 0;
+  try { startVol = bgmPlayer.volume; } catch (e) { startVol = 0; }
+  if (isNaN(startVol)) startVol = 0;
+  targetVol = Math.max(0, Math.min(1, Number(targetVol)));
+
+  if (Math.abs(startVol - targetVol) < 0.01 || durationMs <= 0) {
+    try { bgmPlayer.volume = targetVol; } catch (e) {}
+    if (onComplete) onComplete();
+    return;
+  }
+
+  var startTime = nowMs();
+  var stepMs = 15;
+  audioFadeTimer = setInterval(function() {
+    var elapsed = nowMs() - startTime;
+    var progress = Math.min(1, elapsed / durationMs);
+    var cur = startVol + (targetVol - startVol) * progress;
+    try {
+      bgmPlayer.volume = Math.max(0, Math.min(1, cur));
+    } catch (e) {}
+    if (progress >= 1) {
+      cancelAudioFade();
+      try { bgmPlayer.volume = targetVol; } catch (e) {}
+      if (onComplete) onComplete();
+    }
+  }, stepMs);
+}
+
+function syncAudioVolume(smooth) {
+  if (!ENABLE_AUDIO || !bgmPlayer) return;
   var targetVol = calculateTargetAudioVolume();
-  if (bgmPlayer) {
+  if (smooth && !bgmPlayer.paused) {
+    fadeAudioVolumeTo(targetVol, 60);
+  } else {
     try { bgmPlayer.volume = targetVol; } catch (e) {}
   }
 }
@@ -422,13 +468,15 @@ function setMasterVolume(vol) {
   var n = Number(vol);
   if (isNaN(n)) n = 0;
   masterVolume = Math.max(0, Math.min(100, n));
-  syncAudioVolume();
+  syncAudioVolume(true);
 }
 
 function pauseCurrentAudio() {
   if (!ENABLE_AUDIO) return;
   if (bgmPlayer && !bgmPlayer.paused) {
-    try { bgmPlayer.pause(); } catch (e) {}
+    fadeAudioVolumeTo(0, 40, function() {
+      try { bgmPlayer.pause(); } catch (e) {}
+    });
   }
 }
 
@@ -515,7 +563,12 @@ function reportCurrentAudioState(force) {
   if (!AE.desiredKey) { setAudioReport('idle'); return; }
   if (aIsPaused) { setAudioReport('paused'); return; }
   if (AE.blocked) { setAudioReport('blocked', 'Toque na tela ou pressione OK no controle da TV'); return; }
-  if (bgmPlayer && !bgmPlayer.paused) { setAudioReport('playing'); return; }
+  if (bgmPlayer && !bgmPlayer.paused) {
+    var curTrack = (audioItems && audioItems[aIndex]) || null;
+    var curTitle = curTrack ? (curTrack.title || (typeof curTrack === 'string' ? curTrack : '')) : '';
+    setAudioReport('playing', curTitle || 'Música');
+    return;
+  }
   setAudioReport('loading');
 }
 
@@ -579,17 +632,18 @@ function unlockAudioFromGesture() {
       audioTryPlay();
     }
   } else if (!AE.primed && !AE.key) {
-    // Destrava o elemento <audio> com um WAV silencioso de 44 bytes (necessário em TVs / Safari / Silk / Android)
+    // Destrava o elemento <audio> de forma silenciosa e limpa
     AE.primed = true;
     try {
+      cancelAudioFade();
       bgmPlayer.volume = 0;
       bgmPlayer.src = SILENT_WAV_URI;
       var pp = bgmPlayer.play();
       var restorePrime = function() {
         if (!AE.key) {
           try { bgmPlayer.pause(); } catch (e2) {}
+          try { bgmPlayer.removeAttribute('src'); } catch (e3) {}
         }
-        syncAudioVolume();
       };
       if (pp && typeof pp.then === 'function') {
         pp.then(restorePrime, restorePrime);
@@ -633,10 +687,12 @@ function audioLoad() {
     url += (url.indexOf('?') === -1 ? '?' : '&') + 'r=' + AE.errorCount + '_' + nowMs();
   }
   try {
+    cancelAudioFade();
+    bgmPlayer.volume = 0; // Proteção contra estouro/batida no alto falante ao carregar
     bgmPlayer.src = url;
     bgmPlayer.load();
   } catch (e) {}
-  syncAudioVolume();
+  // Não eleva volume aqui! O volume subirá suavemente via micro-fade no evento 'playing'
   setAudioReport('loading', isRetry && AE.errorCount > 0 ? 'Reconectando (tentativa ' + AE.errorCount + ')' : '');
 }
 
@@ -656,7 +712,6 @@ function audioTryPlay() {
   if (!bgmPlayer || !AE.key) return;
   AE.lastPlayAttempt = nowMs();
   AE.playAttemptsNoProgress++;
-  syncAudioVolume();
   var p;
   try {
     p = bgmPlayer.play();
@@ -731,6 +786,8 @@ function advanceToNextTrack(fromError) {
   AE.localAdvanceTo = next;
   aIndex = next;
   currentRoomState.currentAudioIndex = next;
+  cancelAudioFade();
+  try { if (bgmPlayer) bgmPlayer.volume = 0; } catch (e) {}
   reconcileAudio();
   emitCommand('audio', 'trackChanged', next);
 }
@@ -833,6 +890,8 @@ if (ENABLE_AUDIO && bgmPlayer) {
       try { bgmPlayer.pause(); } catch (e) {}
       return;
     }
+    // Rampa suave de 80ms para proteger os alto-falantes contra transientes/estouro ("batida")
+    fadeAudioVolumeTo(calculateTargetAudioVolume(), 80);
     reportCurrentAudioState();
     prefetchNextAudioTrack();
   });
@@ -863,15 +922,8 @@ if (ENABLE_AUDIO && bgmPlayer) {
       audioHandleFailure('Stream ao vivo reconectando');
       return;
     }
-    var dur = bgmPlayer.duration;
-    var ct = bgmPlayer.currentTime || 0;
-    // Ignora 'ended' prematuro se tocou menos de 3s ou se caiu antes do fim real
-    if (ct < 3 || (dur && isFinite(dur) && dur > 10 && ct < dur - 5)) {
-      audioHandleFailure('Stream interrompido');
-      return;
-    }
     var loopMode = currentRoomState.audioLoopMode || (audioPlaylist && audioPlaylist.loopMode) || 'all';
-    if (loopMode === 'one' || audioItems.length === 1) {
+    if (loopMode === 'one' || (audioItems && audioItems.length === 1)) {
       try { bgmPlayer.currentTime = 0; } catch (e) {}
       audioTryPlay();
       return;

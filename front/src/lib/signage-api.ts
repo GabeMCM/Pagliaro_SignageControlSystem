@@ -100,6 +100,7 @@ export interface RoomState {
   playlist: string | null;
   audioPlaylist: string | null;
   audioStreamUrl?: string | null;
+  audioTitle?: string | null;
   siteUrl?: string | null;
   mode?: "playlist" | "site";
   visualStatus?: "playing" | "paused" | "idle";
@@ -236,6 +237,7 @@ export const signageApi = {
       playlist?: string | null;
       audioPlaylist?: string | null;
       audioStreamUrl?: string | null;
+      audioTitle?: string | null;
       siteUrl?: string | null;
       mode?: "playlist" | "site";
       audioVolume?: number;

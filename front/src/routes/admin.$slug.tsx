@@ -460,220 +460,102 @@ function ManagePlaylistsModal({
  */
 const VOLUME_PRESETS = [
   { label: "0%", val: 0 },
-  { label: "12,5%", val: 12.5 },
   { label: "25%", val: 25 },
-  { label: "37,5%", val: 37.5 },
   { label: "50%", val: 50 },
-  { label: "62,5%", val: 62.5 },
   { label: "75%", val: 75 },
-  { label: "87,5%", val: 87.5 },
   { label: "100%", val: 100 },
 ];
 
-interface VolumeWheelPickerProps {
+interface VolumeControlRowProps {
   value: number;
   onChange: (val: number) => void;
-  compact?: boolean;
   disabled?: boolean;
 }
 
 /**
- * Seletor de Volume Estilo Roleta (UIDatePicker Wheel Picker)
- * Blindado contra eventos de scroll programáticos (evita sobrescrever o volume do servidor ao abrir/recarregar a página em outro aparelho).
+ * Controle de Volume unificado com o mesmo design da Visão Geral:
+ * Botões [-] e [+] de 1 em 1, botão de alternar mudo/ícone no centro e 5 volumes fixos (0, 25, 50, 75, 100).
  */
-function VolumeWheelPicker({ value, onChange, compact = false, disabled = false }: VolumeWheelPickerProps) {
-  const ITEM_HEIGHT = compact ? 32 : 38;
-  const numbers = useMemo(() => Array.from({ length: 101 }, (_, i) => i), []);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const isUserInteractingRef = useRef(false);
-  const isProgrammaticScrollRef = useRef(false);
-  const programmaticTimerRef = useRef<any>(null);
-  const debounceTimerRef = useRef<any>(null);
-  const lastConfirmedValueRef = useRef<number>(Math.round(value));
-  const [currentVal, setCurrentVal] = useState<number>(Math.round(value));
+function VolumeControlRow({ value, onChange, disabled = false }: VolumeControlRowProps) {
+  const currentVal = Math.max(0, Math.min(100, Math.round(value)));
 
-  const syncScrollPosition = (targetVal: number, smooth = false) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    isProgrammaticScrollRef.current = true;
-    if (programmaticTimerRef.current) clearTimeout(programmaticTimerRef.current);
-
-    const targetTop = targetVal * ITEM_HEIGHT;
-    if (smooth) {
-      el.scrollTo({ top: targetTop, behavior: "smooth" });
-      programmaticTimerRef.current = setTimeout(() => {
-        isProgrammaticScrollRef.current = false;
-      }, 350);
-    } else {
-      el.scrollTop = targetTop;
-      programmaticTimerRef.current = setTimeout(() => {
-        isProgrammaticScrollRef.current = false;
-      }, 150);
-    }
-  };
-
-  useEffect(() => {
-    const rounded = Math.max(0, Math.min(100, Math.round(value)));
-    lastConfirmedValueRef.current = rounded;
-    setCurrentVal(rounded);
-    if (!isUserInteractingRef.current) {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
-      // Usa atribuição direta (instantânea) quando o valor vem do servidor/WS para nunca disparar scroll intermediário
-      syncScrollPosition(rounded, false);
-    }
-  }, [value, ITEM_HEIGHT]);
-
-  useEffect(() => {
-    return () => {
-      if (programmaticTimerRef.current) clearTimeout(programmaticTimerRef.current);
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    };
-  }, []);
-
-  const markUserGesture = () => {
-    if (disabled) return;
-    isProgrammaticScrollRef.current = false;
-    if (programmaticTimerRef.current) {
-      clearTimeout(programmaticTimerRef.current);
-      programmaticTimerRef.current = null;
-    }
-    isUserInteractingRef.current = true;
-  };
-
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    // Ignora completamente qualquer scroll causado por inicialização, reload ou sincronização do servidor!
-    if (disabled || isProgrammaticScrollRef.current || !isUserInteractingRef.current) {
-      return;
-    }
-
-    const top = e.currentTarget.scrollTop;
-    const idx = Math.max(0, Math.min(100, Math.round(top / ITEM_HEIGHT)));
-    setCurrentVal(idx);
-
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    debounceTimerRef.current = setTimeout(() => {
-      isUserInteractingRef.current = false;
-      syncScrollPosition(idx, false);
-      if (idx !== lastConfirmedValueRef.current) {
-        lastConfirmedValueRef.current = idx;
-        onChange(idx);
-      }
-    }, 140);
-  };
-
-  const handleSelect = (num: number) => {
-    if (disabled) return;
-    const clamped = Math.max(0, Math.min(100, Math.round(num)));
-    isUserInteractingRef.current = false;
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = null;
-    }
-    setCurrentVal(clamped);
-    lastConfirmedValueRef.current = clamped;
-    syncScrollPosition(clamped, false);
-    onChange(clamped);
-  };
-
-  const step = (delta: number) => {
+  const handleStep = (delta: number) => {
     if (disabled) return;
     const next = Math.max(0, Math.min(100, currentVal + delta));
-    handleSelect(next);
+    onChange(next);
+  };
+
+  const handleToggleMute = () => {
+    if (disabled) return;
+    onChange(currentVal > 0 ? 0 : 25);
   };
 
   return (
-    <div className={`flex ${compact ? "flex-row items-center gap-2" : "flex-col sm:flex-row items-center gap-2.5"} w-full ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
-      <div className="flex items-center gap-1.5 justify-center w-full sm:w-auto">
+    <div className="space-y-1.5 w-full">
+      {/* Barra [-], Status/Mudo, [+] */}
+      <div className="grid grid-cols-[44px_1fr_44px] items-center border border-neutral-900 bg-neutral-950">
         <button
           type="button"
-          onClick={() => step(-1)}
+          onClick={() => handleStep(-1)}
           disabled={disabled || currentVal <= 0}
-          className={`${compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"} rounded-none bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0`}
-          title="Diminuir 1%"
+          className="min-h-[42px] sm:min-h-[36px] flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-900 disabled:opacity-30 transition border-r border-neutral-900"
+          title="Diminuir volume (-1%)"
         >
-          <Minus className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-        </button>
-
-        {/* Tambor Cilíndrico da Roleta (UIDatePicker Style com Rounded Quase Zero) */}
-        <div className={`relative ${compact ? "h-[96px] w-24 sm:w-28" : "h-[114px] w-28 sm:w-32"} overflow-hidden rounded-none border border-neutral-900 bg-black shadow-inner select-none flex-shrink-0`}>
-          <div className={`pointer-events-none absolute inset-x-0 top-0 ${compact ? "h-7" : "h-9"} bg-gradient-to-b from-neutral-950 via-neutral-950/80 to-transparent z-20`} />
-          <div className={`pointer-events-none absolute inset-x-0 ${compact ? "top-[32px] h-[32px]" : "top-[38px] h-[38px]"} border-y border-neutral-600 bg-white/10 z-10 flex items-center justify-end pr-2`}>
-            <span className="text-[10px] font-bold text-neutral-300 font-mono">%</span>
-          </div>
-          <div className={`pointer-events-none absolute inset-x-0 bottom-0 ${compact ? "h-7" : "h-9"} bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent z-20`} />
-
-          <div
-            ref={scrollRef}
-            onTouchStart={markUserGesture}
-            onPointerDown={markUserGesture}
-            onMouseDown={markUserGesture}
-            onWheel={markUserGesture}
-            onScroll={handleScroll}
-            className={`h-full overflow-y-auto snap-y snap-mandatory scrollbar-none ${compact ? "py-[32px]" : "py-[38px]"}`}
-            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-          >
-            {numbers.map((num) => {
-              const isSelected = currentVal === num;
-              const dist = Math.abs(currentVal - num);
-              return (
-                <div
-                  key={num}
-                  onClick={() => handleSelect(num)}
-                  className={`${compact ? "h-[32px]" : "h-[38px]"} flex items-center justify-center snap-center cursor-pointer font-mono transition-all duration-100 ${
-                    isSelected
-                      ? `${compact ? "text-base" : "text-lg"} font-black text-white scale-105`
-                      : dist === 1
-                      ? "text-xs font-semibold text-neutral-400 scale-95 opacity-55"
-                      : "text-[11px] text-neutral-600 scale-90 opacity-25"
-                  }`}
-                >
-                  {num}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => step(1)}
-          disabled={disabled || currentVal >= 100}
-          className={`${compact ? "h-8 w-8 text-xs" : "h-9 w-9 text-sm"} rounded-none bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 disabled:opacity-20 flex items-center justify-center transition flex-shrink-0`}
-          title="Aumentar 1%"
-        >
-          <Plus className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+          <Minus className="h-4 w-4" />
         </button>
 
         <button
           type="button"
+          onClick={handleToggleMute}
           disabled={disabled}
-          onClick={() => handleSelect(currentVal > 0 ? 0 : 50)}
-          className={`${compact ? "h-8 w-8" : "h-9 w-9"} rounded-none border flex items-center justify-center transition flex-shrink-0 ${
-            currentVal === 0
-              ? "bg-red-500/20 border-red-500/40 text-red-300"
-              : "bg-neutral-900 border-neutral-900 text-neutral-300 hover:text-white"
-          }`}
-          title={currentVal === 0 ? "Desmutar (50%)" : "Mudo (0%)"}
+          className="min-h-[42px] sm:min-h-[36px] flex items-center justify-center gap-1.5 font-mono text-xs font-bold text-neutral-200 hover:text-white hover:bg-neutral-900 disabled:opacity-30 transition border-r border-neutral-900"
+          title="Alternar mudo"
         >
           {currentVal === 0 ? (
-            <VolumeX className="h-4 w-4 text-red-400" />
+            <>
+              <VolumeX className="h-4 w-4 text-red-400" />
+              <span className="text-[10px] text-red-400">Mudo (0%)</span>
+            </>
           ) : (
-            <Volume2 className="h-4 w-4 text-neutral-300" />
+            <>
+              <Volume2 className="h-4 w-4 text-emerald-400" />
+              <span className="text-white">{currentVal}%</span>
+            </>
           )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleStep(1)}
+          disabled={disabled || currentVal >= 100}
+          className="min-h-[42px] sm:min-h-[36px] flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-900 disabled:opacity-30 transition"
+          title="Aumentar volume (+1%)"
+        >
+          <Plus className="h-4 w-4" />
         </button>
       </div>
 
-      {!compact && (
-        <div className="flex items-center gap-1.5 justify-center sm:justify-start">
-          <span className="text-xs text-neutral-400 font-medium">Volume:</span>
-          <span className="text-sm font-bold text-white font-mono bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-900">
-            {currentVal}%
-          </span>
-        </div>
-      )}
+      {/* 5 Volumes Fixos: 0, 25, 50, 75, 100 */}
+      <div className="grid grid-cols-5 gap-1 w-full">
+        {VOLUME_PRESETS.map((preset) => {
+          const isSelected = Math.abs(currentVal - preset.val) < 0.5;
+          return (
+            <button
+              key={preset.val}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(preset.val)}
+              className={`min-h-[32px] sm:min-h-[28px] px-1 py-0.5 rounded-none text-xs sm:text-[11px] font-mono font-semibold border transition text-center truncate flex items-center justify-center disabled:opacity-40 ${
+                isSelected
+                  ? "bg-white text-black border-white font-bold"
+                  : "bg-neutral-900 border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800"
+              }`}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1210,9 +1092,17 @@ function RoomOperator() {
 
     if (playImmediately) {
       const newIdx = targetItems.length - 1;
-      signageApi.setTrackIndex(slug, newIdx);
-      await signageApi.setState(slug, { audioStatus: "playing" });
+      await signageApi.setTrackIndex(slug, newIdx);
+      await signageApi.setState(slug, {
+        audioPlaylist: targetPlaylistId,
+        audioStreamUrl: null,
+        audioStatus: "playing",
+        currentAudioIndex: newIdx,
+        audioTitle: track.title,
+      });
     }
+    await qc.invalidateQueries({ queryKey: ["playlists"] });
+    await qc.invalidateQueries({ queryKey: ["state", slug] });
   };
 
   const handleAddAllDropboxTracks = async (tracksToAdd: DropboxTrack[], playImmediately = false) => {
@@ -1276,9 +1166,18 @@ function RoomOperator() {
     }
 
     if (playImmediately) {
-      signageApi.setTrackIndex(slug, initialLen);
-      await signageApi.setState(slug, { audioStatus: "playing" });
+      const firstNewTrack = tracksToAdd[0];
+      await signageApi.setTrackIndex(slug, initialLen);
+      await signageApi.setState(slug, {
+        audioPlaylist: targetPlaylistId,
+        audioStreamUrl: null,
+        audioStatus: "playing",
+        currentAudioIndex: initialLen,
+        audioTitle: firstNewTrack?.title,
+      });
     }
+    await qc.invalidateQueries({ queryKey: ["playlists"] });
+    await qc.invalidateQueries({ queryKey: ["state", slug] });
   };
 
   useEffect(() => {
@@ -1329,18 +1228,41 @@ function RoomOperator() {
       if (searchMatch) return `Web Rádio: ${searchMatch.name}`;
       return "Transmissão Web Rádio Ao Vivo";
     }
+    // 1. Título autoritativo persistido no estado da sala pelo backend
+    if (stateQ.data?.audioTitle) {
+      return stateQ.data.audioTitle;
+    }
+    // 2. Faixa do activeAudio
     if (activeAudio?.items && activeAudio.items.length > 0) {
       const it = activeAudio.items[currentAudioIndex] || activeAudio.items[0];
-      return it?.title || extractTrackTitle(it?.url || "");
+      if (it?.title) return it.title;
+      if (it?.url) return extractTrackTitle(it.url);
+    }
+    // 3. Fallback buscando na lista de playlists se activeAudio ainda estiver sincronizando
+    if (stateQ.data?.audioPlaylist && playlistsQ.data) {
+      const pl = playlistsQ.data.find((p) => p.id === stateQ.data.audioPlaylist);
+      if (pl?.items && pl.items.length > 0) {
+        const it = pl.items[currentAudioIndex] || pl.items[0];
+        if (it?.title) return it.title;
+        if (it?.url) return extractTrackTitle(it.url);
+      }
+    }
+    // 4. Se o som estiver tocando mas sem nome específico ainda
+    if (isAudioPlaying) {
+      return "Música em Reprodução";
     }
     return null;
   }, [
     isAudioStreamActive,
     stateQ.data?.audioStreamUrl,
+    stateQ.data?.audioTitle,
+    stateQ.data?.audioPlaylist,
     radioPresetsQ.data?.presets,
     radioSearchResults,
     activeAudio,
+    playlistsQ.data,
     currentAudioIndex,
+    isAudioPlaying,
   ]);
 
   // Sincronização via WebSocket com Fila de Eventos (FIFO) e Estado Autoritativo do Servidor
@@ -1365,6 +1287,17 @@ function RoomOperator() {
           try {
             const data = JSON.parse(rawData);
             if (data.type === "pong") return;
+
+            // Relatório em tempo real do player de áudio (título e estado)
+            if (data.type === "audioState") {
+              if (data.detail && data.state === "playing") {
+                qc.setQueryData(["state", slug], (old: any) => {
+                  if (!old) return old;
+                  return { ...old, audioTitle: data.detail, audioStatus: "playing" };
+                });
+              }
+              return;
+            }
 
             // 1. Sincronização inicial imediata ou atualização de estado oficial do servidor
             if ((data.type === "stateSync" || data.type === "updateState") && data.state) {
@@ -1849,6 +1782,13 @@ function RoomOperator() {
         {/* Linha 1: Título da Sala + Status + Ações Principais */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
+            <Link
+              to="/admin"
+              className="p-1 -ml-1 text-neutral-400 hover:text-white sm:hidden flex items-center justify-center flex-shrink-0"
+              title="Voltar para Salas"
+            >
+              <ArrowRight className="h-4 w-4 rotate-180" />
+            </Link>
             <h1 className="text-sm sm:text-base font-bold text-white tracking-tight truncate font-mono uppercase">
               {currentRoom?.name || slug}
             </h1>
@@ -1867,13 +1807,13 @@ function RoomOperator() {
 
           {/* Botões de Ação Rápida */}
           <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-            {/* Standby */}
+            {/* Standby (Desktop) */}
             <button
               onClick={() => {
                 const nextStandby = !stateQ.data?.standby;
                 setState.mutate({ standby: nextStandby });
               }}
-              className={`min-h-[28px] px-2 py-0.5 text-xs font-mono font-bold transition flex items-center justify-center gap-1 ${
+              className={`hidden sm:flex min-h-[28px] px-2 py-0.5 text-xs font-mono font-bold transition items-center justify-center gap-1 ${
                 stateQ.data?.standby
                   ? "bg-amber-500 text-black font-extrabold"
                   : "bg-neutral-950 border border-neutral-900 text-neutral-300 hover:text-amber-300 hover:border-amber-500/50"
@@ -1881,10 +1821,10 @@ function RoomOperator() {
               title="Suspender TV / Standby"
             >
               {stateQ.data?.standby ? <Sun className="h-3 w-3 flex-shrink-0" /> : <Moon className="h-3 w-3 flex-shrink-0" />}
-              <span className="hidden sm:inline">{stateQ.data?.standby ? "Standby" : "Suspender"}</span>
+              <span>{stateQ.data?.standby ? "Standby" : "Suspender"}</span>
             </button>
 
-            {/* Recarregar */}
+            {/* Recarregar (Desktop) */}
             <button
               onClick={() => {
                 if (confirm("Deseja recarregar a tela da TV conectada?")) {
@@ -1892,11 +1832,11 @@ function RoomOperator() {
                 }
               }}
               disabled={reloadRoomMut.isPending}
-              className="min-h-[28px] px-2 py-0.5 bg-neutral-950 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-900 text-xs font-mono transition flex items-center justify-center gap-1 disabled:opacity-50"
+              className="hidden sm:flex min-h-[28px] px-2 py-0.5 bg-neutral-950 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-900 text-xs font-mono transition items-center justify-center gap-1 disabled:opacity-50"
               title="Recarregar tela"
             >
               <RefreshCw className={`h-3 w-3 flex-shrink-0 ${reloadRoomMut.isPending ? "animate-spin text-white" : ""}`} />
-              <span className="hidden sm:inline">{reloadRoomMut.isPending ? "Recarregando..." : "Recarregar"}</span>
+              <span>{reloadRoomMut.isPending ? "Recarregando..." : "Recarregar"}</span>
             </button>
 
             {/* Ver TV */}
@@ -1904,13 +1844,44 @@ function RoomOperator() {
               href={playerUrl}
               target="_blank"
               rel="noreferrer"
-              className="min-h-[28px] px-2.5 py-0.5 bg-white text-black hover:bg-neutral-200 text-xs font-mono font-bold transition flex items-center justify-center gap-1"
+              className="min-h-[32px] sm:min-h-[28px] px-2.5 py-0.5 bg-white text-black hover:bg-neutral-200 text-xs font-mono font-bold transition flex items-center justify-center gap-1"
               title="Abrir Player em nova aba"
             >
-              <ExternalLink className="h-3 w-3 flex-shrink-0" />
+              <ExternalLink className="h-3.5 w-3.5 sm:h-3 sm:w-3 flex-shrink-0" />
               <span>Ver TV</span>
             </a>
           </div>
+        </div>
+
+        {/* Linha de Ações Rápidas no Mobile (Standby e Recarregar em botões grandes) */}
+        <div className="grid grid-cols-2 gap-1.5 sm:hidden pt-0.5">
+          <button
+            onClick={() => {
+              const nextStandby = !stateQ.data?.standby;
+              setState.mutate({ standby: nextStandby });
+            }}
+            className={`min-h-[38px] px-2.5 py-1 text-xs font-mono font-bold transition flex items-center justify-center gap-1.5 border ${
+              stateQ.data?.standby
+                ? "bg-amber-500 text-black border-amber-400 font-extrabold"
+                : "bg-neutral-950 border-neutral-900 text-neutral-300 active:bg-neutral-900"
+            }`}
+          >
+            {stateQ.data?.standby ? <Sun className="h-4 w-4 flex-shrink-0" /> : <Moon className="h-4 w-4 flex-shrink-0 text-amber-400" />}
+            <span>{stateQ.data?.standby ? "Standby (ON)" : "Standby (OFF)"}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (confirm("Deseja recarregar a tela da TV conectada?")) {
+                reloadRoomMut.mutate();
+              }
+            }}
+            disabled={reloadRoomMut.isPending}
+            className="min-h-[38px] px-2.5 py-1 bg-neutral-950 border border-neutral-900 text-neutral-300 active:bg-neutral-900 text-xs font-mono transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 flex-shrink-0 ${reloadRoomMut.isPending ? "animate-spin text-white" : ""}`} />
+            <span>{reloadRoomMut.isPending ? "Recarregando..." : "Recarregar TV"}</span>
+          </button>
         </div>
 
         {/* Linha 2: 4 Abas Principais (Sharp, Flat, Compact) */}
@@ -2036,6 +2007,52 @@ function RoomOperator() {
       )}
 
       <main className="p-2.5 pb-24 sm:p-4 sm:pb-16 max-w-4xl mx-auto w-full min-w-0 space-y-3 sm:space-y-4">
+        {/* RESUMO INSTANTÂNEO PARA OPERADOR MOBILE (SOMENTE MOBILE) */}
+        <div className="sm:hidden bg-neutral-950 border border-neutral-900 p-2.5 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className={`h-2 w-2 rounded-full flex-shrink-0 ${
+                isSiteActive ? "bg-emerald-400" : stateQ.data?.standby ? "bg-amber-400" : "bg-neutral-600"
+              }`} />
+              <span className="font-bold text-white truncate">
+                {isSiteActive ? "TV: Transmissão no Ar" : stateQ.data?.standby ? "TV: Standby OLED" : "TV: Aguardando Conteúdo"}
+              </span>
+            </div>
+            <span className="text-[10px] font-mono text-neutral-400 flex-shrink-0">
+              {devicesCount} TV{devicesCount !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-neutral-900 text-xs">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              <Music className={`h-3.5 w-3.5 flex-shrink-0 ${isAudioPlaying ? "text-emerald-400" : "text-neutral-500"}`} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[9px] text-neutral-500 uppercase font-mono">Tocando:</div>
+                <div className="text-white font-medium text-[11px] truncate">
+                  {currentPlayingTrack || (isAudioPlaying ? "Música Ativa" : "Som Pausado")}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <span className="font-mono text-xs font-bold text-neutral-300 bg-neutral-900 px-1.5 py-0.5 border border-neutral-800">
+                {Math.round(currentAudioVolume)}%
+              </span>
+              <button
+                type="button"
+                onClick={() => handleOptimisticCommand("audio", isAudioPlaying ? "pause" : "play")}
+                className={`min-h-[30px] px-2.5 py-0.5 text-xs font-bold uppercase transition flex items-center gap-1 ${
+                  isAudioPlaying
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                    : "bg-white text-black font-extrabold"
+                }`}
+              >
+                {isAudioPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                <span>{isAudioPlaying ? "Pausar" : "Tocar"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* ============================================================ */}
         {/* ABA 1: CONTEÚDO NA TELA DA TV (SITE / LINK)                   */}
         {/* ============================================================ */}
@@ -2199,30 +2216,30 @@ function RoomOperator() {
               {/* Botões de Playback e Volume */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 w-full">
                 {/* Botões Prev / Play-Pause / Next */}
-                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-1.5 w-full sm:w-auto">
+                <div className="grid grid-cols-[52px_1fr_52px] sm:grid-cols-[auto_1fr_auto] items-center gap-2 sm:gap-1.5 w-full sm:w-auto">
                   <button
                     onClick={() => handleOptimisticCommand("audio", "prev")}
                     disabled={isAudioStreamActive || !activeAudio || activeAudio.items.length === 0}
-                    className="min-h-[40px] w-10 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
+                    className="min-h-[46px] sm:min-h-[40px] w-full sm:w-10 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
                     title="Música Anterior"
                   >
-                    <SkipBack className="h-4 w-4" />
+                    <SkipBack className="h-5 w-5 sm:h-4 sm:w-4" />
                   </button>
 
                   {isAudioPlaying ? (
                     <button
                       onClick={() => handleOptimisticCommand("audio", "pause")}
-                      className="min-h-[40px] px-4 rounded-none bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 flex items-center justify-center gap-1.5 font-bold text-xs uppercase tracking-wider transition"
+                      className="min-h-[46px] sm:min-h-[40px] px-4 rounded-none bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 flex items-center justify-center gap-2 font-bold text-sm sm:text-xs uppercase tracking-wider transition"
                     >
-                      <Pause className="h-4 w-4 flex-shrink-0" />
+                      <Pause className="h-5 w-5 sm:h-4 sm:w-4 flex-shrink-0" />
                       <span className="truncate">Pausar</span>
                     </button>
                   ) : (
                     <button
                       onClick={() => handleOptimisticCommand("audio", "play")}
-                      className="min-h-[40px] px-4 rounded-none bg-white text-black hover:bg-neutral-200 flex items-center justify-center gap-1.5 font-bold text-xs uppercase tracking-wider shadow-sm transition"
+                      className="min-h-[46px] sm:min-h-[40px] px-4 rounded-none bg-white text-black hover:bg-neutral-200 flex items-center justify-center gap-2 font-bold text-sm sm:text-xs uppercase tracking-wider shadow-sm transition"
                     >
-                      <Play className="h-4 w-4 flex-shrink-0 ml-0.5" />
+                      <Play className="h-5 w-5 sm:h-4 sm:w-4 flex-shrink-0 ml-0.5" />
                       <span className="truncate">Tocar</span>
                     </button>
                   )}
@@ -2230,47 +2247,27 @@ function RoomOperator() {
                   <button
                     onClick={() => handleOptimisticCommand("audio", "next")}
                     disabled={isAudioStreamActive || !activeAudio || activeAudio.items.length === 0}
-                    className="min-h-[40px] w-10 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
+                    className="min-h-[46px] sm:min-h-[40px] w-full sm:w-10 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 flex items-center justify-center transition disabled:opacity-30"
                     title="Próxima Música"
                   >
-                    <SkipForward className="h-4 w-4" />
+                    <SkipForward className="h-5 w-5 sm:h-4 sm:w-4" />
                   </button>
                 </div>
 
-                {/* Roleta de Volume (UIDatePicker Wheel Picker) e Presets de 12,5 em 12,5% */}
-                <div className="w-full sm:w-auto space-y-2 bg-neutral-900/60 p-2.5 rounded-none border border-neutral-900 overflow-hidden">
-                  <VolumeWheelPicker
-                    compact
-                    disabled={!stateQ.data}
+                {/* Volume da Sala: Mesmo design da Visão Geral (botões - e + de 1 em 1 e 5 presets fixos) */}
+                <div className="w-full sm:w-72 space-y-2 bg-neutral-900/60 p-2.5 rounded-none border border-neutral-900">
+                  <div className="flex items-center justify-between text-[11px] font-mono text-neutral-400">
+                    <span className="uppercase tracking-wider text-[10px]">Volume Som:</span>
+                    <span className="text-white font-bold text-xs bg-black px-2 py-0.5 border border-neutral-800">
+                      {Math.round(currentAudioVolume)}%
+                    </span>
+                  </div>
+
+                  <VolumeControlRow
                     value={currentAudioVolume}
+                    disabled={!stateQ.data}
                     onChange={(val) => handleOptimisticCommand("audio", "setVolume", val)}
                   />
-
-                  {/* 9 Botões Rápidos de Volume (0% a 100% de 12,5 em 12,5%) */}
-                  <div className="space-y-1 pt-1.5 border-t border-neutral-900">
-                    <span className="text-[9px] uppercase font-bold text-neutral-400 tracking-wider block">
-                      Ajuste Rápido (passo de 12,5%):
-                    </span>
-                    <div className="grid grid-cols-3 sm:grid-cols-9 gap-1 w-full">
-                      {VOLUME_PRESETS.map((preset) => {
-                        const isSelected = Boolean(stateQ.data) && Math.abs(currentAudioVolume - preset.val) < 0.5;
-                        return (
-                          <button
-                            key={preset.val}
-                            disabled={!stateQ.data}
-                            onClick={() => handleOptimisticCommand("audio", "setVolume", preset.val)}
-                            className={`min-h-[28px] px-1 py-0.5 rounded-none text-[10px] font-semibold transition text-center truncate flex items-center justify-center disabled:opacity-40 ${
-                              isSelected
-                                ? "bg-white text-black font-bold border border-white shadow-xs"
-                                : "bg-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-800 border border-neutral-900"
-                            }`}
-                          >
-                            {preset.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -2533,10 +2530,11 @@ function RoomOperator() {
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-1.5 self-end sm:self-center flex-shrink-0">
+                              <div className="flex items-center gap-1.5 w-full sm:w-auto self-stretch sm:self-center flex-shrink-0 pt-1 sm:pt-0">
                                 <button
+                                  type="button"
                                   onClick={() => handleAddDropboxTrack(item, false)}
-                                  className={`min-h-[30px] px-2.5 text-xs font-semibold transition flex items-center gap-1 ${
+                                  className={`flex-1 sm:flex-initial min-h-[38px] sm:min-h-[30px] px-2.5 text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
                                     isJustAdded
                                       ? "bg-neutral-800 text-emerald-400 border border-emerald-500/40 font-bold"
                                       : "bg-neutral-900 border border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white"
@@ -2544,22 +2542,23 @@ function RoomOperator() {
                                 >
                                   {isJustAdded ? (
                                     <>
-                                      <CheckCircle2 className="h-3 w-3" />
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
                                       <span>Adicionado!</span>
                                     </>
                                   ) : (
                                     <>
-                                      <Plus className="h-3 w-3" />
+                                      <Plus className="h-3.5 w-3.5" />
                                       <span>+ Fila</span>
                                     </>
                                   )}
                                 </button>
                                 <button
+                                  type="button"
                                   onClick={() => handleAddDropboxTrack(item, true)}
-                                  className="min-h-[30px] px-3 bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center gap-1 shadow-sm"
+                                  className="flex-1 sm:flex-initial min-h-[38px] sm:min-h-[30px] px-3 bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
                                   title="Adiciona e inicia a reprodução agora na TV"
                                 >
-                                  <Play className="h-3 w-3" />
+                                  <Play className="h-3.5 w-3.5" />
                                   <span>Tocar Agora</span>
                                 </button>
                               </div>
@@ -4737,7 +4736,7 @@ function CeremonyWizardModal({
               />
             </div>
 
-            {/* Controle Livre de Volume (Wheel Picker) */}
+            {/* Controle de Volume da Recepção */}
             <div className="space-y-1.5 pt-1 border-t border-neutral-900">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-neutral-300">
@@ -4747,28 +4746,10 @@ function CeremonyWizardModal({
                   {Math.round(startVolume)}%
                 </span>
               </div>
-              <VolumeWheelPicker
+              <VolumeControlRow
                 value={startVolume}
                 onChange={setStartVolume}
-                compact
               />
-              <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-1 font-mono">Atalhos:</span>
-                {[0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100].map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setStartVolume(v)}
-                    className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
-                      startVolume === v
-                        ? "bg-white text-black border-white font-bold"
-                        : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700"
-                    }`}
-                  >
-                    {v}%
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 
@@ -4813,7 +4794,7 @@ function CeremonyWizardModal({
               </div>
             </div>
 
-            {/* Controle Livre de Volume (Wheel Picker) */}
+            {/* Controle de Volume da Despedida */}
             <div className="space-y-1.5 pt-1 border-t border-neutral-900">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-neutral-300">
@@ -4823,28 +4804,10 @@ function CeremonyWizardModal({
                   {Math.round(farewellVolume)}%
                 </span>
               </div>
-              <VolumeWheelPicker
+              <VolumeControlRow
                 value={farewellVolume}
                 onChange={setFarewellVolume}
-                compact
               />
-              <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-1 font-mono">Atalhos:</span>
-                {[0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100].map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setFarewellVolume(v)}
-                    className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
-                      farewellVolume === v
-                        ? "bg-white text-black border-white font-bold"
-                        : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700"
-                    }`}
-                  >
-                    {v}%
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 
@@ -4889,7 +4852,7 @@ function CeremonyWizardModal({
               </div>
             </div>
 
-            {/* Controle Livre de Volume (Wheel Picker) */}
+            {/* Controle de Volume do Fundo */}
             <div className="space-y-1.5 pt-1 border-t border-neutral-900">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-neutral-300">
@@ -4899,28 +4862,10 @@ function CeremonyWizardModal({
                   {Math.round(endVolume)}%
                 </span>
               </div>
-              <VolumeWheelPicker
+              <VolumeControlRow
                 value={endVolume}
                 onChange={setEndVolume}
-                compact
               />
-              <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-1 font-mono">Atalhos:</span>
-                {[0, 12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100].map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setEndVolume(v)}
-                    className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
-                      endVolume === v
-                        ? "bg-white text-black border-white font-bold"
-                        : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700"
-                    }`}
-                  >
-                    {v}%
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
         </div>
