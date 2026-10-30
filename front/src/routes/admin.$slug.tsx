@@ -72,6 +72,8 @@ import {
   Bookmark,
   BookmarkCheck,
   Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { AdiauSection } from "@/components/AdiauSection";
 import { RoutineModal } from "@/components/RoutineModal";
@@ -1107,6 +1109,7 @@ function RoomOperator() {
   const [dropboxFolder, setDropboxFolder] = useState("");
   const [isRefreshingDropbox, setIsRefreshingDropbox] = useState(false);
   const [showDropboxConfig, setShowDropboxConfig] = useState(false);
+  const [showDropboxToken, setShowDropboxToken] = useState(false);
   const [dropboxTokenInput, setDropboxTokenInput] = useState("");
   const [dropboxRefreshTokenInput, setDropboxRefreshTokenInput] = useState("");
   const [dropboxAppKeyInput, setDropboxAppKeyInput] = useState("");
@@ -1155,10 +1158,15 @@ function RoomOperator() {
       const payload: DropboxConfigPayload = {
         musicFolder: dropboxFolderInput.trim(),
       };
-      if (dropboxTokenInput.trim()) payload.accessToken = dropboxTokenInput.trim();
-      if (dropboxRefreshTokenInput.trim()) payload.refreshToken = dropboxRefreshTokenInput.trim();
-      if (dropboxAppKeyInput.trim()) payload.appKey = dropboxAppKeyInput.trim();
-      if (dropboxAppSecretInput.trim()) payload.appSecret = dropboxAppSecretInput.trim();
+      const cleanToken = dropboxTokenInput.replace(/[\r\n\t\s]/g, "").trim();
+      const cleanRefresh = dropboxRefreshTokenInput.replace(/[\r\n\t\s]/g, "").trim();
+      const cleanKey = dropboxAppKeyInput.replace(/[\r\n\t\s]/g, "").trim();
+      const cleanSecret = dropboxAppSecretInput.replace(/[\r\n\t\s]/g, "").trim();
+
+      if (cleanToken) payload.accessToken = cleanToken;
+      if (cleanRefresh) payload.refreshToken = cleanRefresh;
+      if (cleanKey) payload.appKey = cleanKey;
+      if (cleanSecret) payload.appSecret = cleanSecret;
 
       const res = await signageApi.saveDropboxConfig(payload);
       if (res.status?.configured) {
@@ -2455,13 +2463,26 @@ function RoomOperator() {
                         <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
                           Token de Acesso (Access Token)
                         </label>
-                        <input
-                          type="password"
-                          value={dropboxTokenInput}
-                          onChange={(e) => setDropboxTokenInput(e.target.value)}
-                          placeholder={dropboxStatusQ.data?.configured ? "••••••••••••••••••••••••••••••••" : "Cole seu Access Token aqui (sl.u.AF...)"}
-                          className="w-full bg-neutral-900 border border-neutral-800 px-3 py-1.5 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 font-mono"
-                        />
+                        <div className="relative">
+                          <input
+                            type={showDropboxToken ? "text" : "password"}
+                            value={dropboxTokenInput}
+                            onChange={(e) => setDropboxTokenInput(e.target.value.replace(/[\r\n\t]/g, ""))}
+                            autoComplete="new-password"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            placeholder={dropboxStatusQ.data?.configured ? "••••••••••••••••••••••••••••••••" : "Cole seu Access Token aqui (sl.u.AG...)"}
+                            className="w-full bg-neutral-900 border border-neutral-800 pl-3 pr-9 py-1.5 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowDropboxToken(!showDropboxToken)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white p-1 transition"
+                            title={showDropboxToken ? "Ocultar token" : "Exibir token completo"}
+                          >
+                            {showDropboxToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
                       </div>
 
                       <div>

@@ -118,10 +118,10 @@ class DropboxService {
   async saveConfig(config: Partial<DropboxConfig>): Promise<boolean> {
     const current = await this.getConfig();
     const updated: DropboxConfig = {
-      accessToken: config.accessToken !== undefined ? config.accessToken.trim() : current.accessToken,
-      refreshToken: config.refreshToken !== undefined ? config.refreshToken.trim() : current.refreshToken,
-      appKey: config.appKey !== undefined ? config.appKey.trim() : current.appKey,
-      appSecret: config.appSecret !== undefined ? config.appSecret.trim() : current.appSecret,
+      accessToken: config.accessToken !== undefined ? config.accessToken.trim().replace(/[\r\n\t\s]/g, "") : current.accessToken,
+      refreshToken: config.refreshToken !== undefined ? config.refreshToken.trim().replace(/[\r\n\t\s]/g, "") : current.refreshToken,
+      appKey: config.appKey !== undefined ? config.appKey.trim().replace(/[\r\n\t\s]/g, "") : current.appKey,
+      appSecret: config.appSecret !== undefined ? config.appSecret.trim().replace(/[\r\n\t\s]/g, "") : current.appSecret,
       musicFolder:
         config.musicFolder !== undefined
           ? normalizeDropboxPath(config.musicFolder)
