@@ -13,15 +13,19 @@ console.log("\n=======================================================");
 console.log(" 🔑 GERADOR DE REFRESH TOKEN DO DROPBOX (OFFLINE ACCESS)");
 console.log("=======================================================\n");
 
-let appKey = Deno.args[0] || defaultAppKey;
-let appSecret = Deno.args[1] || Deno.env.get("DROPBOX_APP_SECRET") || "";
-let authCode = Deno.args[2] || "";
+let appKey = defaultAppKey;
+let appSecret = Deno.env.get("DROPBOX_APP_SECRET") || "";
+let authCode = "";
 
-// Se o primeiro argumento parece ser o secret (32+ caracteres hexadecimais) e não a key de 15 chars
-if (Deno.args.length === 2) {
-  appKey = defaultAppKey;
+if (Deno.args.length === 1 && Deno.args[0] !== "--help") {
+  appSecret = Deno.args[0];
+} else if (Deno.args.length === 2) {
   appSecret = Deno.args[0];
   authCode = Deno.args[1];
+} else if (Deno.args.length >= 3) {
+  appKey = Deno.args[0];
+  appSecret = Deno.args[1];
+  authCode = Deno.args[2];
 }
 
 const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${appKey}&response_type=code&token_access_type=offline`;
