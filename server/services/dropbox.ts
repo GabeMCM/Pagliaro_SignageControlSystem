@@ -84,23 +84,31 @@ class DropboxService {
   private linkCache = new Map<string, { url: string; expiresAt: number }>();
 
   /**
-   * Obtém a configuração unificada do Dropbox (DB ou Variáveis de Ambiente)
+   * Obtém a configuração unificada do Dropbox (Variáveis de Ambiente têm prioridade máxima sobre o DB)
    */
   async getConfig(): Promise<DropboxConfig> {
     const fromDb = (await db.getSetting<DropboxConfig>("dropbox_config", {})) || {};
 
-    const accessToken =
-      fromDb.accessToken?.trim() || Deno.env.get("DROPBOX_ACCESS_TOKEN")?.trim() || "";
     const refreshToken =
-      fromDb.refreshToken?.trim() || Deno.env.get("DROPBOX_REFRESH_TOKEN")?.trim() || "";
+      Deno.env.get("DROPBOX_REFRESH_TOKEN")?.trim() ||
+      fromDb.refreshToken?.trim() ||
+      "";
     const appKey =
-      fromDb.appKey?.trim() || Deno.env.get("DROPBOX_APP_KEY")?.trim() || "";
+      Deno.env.get("DROPBOX_APP_KEY")?.trim() ||
+      fromDb.appKey?.trim() ||
+      "";
     const appSecret =
-      fromDb.appSecret?.trim() || Deno.env.get("DROPBOX_APP_SECRET")?.trim() || "";
+      Deno.env.get("DROPBOX_APP_SECRET")?.trim() ||
+      fromDb.appSecret?.trim() ||
+      "";
+    const accessToken =
+      Deno.env.get("DROPBOX_ACCESS_TOKEN")?.trim() ||
+      fromDb.accessToken?.trim() ||
+      "";
     const musicFolder =
-      fromDb.musicFolder !== undefined
-        ? fromDb.musicFolder.trim()
-        : Deno.env.get("DROPBOX_MUSIC_FOLDER")?.trim() || "";
+      Deno.env.get("DROPBOX_MUSIC_FOLDER")?.trim() ||
+      (fromDb.musicFolder !== undefined ? fromDb.musicFolder.trim() : "") ||
+      "/Músicas";
 
     return {
       accessToken,
@@ -109,6 +117,44 @@ class DropboxService {
       appSecret,
       musicFolder: normalizeDropboxPath(musicFolder),
       updatedAt: fromDb.updatedAt,
+    };
+  }
+
+  /**
+   * Troca um código de autorização OAuth2 do Dropbox por um Refresh Token perpétuo
+   */
+  async exchangeAuthorizationCode(
+    code: string,
+    appKey?: string,
+    appSecret?: string
+  ): Promise<{ accessToken: string; refreshToken?: string; expiresIn: number }> {
+    const cfg = await this.getConfig();
+    const finalKey = (appKey || cfg.appKey)?.trim();
+    const finalSecret = (appSecret || cfg.appSecret)?.trim();
+    if (!finalKey || !finalSecret) {
+      throw new Error("App Key e App Secret são necessários para trocar o código.");
+    }
+    const cleanCode = code.trim();
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code: cleanCode,
+      client_id: finalKey,
+      client_secret: finalSecret,
+    });
+    const res = await fetch("https://api.dropboxapi.com/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Falha ao obter refresh token (${res.status}): ${err}`);
+    }
+    const data = await res.json();
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresIn: data.expires_in || 14400,
     };
   }
 

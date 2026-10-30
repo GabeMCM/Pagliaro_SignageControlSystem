@@ -72,8 +72,6 @@ import {
   Bookmark,
   BookmarkCheck,
   Lock,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 import { AdiauSection } from "@/components/AdiauSection";
 import { RoutineModal } from "@/components/RoutineModal";
@@ -1108,21 +1106,6 @@ function RoomOperator() {
   const [dropboxQuery, setDropboxQuery] = useState("");
   const [dropboxFolder, setDropboxFolder] = useState("");
   const [isRefreshingDropbox, setIsRefreshingDropbox] = useState(false);
-  const [showDropboxConfig, setShowDropboxConfig] = useState(false);
-  const [showDropboxToken, setShowDropboxToken] = useState(false);
-  const [dropboxTokenInput, setDropboxTokenInput] = useState("");
-  const [dropboxRefreshTokenInput, setDropboxRefreshTokenInput] = useState("");
-  const [dropboxAppKeyInput, setDropboxAppKeyInput] = useState("");
-  const [dropboxAppSecretInput, setDropboxAppSecretInput] = useState("");
-  const [dropboxFolderInput, setDropboxFolderInput] = useState("");
-  const [isSavingDropboxConfig, setIsSavingDropboxConfig] = useState(false);
-  const [dropboxMsg, setDropboxMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
-  useEffect(() => {
-    if (dropboxStatusQ.data?.folder && !dropboxFolderInput) {
-      setDropboxFolderInput(dropboxStatusQ.data.folder);
-    }
-  }, [dropboxStatusQ.data?.folder]);
 
   const dropboxTracksQ = useQuery({
     queryKey: ["dropboxTracks", dropboxFolder],
@@ -1151,49 +1134,13 @@ function RoomOperator() {
     });
   }, [dropboxTracksQ.data?.tracks, dropboxQuery]);
 
-  const handleSaveDropboxConfig = async () => {
-    setIsSavingDropboxConfig(true);
-    setDropboxMsg(null);
-    try {
-      const payload: DropboxConfigPayload = {
-        musicFolder: dropboxFolderInput.trim(),
-      };
-      const cleanToken = dropboxTokenInput.replace(/[\r\n\t\s]/g, "").trim();
-      const cleanRefresh = dropboxRefreshTokenInput.replace(/[\r\n\t\s]/g, "").trim();
-      const cleanKey = dropboxAppKeyInput.replace(/[\r\n\t\s]/g, "").trim();
-      const cleanSecret = dropboxAppSecretInput.replace(/[\r\n\t\s]/g, "").trim();
-
-      if (cleanToken) payload.accessToken = cleanToken;
-      if (cleanRefresh) payload.refreshToken = cleanRefresh;
-      if (cleanKey) payload.appKey = cleanKey;
-      if (cleanSecret) payload.appSecret = cleanSecret;
-
-      const res = await signageApi.saveDropboxConfig(payload);
-      if (res.status?.configured) {
-        setDropboxMsg({ type: "success", text: "Dropbox conectado com sucesso!" });
-        await qc.invalidateQueries({ queryKey: ["dropboxStatus"] });
-        await qc.invalidateQueries({ queryKey: ["dropboxTracks"] });
-        await qc.invalidateQueries({ queryKey: ["dropboxFolders"] });
-        setShowDropboxConfig(false);
-      } else {
-        setDropboxMsg({
-          type: "error",
-          text: res.status?.error || "Token inválido. Verifique suas credenciais.",
-        });
-      }
-    } catch (err: any) {
-      setDropboxMsg({ type: "error", text: err.message || "Erro ao salvar configuração do Dropbox." });
-    } finally {
-      setIsSavingDropboxConfig(false);
-    }
-  };
-
   const handleRefreshDropbox = async () => {
     setIsRefreshingDropbox(true);
     try {
       await signageApi.getDropboxTracks(dropboxFolder || undefined, undefined, true);
       await qc.invalidateQueries({ queryKey: ["dropboxTracks"] });
       await qc.invalidateQueries({ queryKey: ["dropboxFolders"] });
+      await qc.invalidateQueries({ queryKey: ["dropboxStatus"] });
     } catch (err: any) {
       console.error("Erro ao sincronizar Dropbox:", err);
     } finally {
@@ -2410,174 +2357,25 @@ function RoomOperator() {
             {/* ============================================================ */}
             {basicAudioTab === "dropbox" && (
               <div className="space-y-3 w-full">
-                {/* 1. Formulário de Configuração (Visível se não configurado ou se o usuário clicou na engrenagem) */}
-                {(!dropboxStatusQ.data?.configured || showDropboxConfig) && (
-                  <div className="bg-neutral-950 border border-neutral-900 p-3.5 space-y-3">
-                    <div className="flex items-center justify-between border-b border-neutral-900 pb-2">
-                      <div className="flex items-center gap-2">
-                        <Cloud className="h-4 w-4 text-sky-400" />
-                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                          Configuração do Dropbox
-                        </h4>
-                      </div>
-                      {dropboxStatusQ.data?.configured && (
-                        <button
-                          onClick={() => setShowDropboxConfig(false)}
-                          className="text-neutral-500 hover:text-white p-1 text-xs"
-                          title="Fechar configurações"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-
-                    <p className="text-[11px] text-neutral-400 leading-relaxed">
-                      Conecte sua conta do Dropbox para que suas músicas salvas sejam listadas e pesquisadas automaticamente no painel.
-                      Crie um aplicativo gratuito em{" "}
-                      <a
-                        href="https://www.dropbox.com/developers/apps"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sky-400 underline hover:text-sky-300"
-                      >
-                        dropbox.com/developers/apps
-                      </a>{" "}
-                      com permissões <code className="text-neutral-300 bg-neutral-900 px-1 py-0.5 font-mono text-[10px]">files.metadata.read</code> e{" "}
-                      <code className="text-neutral-300 bg-neutral-900 px-1 py-0.5 font-mono text-[10px]">files.content.read</code>.
+                {/* 1. Aviso quando o Dropbox não estiver configurado no servidor (.env) */}
+                {!dropboxStatusQ.data?.configured && (
+                  <div className="bg-neutral-950 border border-neutral-900 p-6 text-center space-y-2">
+                    <Cloud className="h-7 w-7 text-neutral-500 mx-auto" />
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                      Músicas do Meu Dropbox
+                    </h4>
+                    <p className="text-xs text-neutral-400 max-w-md mx-auto leading-relaxed">
+                      O acesso ao Dropbox agora é configurado diretamente nas variáveis de ambiente do servidor (<code className="text-neutral-300 font-mono text-[11px]">.env</code> ou painel do Render).
                     </p>
-
-                    {dropboxMsg && (
-                      <div
-                        className={`p-2.5 text-xs border ${
-                          dropboxMsg.type === "success"
-                            ? "bg-emerald-950/40 border-emerald-800 text-emerald-300"
-                            : "bg-red-950/40 border-red-800 text-red-300"
-                        }`}
-                      >
-                        {dropboxMsg.text}
-                      </div>
+                    {dropboxStatusQ.data?.error && (
+                      <p className="text-[11px] text-red-400 font-mono pt-1">
+                        {dropboxStatusQ.data.error}
+                      </p>
                     )}
-
-                    <div className="space-y-2.5">
-                      <div>
-                        <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
-                          Token de Acesso (Access Token)
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showDropboxToken ? "text" : "password"}
-                            value={dropboxTokenInput}
-                            onChange={(e) => setDropboxTokenInput(e.target.value.replace(/[\r\n\t]/g, ""))}
-                            autoComplete="new-password"
-                            data-lpignore="true"
-                            data-1p-ignore="true"
-                            placeholder={dropboxStatusQ.data?.configured ? "••••••••••••••••••••••••••••••••" : "Cole seu Access Token aqui (sl.u.AG...)"}
-                            className="w-full bg-neutral-900 border border-neutral-800 pl-3 pr-9 py-1.5 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 font-mono"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowDropboxToken(!showDropboxToken)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white p-1 transition"
-                            title={showDropboxToken ? "Ocultar token" : "Exibir token completo"}
-                          >
-                            {showDropboxToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
-                          Pasta das Músicas no Dropbox
-                        </label>
-                        <input
-                          type="text"
-                          value={dropboxFolderInput}
-                          onChange={(e) => setDropboxFolderInput(e.target.value)}
-                          placeholder="/Musicas (ou deixe em branco para varrer todo o Dropbox)"
-                          className="w-full bg-neutral-900 border border-neutral-800 px-3 py-1.5 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
-                        />
-                        <span className="text-[10px] text-neutral-500 mt-0.5 block">
-                          Exemplo: /Musicas ou /Signage/Musicas. Deixe vazio para listar qualquer pasta.
-                        </span>
-                      </div>
-
-                      {/* Opções avançadas para renovação contínua automática */}
-                      <details className="text-neutral-400 text-xs">
-                        <summary className="cursor-pointer text-[11px] text-neutral-400 hover:text-white select-none py-1">
-                          Opções Avançadas (App Key / Secret / Refresh Token)
-                        </summary>
-                        <div className="pt-2 space-y-2 border-t border-neutral-900 mt-1">
-                          <div>
-                            <label className="block text-[10px] text-neutral-400 mb-0.5">
-                              Refresh Token (Opcional - renovação perpétua)
-                            </label>
-                            <input
-                              type="password"
-                              value={dropboxRefreshTokenInput}
-                              onChange={(e) => setDropboxRefreshTokenInput(e.target.value)}
-                              placeholder="Refresh Token gerado no OAuth"
-                              className="w-full bg-neutral-900 border border-neutral-800 px-2.5 py-1 text-xs text-white placeholder-neutral-600 font-mono"
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-[10px] text-neutral-400 mb-0.5">App Key</label>
-                              <input
-                                type="text"
-                                value={dropboxAppKeyInput}
-                                onChange={(e) => setDropboxAppKeyInput(e.target.value)}
-                                placeholder="App Key"
-                                className="w-full bg-neutral-900 border border-neutral-800 px-2.5 py-1 text-xs text-white placeholder-neutral-600 font-mono"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-neutral-400 mb-0.5">App Secret</label>
-                              <input
-                                type="password"
-                                value={dropboxAppSecretInput}
-                                onChange={(e) => setDropboxAppSecretInput(e.target.value)}
-                                placeholder="App Secret"
-                                className="w-full bg-neutral-900 border border-neutral-800 px-2.5 py-1 text-xs text-white placeholder-neutral-600 font-mono"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </details>
-
-                      <div className="pt-1 flex items-center justify-end gap-2">
-                        {dropboxStatusQ.data?.configured && (
-                          <button
-                            type="button"
-                            onClick={() => setShowDropboxConfig(false)}
-                            className="px-3 py-1.5 text-xs text-neutral-400 hover:text-white border border-neutral-800 hover:border-neutral-700 transition"
-                          >
-                            Cancelar
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={handleSaveDropboxConfig}
-                          disabled={isSavingDropboxConfig}
-                          className="px-3.5 py-1.5 bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
-                        >
-                          {isSavingDropboxConfig ? (
-                            <>
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              <span>Validando e Salvando...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Save className="h-3 w-3" />
-                              <span>Testar e Salvar Conexão</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 )}
 
-                {/* 2. Barra de Status e Controles quando conectado */}
+                {/* 2. Barra de Status, Pesquisa e Controles quando conectado */}
                 {dropboxStatusQ.data?.configured && (
                   <div className="bg-neutral-950/70 p-3 sm:p-3.5 border border-neutral-900 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-900 pb-2.5">
@@ -2587,8 +2385,13 @@ function RoomOperator() {
                           {dropboxStatusQ.data.accountName || "Dropbox Conectado"}
                         </span>
                         <span className="text-[10px] text-neutral-500 hidden sm:inline truncate">
-                          ({dropboxStatusQ.data.folder || "Raiz"})
+                          (Pasta: {dropboxStatusQ.data.folder || "/Músicas"})
                         </span>
+                        {dropboxStatusQ.data.hasRefreshToken && (
+                          <span className="text-[9px] bg-emerald-950 border border-emerald-800 text-emerald-400 px-1.5 py-0.5 font-mono uppercase tracking-wider">
+                            Renovação Automática
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1.5">
@@ -2599,15 +2402,7 @@ function RoomOperator() {
                           title="Sincronizar e recarregar faixas do Dropbox"
                         >
                           <RefreshCw className={`h-3 w-3 ${isRefreshingDropbox ? "animate-spin" : ""}`} />
-                          <span className="hidden sm:inline">Sincronizar</span>
-                        </button>
-                        <button
-                          onClick={() => setShowDropboxConfig((prev) => !prev)}
-                          className="px-2 py-1 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition flex items-center gap-1"
-                          title="Editar configurações do Dropbox"
-                        >
-                          <Settings className="h-3 w-3" />
-                          <span className="hidden sm:inline">Configurar</span>
+                          <span>Sincronizar</span>
                         </button>
                       </div>
                     </div>

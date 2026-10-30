@@ -921,6 +921,21 @@ api.post("/dropbox/config", async (c) => {
   }
 });
 
+// Trocar código de autorização OAuth por refresh token
+api.post("/dropbox/exchange", async (c) => {
+  try {
+    const body = await c.req.json();
+    const result = await dropboxService.exchangeAuthorizationCode(
+      body.code,
+      body.appKey,
+      body.appSecret
+    );
+    return c.json({ success: true, ...result });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message || "Erro ao trocar código." }, 400);
+  }
+});
+
 // 3. Listar ou pesquisar faixas de áudio
 api.get("/dropbox/tracks", async (c) => {
   try {

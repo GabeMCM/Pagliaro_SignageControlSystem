@@ -17,3 +17,11 @@ services:
         value: cap-signage
       - key: AUTH_SECRET
         generateValue: true # O Render gera automaticamente uma chave criptográfica forte
+      - key: DROPBOX_APP_KEY
+        value: 1occi7mbnags2z2
+      - key: DROPBOX_APP_SECRET
+        sync: false
+      - key: DROPBOX_REFRESH_TOKEN
+        sync: false
+      - key: DROPBOX_MUSIC_FOLDER
+        value: "/Músicas"
