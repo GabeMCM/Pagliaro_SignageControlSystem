@@ -9,6 +9,9 @@ import {
   type YoutubeTrackResult,
   type YoutubePlaylistResult,
   type RadioStationItem,
+  type DropboxTrack,
+  type DropboxStatus,
+  type DropboxConfigPayload,
   type ScheduleTask,
   type RoomRoutine,
   API_BASE,
@@ -58,6 +61,9 @@ import {
   Search,
   Disc,
   Loader2,
+  Cloud,
+  Folder,
+  Settings,
   CheckCircle2,
   Minus,
   Calendar,
@@ -98,6 +104,13 @@ function cleanAudioUrl(rawUrl: string): string {
   const gdriveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (gdriveMatch) {
     url = `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`;
+  }
+  if (url.includes("dropbox.com")) {
+    if (!url.includes("dl.dropboxusercontent.com")) {
+      url = url.replace("www.dropbox.com", "dl.dropboxusercontent.com");
+    }
+    url = url.replace(/[?&]dl=0/, "").replace(/[?&]dl=1/, "");
+    url += url.includes("?") ? "&dl=1" : "?dl=1";
   }
   return url;
 }
@@ -1051,8 +1064,8 @@ function RoomOperator() {
   const [siteInputUrl, setSiteInputUrl] = useState("");
   const [audioStreamInputUrl, setAudioStreamInputUrl] = useState("");
 
-  // Sub-modo de áudio no Modo Básico: busca youtube, importar playlist, fila da sala ou web rádio
-  const [basicAudioTab, setBasicAudioTab] = useState<"youtube" | "playlist_import" | "playlist" | "stream">("youtube");
+  // Sub-modo de áudio no Modo Básico: dropbox, busca youtube, importar playlist, fila da sala ou web rádio
+  const [basicAudioTab, setBasicAudioTab] = useState<"dropbox" | "youtube" | "playlist_import" | "playlist" | "stream">("dropbox");
 
   // Inputs para adicionar faixa à playlist no Modo Básico
   const [newTrackUrl, setNewTrackUrl] = useState("");
@@ -1097,6 +1110,236 @@ function RoomOperator() {
   const [isProbingRadio, setIsProbingRadio] = useState(false);
   const [radioStatusMsg, setRadioStatusMsg] = useState<string | null>(null);
   const [radioErrorMsg, setRadioErrorMsg] = useState<string | null>(null);
+
+  // Estados para Músicas no Dropbox (Nuvem)
+  const dropboxStatusQ = useQuery({
+    queryKey: ["dropboxStatus"],
+    queryFn: signageApi.getDropboxStatus,
+    staleTime: 30000,
+  });
+
+  const [dropboxQuery, setDropboxQuery] = useState("");
+  const [dropboxFolder, setDropboxFolder] = useState("");
+  const [isRefreshingDropbox, setIsRefreshingDropbox] = useState(false);
+  const [showDropboxConfig, setShowDropboxConfig] = useState(false);
+  const [dropboxTokenInput, setDropboxTokenInput] = useState("");
+  const [dropboxRefreshTokenInput, setDropboxRefreshTokenInput] = useState("");
+  const [dropboxAppKeyInput, setDropboxAppKeyInput] = useState("");
+  const [dropboxAppSecretInput, setDropboxAppSecretInput] = useState("");
+  const [dropboxFolderInput, setDropboxFolderInput] = useState("");
+  const [isSavingDropboxConfig, setIsSavingDropboxConfig] = useState(false);
+  const [dropboxMsg, setDropboxMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    if (dropboxStatusQ.data?.folder && !dropboxFolderInput) {
+      setDropboxFolderInput(dropboxStatusQ.data.folder);
+    }
+  }, [dropboxStatusQ.data?.folder]);
+
+  const dropboxTracksQ = useQuery({
+    queryKey: ["dropboxTracks", dropboxFolder],
+    queryFn: () => signageApi.getDropboxTracks(dropboxFolder || undefined),
+    enabled: Boolean(dropboxStatusQ.data?.configured),
+    staleTime: 60000,
+  });
+
+  const dropboxFoldersQ = useQuery({
+    queryKey: ["dropboxFolders"],
+    queryFn: signageApi.getDropboxFolders,
+    enabled: Boolean(dropboxStatusQ.data?.configured),
+    staleTime: 120000,
+  });
+
+  const filteredDropboxTracks = useMemo(() => {
+    const list = dropboxTracksQ.data?.tracks || [];
+    const q = dropboxQuery.trim().toLowerCase();
+    if (!q) return list;
+    const qNorm = q.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return list.filter((t) => {
+      const titleNorm = t.title.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const nameNorm = t.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const folderNorm = t.folder.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      return titleNorm.includes(qNorm) || nameNorm.includes(qNorm) || folderNorm.includes(qNorm);
+    });
+  }, [dropboxTracksQ.data?.tracks, dropboxQuery]);
+
+  const handleSaveDropboxConfig = async () => {
+    setIsSavingDropboxConfig(true);
+    setDropboxMsg(null);
+    try {
+      const payload: DropboxConfigPayload = {
+        musicFolder: dropboxFolderInput.trim(),
+      };
+      if (dropboxTokenInput.trim()) payload.accessToken = dropboxTokenInput.trim();
+      if (dropboxRefreshTokenInput.trim()) payload.refreshToken = dropboxRefreshTokenInput.trim();
+      if (dropboxAppKeyInput.trim()) payload.appKey = dropboxAppKeyInput.trim();
+      if (dropboxAppSecretInput.trim()) payload.appSecret = dropboxAppSecretInput.trim();
+
+      const res = await signageApi.saveDropboxConfig(payload);
+      if (res.status?.configured) {
+        setDropboxMsg({ type: "success", text: "Dropbox conectado com sucesso!" });
+        await qc.invalidateQueries({ queryKey: ["dropboxStatus"] });
+        await qc.invalidateQueries({ queryKey: ["dropboxTracks"] });
+        await qc.invalidateQueries({ queryKey: ["dropboxFolders"] });
+        setShowDropboxConfig(false);
+      } else {
+        setDropboxMsg({
+          type: "error",
+          text: res.status?.error || "Token inválido. Verifique suas credenciais.",
+        });
+      }
+    } catch (err: any) {
+      setDropboxMsg({ type: "error", text: err.message || "Erro ao salvar configuração do Dropbox." });
+    } finally {
+      setIsSavingDropboxConfig(false);
+    }
+  };
+
+  const handleRefreshDropbox = async () => {
+    setIsRefreshingDropbox(true);
+    try {
+      await signageApi.getDropboxTracks(dropboxFolder || undefined, undefined, true);
+      await qc.invalidateQueries({ queryKey: ["dropboxTracks"] });
+      await qc.invalidateQueries({ queryKey: ["dropboxFolders"] });
+    } catch (err: any) {
+      console.error("Erro ao sincronizar Dropbox:", err);
+    } finally {
+      setIsRefreshingDropbox(false);
+    }
+  };
+
+  const handleAddDropboxTrack = async (track: DropboxTrack, playImmediately = false) => {
+    const newItem: PlaylistItem = {
+      url: track.streamUrl,
+      title: track.title,
+      type: "audio",
+      duration: track.duration,
+      muted: false,
+      volume: 100,
+    };
+
+    let targetPlaylistId = activeAudio?.id;
+    let targetItems = [...(activeAudio?.items || [])];
+
+    if (activeAudio) {
+      targetItems.push(newItem);
+      await signageApi.updatePlaylist(activeAudio.id, {
+        ...activeAudio,
+        items: targetItems,
+      });
+      if (stateQ.data?.audioStreamUrl) {
+        await signageApi.setState(slug, { audioStreamUrl: null, audioStatus: "playing" });
+      }
+    } else {
+      const playlistName = `Áudio - ${currentRoom?.name || slug}`;
+      const existingQueue = audioPlaylists.find((p) => p.name === playlistName);
+      if (existingQueue) {
+        targetPlaylistId = existingQueue.id;
+        targetItems = [...(existingQueue.items || []), newItem];
+        await signageApi.updatePlaylist(targetPlaylistId, {
+          ...existingQueue,
+          items: targetItems,
+        });
+        await signageApi.setState(slug, {
+          audioPlaylist: targetPlaylistId,
+          audioStreamUrl: null,
+          audioStatus: "playing",
+        });
+      } else {
+        const res = await signageApi.createPlaylist({
+          name: playlistName,
+          type: "audio",
+          items: [newItem],
+          loop: true,
+          loopMode: "all",
+          shuffle: false,
+        });
+        targetPlaylistId = res.playlist?.id;
+        if (targetPlaylistId) {
+          await signageApi.setState(slug, {
+            audioPlaylist: targetPlaylistId,
+            audioStreamUrl: null,
+            audioStatus: "playing",
+          });
+        }
+      }
+    }
+
+    setAddedSuccessId(track.id);
+    setTimeout(() => setAddedSuccessId(null), 2500);
+
+    if (playImmediately) {
+      const newIdx = targetItems.length - 1;
+      signageApi.setTrackIndex(slug, newIdx);
+      await signageApi.setState(slug, { audioStatus: "playing" });
+    }
+  };
+
+  const handleAddAllDropboxTracks = async (tracksToAdd: DropboxTrack[], playImmediately = false) => {
+    if (!tracksToAdd || tracksToAdd.length === 0) return;
+
+    const newItems: PlaylistItem[] = tracksToAdd.map((track) => ({
+      url: track.streamUrl,
+      title: track.title,
+      type: "audio",
+      duration: track.duration,
+      muted: false,
+      volume: 100,
+    }));
+
+    let targetPlaylistId = activeAudio?.id;
+    let targetItems = [...(activeAudio?.items || [])];
+    const initialLen = targetItems.length;
+
+    if (activeAudio) {
+      targetItems = [...targetItems, ...newItems];
+      await signageApi.updatePlaylist(activeAudio.id, {
+        ...activeAudio,
+        items: targetItems,
+      });
+      if (stateQ.data?.audioStreamUrl) {
+        await signageApi.setState(slug, { audioStreamUrl: null, audioStatus: "playing" });
+      }
+    } else {
+      const playlistName = `Áudio - ${currentRoom?.name || slug}`;
+      const existingQueue = audioPlaylists.find((p) => p.name === playlistName);
+      if (existingQueue) {
+        targetPlaylistId = existingQueue.id;
+        targetItems = [...(existingQueue.items || []), ...newItems];
+        await signageApi.updatePlaylist(targetPlaylistId, {
+          ...existingQueue,
+          items: targetItems,
+        });
+        await signageApi.setState(slug, {
+          audioPlaylist: targetPlaylistId,
+          audioStreamUrl: null,
+          audioStatus: "playing",
+        });
+      } else {
+        const res = await signageApi.createPlaylist({
+          name: playlistName,
+          type: "audio",
+          items: newItems,
+          loop: true,
+          loopMode: "all",
+          shuffle: false,
+        });
+        targetPlaylistId = res.playlist?.id;
+        if (targetPlaylistId) {
+          await signageApi.setState(slug, {
+            audioPlaylist: targetPlaylistId,
+            audioStreamUrl: null,
+            audioStatus: "playing",
+          });
+        }
+      }
+    }
+
+    if (playImmediately) {
+      signageApi.setTrackIndex(slug, initialLen);
+      await signageApi.setState(slug, { audioStatus: "playing" });
+    }
+  };
 
   useEffect(() => {
     if (stateQ.data?.siteUrl) {
@@ -2345,8 +2588,41 @@ function RoomOperator() {
               )}
             </div>
 
-            {/* Seletor de 4 Abas: Buscar, Importar, Fila, Rádio (MOVIDO PARA DEPOIS DO CONTROLE) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 bg-neutral-950 border border-neutral-900 p-0.5 rounded-none gap-1 w-full">
+            {/* Seletor de 5 Abas: Dropbox, Rádio, Fila, YouTube, Importar */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 bg-neutral-950 border border-neutral-900 p-0.5 rounded-none gap-1 w-full">
+              <button
+                onClick={() => setBasicAudioTab("dropbox")}
+                className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                  basicAudioTab === "dropbox"
+                    ? "bg-neutral-800 text-white border border-neutral-900 shadow-sm font-bold"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Cloud className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Meu Dropbox</span>
+              </button>
+              <button
+                onClick={() => setBasicAudioTab("stream")}
+                className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                  basicAudioTab === "stream"
+                    ? "bg-neutral-800 text-white border border-neutral-900 shadow-sm font-bold"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                <RadioIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Web Rádio</span>
+              </button>
+              <button
+                onClick={() => setBasicAudioTab("playlist")}
+                className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
+                  basicAudioTab === "playlist"
+                    ? "bg-neutral-800 text-white border border-neutral-900 shadow-sm font-bold"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                <ListMusic className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Fila ({activeAudio?.items?.length || 0})</span>
+              </button>
               <button
                 onClick={() => setBasicAudioTab("youtube")}
                 className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
@@ -2367,31 +2643,369 @@ function RoomOperator() {
                 }`}
               >
                 <Disc className="h-3.5 w-3.5 flex-shrink-0" />
-                <span className="truncate">Importar Playlist</span>
-              </button>
-              <button
-                onClick={() => setBasicAudioTab("playlist")}
-                className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
-                  basicAudioTab === "playlist"
-                    ? "bg-neutral-800 text-white border border-neutral-900 shadow-sm font-bold"
-                    : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                <ListMusic className="h-3.5 w-3.5 flex-shrink-0" />
-                <span className="truncate">Fila ({activeAudio?.items?.length || 0})</span>
-              </button>
-              <button
-                onClick={() => setBasicAudioTab("stream")}
-                className={`py-1.5 px-2 rounded-none text-xs font-semibold transition flex items-center justify-center gap-1.5 ${
-                  basicAudioTab === "stream"
-                    ? "bg-neutral-800 text-white border border-neutral-900 shadow-sm font-bold"
-                    : "text-neutral-400 hover:text-white"
-                }`}
-              >
-                <RadioIcon className="h-3.5 w-3.5 flex-shrink-0" />
-                <span className="truncate">Web Rádio</span>
+                <span className="truncate">Importar Link</span>
               </button>
             </div>
+
+            {/* ============================================================ */}
+            {/* SUB-ABA: MEU DROPBOX (BUSCA DIRETA NA NUVEM)                 */}
+            {/* ============================================================ */}
+            {basicAudioTab === "dropbox" && (
+              <div className="space-y-3 w-full">
+                {/* 1. Formulário de Configuração (Visível se não configurado ou se o usuário clicou na engrenagem) */}
+                {(!dropboxStatusQ.data?.configured || showDropboxConfig) && (
+                  <div className="bg-neutral-950 border border-neutral-900 p-3.5 space-y-3">
+                    <div className="flex items-center justify-between border-b border-neutral-900 pb-2">
+                      <div className="flex items-center gap-2">
+                        <Cloud className="h-4 w-4 text-sky-400" />
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                          Configuração do Dropbox
+                        </h4>
+                      </div>
+                      {dropboxStatusQ.data?.configured && (
+                        <button
+                          onClick={() => setShowDropboxConfig(false)}
+                          className="text-neutral-500 hover:text-white p-1 text-xs"
+                          title="Fechar configurações"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-neutral-400 leading-relaxed">
+                      Conecte sua conta do Dropbox para que suas músicas salvas sejam listadas e pesquisadas automaticamente no painel.
+                      Crie um aplicativo gratuito em{" "}
+                      <a
+                        href="https://www.dropbox.com/developers/apps"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sky-400 underline hover:text-sky-300"
+                      >
+                        dropbox.com/developers/apps
+                      </a>{" "}
+                      com permissões <code className="text-neutral-300 bg-neutral-900 px-1 py-0.5 font-mono text-[10px]">files.metadata.read</code> e{" "}
+                      <code className="text-neutral-300 bg-neutral-900 px-1 py-0.5 font-mono text-[10px]">files.content.read</code>.
+                    </p>
+
+                    {dropboxMsg && (
+                      <div
+                        className={`p-2.5 text-xs border ${
+                          dropboxMsg.type === "success"
+                            ? "bg-emerald-950/40 border-emerald-800 text-emerald-300"
+                            : "bg-red-950/40 border-red-800 text-red-300"
+                        }`}
+                      >
+                        {dropboxMsg.text}
+                      </div>
+                    )}
+
+                    <div className="space-y-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                          Token de Acesso (Access Token)
+                        </label>
+                        <input
+                          type="password"
+                          value={dropboxTokenInput}
+                          onChange={(e) => setDropboxTokenInput(e.target.value)}
+                          placeholder={dropboxStatusQ.data?.configured ? "••••••••••••••••••••••••••••••••" : "Cole seu Access Token aqui (sl.u.AF...)"}
+                          className="w-full bg-neutral-900 border border-neutral-800 px-3 py-1.5 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500 font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                          Pasta das Músicas no Dropbox
+                        </label>
+                        <input
+                          type="text"
+                          value={dropboxFolderInput}
+                          onChange={(e) => setDropboxFolderInput(e.target.value)}
+                          placeholder="/Musicas (ou deixe em branco para varrer todo o Dropbox)"
+                          className="w-full bg-neutral-900 border border-neutral-800 px-3 py-1.5 text-xs text-white placeholder-neutral-600 focus:outline-none focus:border-neutral-500"
+                        />
+                        <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                          Exemplo: /Musicas ou /Signage/Musicas. Deixe vazio para listar qualquer pasta.
+                        </span>
+                      </div>
+
+                      {/* Opções avançadas para renovação contínua automática */}
+                      <details className="text-neutral-400 text-xs">
+                        <summary className="cursor-pointer text-[11px] text-neutral-400 hover:text-white select-none py-1">
+                          Opções Avançadas (App Key / Secret / Refresh Token)
+                        </summary>
+                        <div className="pt-2 space-y-2 border-t border-neutral-900 mt-1">
+                          <div>
+                            <label className="block text-[10px] text-neutral-400 mb-0.5">
+                              Refresh Token (Opcional - renovação perpétua)
+                            </label>
+                            <input
+                              type="password"
+                              value={dropboxRefreshTokenInput}
+                              onChange={(e) => setDropboxRefreshTokenInput(e.target.value)}
+                              placeholder="Refresh Token gerado no OAuth"
+                              className="w-full bg-neutral-900 border border-neutral-800 px-2.5 py-1 text-xs text-white placeholder-neutral-600 font-mono"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] text-neutral-400 mb-0.5">App Key</label>
+                              <input
+                                type="text"
+                                value={dropboxAppKeyInput}
+                                onChange={(e) => setDropboxAppKeyInput(e.target.value)}
+                                placeholder="App Key"
+                                className="w-full bg-neutral-900 border border-neutral-800 px-2.5 py-1 text-xs text-white placeholder-neutral-600 font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-neutral-400 mb-0.5">App Secret</label>
+                              <input
+                                type="password"
+                                value={dropboxAppSecretInput}
+                                onChange={(e) => setDropboxAppSecretInput(e.target.value)}
+                                placeholder="App Secret"
+                                className="w-full bg-neutral-900 border border-neutral-800 px-2.5 py-1 text-xs text-white placeholder-neutral-600 font-mono"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </details>
+
+                      <div className="pt-1 flex items-center justify-end gap-2">
+                        {dropboxStatusQ.data?.configured && (
+                          <button
+                            type="button"
+                            onClick={() => setShowDropboxConfig(false)}
+                            className="px-3 py-1.5 text-xs text-neutral-400 hover:text-white border border-neutral-800 hover:border-neutral-700 transition"
+                          >
+                            Cancelar
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleSaveDropboxConfig}
+                          disabled={isSavingDropboxConfig}
+                          className="px-3.5 py-1.5 bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          {isSavingDropboxConfig ? (
+                            <>
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              <span>Validando e Salvando...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Save className="h-3 w-3" />
+                              <span>Testar e Salvar Conexão</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Barra de Status e Controles quando conectado */}
+                {dropboxStatusQ.data?.configured && (
+                  <div className="bg-neutral-950/70 p-3 sm:p-3.5 border border-neutral-900 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-900 pb-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
+                        <span className="text-xs font-bold text-white truncate">
+                          {dropboxStatusQ.data.accountName || "Dropbox Conectado"}
+                        </span>
+                        <span className="text-[10px] text-neutral-500 hidden sm:inline truncate">
+                          ({dropboxStatusQ.data.folder || "Raiz"})
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={handleRefreshDropbox}
+                          disabled={isRefreshingDropbox}
+                          className="px-2.5 py-1 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition flex items-center gap-1"
+                          title="Sincronizar e recarregar faixas do Dropbox"
+                        >
+                          <RefreshCw className={`h-3 w-3 ${isRefreshingDropbox ? "animate-spin" : ""}`} />
+                          <span className="hidden sm:inline">Sincronizar</span>
+                        </button>
+                        <button
+                          onClick={() => setShowDropboxConfig((prev) => !prev)}
+                          className="px-2 py-1 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition flex items-center gap-1"
+                          title="Editar configurações do Dropbox"
+                        >
+                          <Settings className="h-3 w-3" />
+                          <span className="hidden sm:inline">Configurar</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Barra de Pesquisa e Filtro de Pastas */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="relative sm:col-span-2">
+                        <input
+                          type="text"
+                          value={dropboxQuery}
+                          onChange={(e) => setDropboxQuery(e.target.value)}
+                          placeholder="Pesquisar por título, artista, nome da música..."
+                          className="w-full bg-neutral-900 border border-neutral-800 pl-8 pr-8 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-600"
+                        />
+                        <Search className="h-3.5 w-3.5 text-neutral-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        {dropboxQuery && (
+                          <button
+                            onClick={() => setDropboxQuery("")}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white p-1"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Dropdown de Pastas / Categorias */}
+                      <div>
+                        <select
+                          value={dropboxFolder}
+                          onChange={(e) => setDropboxFolder(e.target.value)}
+                          className="w-full bg-neutral-900 border border-neutral-800 px-2.5 py-2 text-xs text-white focus:outline-none focus:border-neutral-600"
+                        >
+                          <option value="">Todas as Pastas</option>
+                          {(dropboxFoldersQ.data?.folders || []).map((f) => (
+                            <option key={f} value={f}>
+                              Pasta: {f}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Ações em Lote e Contagem */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-neutral-400">
+                      <div>
+                        <span>
+                          {dropboxTracksQ.isLoading ? (
+                            "Carregando músicas..."
+                          ) : (
+                            <>
+                              <strong className="text-white font-mono">{filteredDropboxTracks.length}</strong> música
+                              {filteredDropboxTracks.length === 1 ? "" : "s"} encontrada
+                              {filteredDropboxTracks.length === 1 ? "" : "s"}
+                            </>
+                          )}
+                        </span>
+                      </div>
+
+                      {filteredDropboxTracks.length > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleAddAllDropboxTracks(filteredDropboxTracks, false)}
+                            className="px-2.5 py-1 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition flex items-center gap-1"
+                            title="Adiciona todas as músicas exibidas à fila da sala"
+                          >
+                            <Plus className="h-3 w-3" />
+                            <span>+ Fila Todas</span>
+                          </button>
+                          <button
+                            onClick={() => handleAddAllDropboxTracks(filteredDropboxTracks, true)}
+                            className="px-2.5 py-1 bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center gap-1"
+                            title="Coloca todas na fila e inicia a reprodução agora"
+                          >
+                            <Play className="h-3 w-3" />
+                            <span>Tocar Tudo</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Lista de Músicas */}
+                    {dropboxTracksQ.isLoading ? (
+                      <div className="p-8 text-center text-neutral-500 text-xs flex flex-col items-center justify-center gap-2">
+                        <Loader2 className="h-5 w-5 animate-spin text-neutral-400" />
+                        <span>Carregando músicas da sua pasta do Dropbox...</span>
+                      </div>
+                    ) : filteredDropboxTracks.length === 0 ? (
+                      <div className="p-6 text-center text-neutral-500 text-xs border border-neutral-900 bg-neutral-950/40 space-y-1">
+                        <p className="font-semibold text-neutral-400">
+                          {dropboxQuery ? "Nenhuma música corresponde à sua pesquisa." : "Nenhum arquivo de áudio encontrado."}
+                        </p>
+                        <p className="text-[10px]">
+                          {dropboxQuery
+                            ? "Tente pesquisar por outro nome ou limpe o campo de busca."
+                            : "Coloque arquivos MP3 ou M4A na sua pasta do Dropbox e clique em Sincronizar."}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-neutral-900 border border-neutral-900 max-h-[460px] overflow-y-auto">
+                        {filteredDropboxTracks.map((item) => {
+                          const isJustAdded = addedSuccessId === item.id;
+                          return (
+                            <div
+                              key={item.id}
+                              className="p-2.5 bg-neutral-950/90 hover:bg-neutral-900/60 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div className="w-8 h-8 bg-neutral-900 border border-neutral-800 flex items-center justify-center flex-shrink-0">
+                                  <Music className="h-4 w-4 text-neutral-400" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <h4 className="text-xs sm:text-sm font-medium text-white truncate">
+                                    {item.title}
+                                  </h4>
+                                  <div className="flex items-center gap-2 text-[10px] text-neutral-500 mt-0.5">
+                                    <span className="truncate">{item.folder}</span>
+                                    <span>•</span>
+                                    <span>{item.sizeFormatted}</span>
+                                    {item.durationFormatted && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="font-mono">{item.durationFormatted}</span>
+                                      </>
+                                    )}
+                                    <span>•</span>
+                                    <span className="uppercase text-[9px] font-mono text-neutral-600">{item.extension}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 self-end sm:self-center flex-shrink-0">
+                                <button
+                                  onClick={() => handleAddDropboxTrack(item, false)}
+                                  className={`min-h-[30px] px-2.5 text-xs font-semibold transition flex items-center gap-1 ${
+                                    isJustAdded
+                                      ? "bg-neutral-800 text-emerald-400 border border-emerald-500/40 font-bold"
+                                      : "bg-neutral-900 border border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                                  }`}
+                                >
+                                  {isJustAdded ? (
+                                    <>
+                                      <CheckCircle2 className="h-3 w-3" />
+                                      <span>Adicionado!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Plus className="h-3 w-3" />
+                                      <span>+ Fila</span>
+                                    </>
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => handleAddDropboxTrack(item, true)}
+                                  className="min-h-[30px] px-3 bg-white text-black hover:bg-neutral-200 text-xs font-bold transition flex items-center gap-1 shadow-sm"
+                                  title="Adiciona e inicia a reprodução agora na TV"
+                                >
+                                  <Play className="h-3 w-3" />
+                                  <span>Tocar Agora</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ============================================================ */}
             {/* SUB-ABA 1: PESQUISAR NO YOUTUBE                              */}

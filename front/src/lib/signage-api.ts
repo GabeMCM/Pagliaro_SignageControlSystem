@@ -81,6 +81,38 @@ export interface RadioStationItem {
   country: string;
 }
 
+export interface DropboxTrack {
+  id: string;
+  name: string;
+  title: string;
+  path: string;
+  folder: string;
+  size: number;
+  sizeFormatted: string;
+  duration?: number;
+  durationFormatted?: string;
+  streamUrl: string;
+  extension: string;
+}
+
+export interface DropboxStatus {
+  configured: boolean;
+  folder: string;
+  accountName?: string;
+  email?: string;
+  totalTracks?: number;
+  error?: string;
+  hasRefreshToken?: boolean;
+}
+
+export interface DropboxConfigPayload {
+  accessToken?: string;
+  refreshToken?: string;
+  appKey?: string;
+  appSecret?: string;
+  musicFolder?: string;
+}
+
 export interface RoomState {
   playlist: string | null;
   audioPlaylist: string | null;
@@ -338,6 +370,28 @@ export const signageApi = {
     request<{ success: boolean; video: YoutubeTrackResult }>(
       `/api/youtube/video?url=${encodeURIComponent(urlOrId)}`
     ),
+
+  getDropboxStatus: () => request<DropboxStatus>("/api/dropbox/status"),
+
+  saveDropboxConfig: (data: DropboxConfigPayload) =>
+    request<{ success: boolean; status: DropboxStatus; error?: string }>("/api/dropbox/config", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  getDropboxTracks: (folder?: string, q?: string, refresh = false) => {
+    const params = new URLSearchParams();
+    if (folder) params.append("folder", folder);
+    if (q) params.append("q", q);
+    if (refresh) params.append("refresh", "true");
+    const queryStr = params.toString() ? `?${params.toString()}` : "";
+    return request<{ success: boolean; tracks: DropboxTrack[]; folder: string; total: number }>(
+      `/api/dropbox/tracks${queryStr}`
+    );
+  },
+
+  getDropboxFolders: () =>
+    request<{ success: boolean; folders: string[] }>("/api/dropbox/folders"),
 
   listSchedules: (roomSlug?: string) =>
     request<ScheduleTask[]>(roomSlug ? `/api/schedules?room=${encodeURIComponent(roomSlug)}` : `/api/schedules`),

@@ -609,6 +609,13 @@ function normalizeAudioUrl(url) {
   if (gdriveMatch) {
     return 'https://drive.google.com/uc?export=download&id=' + gdriveMatch[1];
   }
+  if (clean.indexOf('dropbox.com') !== -1) {
+    if (clean.indexOf('dl.dropboxusercontent.com') === -1) {
+      clean = clean.replace(/www\.dropbox\.com/, 'dl.dropboxusercontent.com');
+    }
+    clean = clean.replace(/[?&]dl=0/, '').replace(/[?&]dl=1/, '');
+    clean += (clean.indexOf('?') === -1 ? '?dl=1' : '&dl=1');
+  }
   return clean;
 }
 

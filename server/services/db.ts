@@ -789,6 +789,46 @@ export const db = {
   },
 
   /**
+   * Obtém uma configuração global pelo nome da chave
+   */
+  getSetting: async <T = any>(key: string, defaultValue: T = null as any): Promise<T> => {
+    await ensureMongoConnected();
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        const doc = await mongoDb.collection("settings").findOne({ key }, { projection: { _id: 0 } });
+        if (doc && doc.value !== undefined) {
+          return doc.value as T;
+        }
+      } catch (e) {
+        console.error(`[MongoDB] Erro ao buscar configuração '${key}':`, e);
+      }
+    }
+    const local = (await readJson("settings.json")) || {};
+    return local[key] !== undefined ? local[key] : defaultValue;
+  },
+
+  /**
+   * Salva uma configuração global
+   */
+  saveSetting: async (key: string, value: any): Promise<boolean> => {
+    await ensureMongoConnected();
+    if (isConnectedToMongo && mongoDb) {
+      try {
+        await mongoDb.collection("settings").updateOne(
+          { key },
+          { $set: { key, value, updatedAt: Date.now() } },
+          { upsert: true }
+        );
+      } catch (e) {
+        console.error(`[MongoDB] Erro ao salvar configuração '${key}':`, e);
+      }
+    }
+    const local = (await readJson("settings.json")) || {};
+    local[key] = value;
+    return writeJson("settings.json", local);
+  },
+
+  /**
    * Retorna o status da conexão atual com detalhes de diagnóstico
    */
   getStatus: async () => {

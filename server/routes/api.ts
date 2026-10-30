@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { db } from "../services/db.ts";
 import { wsManager, detectDeviceType } from "../ws/manager.ts";
 import { youtubeService } from "../services/youtube.ts";
+import { dropboxService } from "../services/dropbox.ts";
 import {
   clearAutomationOverride,
   executeRoutine,
@@ -1052,6 +1053,97 @@ api.on(["GET", "HEAD"], "/radio/stream", async (c) => {
     return c.json({ error: "Parâmetro 'url' é obrigatório." }, 400);
   }
   return await proxyRadioStream(url, c.req.method);
+});
+
+// ========================
+// DROPBOX (Músicas na Nuvem, Busca Direta e Streaming 302)
+// ========================
+
+// 1. Status da conexão Dropbox
+api.get("/dropbox/status", async (c) => {
+  const status = await dropboxService.checkStatus();
+  return c.json(status);
+});
+
+// 2. Salvar configuração do Dropbox
+api.post("/dropbox/config", async (c) => {
+  try {
+    const body = await c.req.json();
+    await dropboxService.saveConfig({
+      accessToken: body.accessToken,
+      refreshToken: body.refreshToken,
+      appKey: body.appKey,
+      appSecret: body.appSecret,
+      musicFolder: body.musicFolder,
+    });
+    const status = await dropboxService.checkStatus();
+    return c.json({ success: true, status });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message || "Erro ao salvar configuração do Dropbox." }, 500);
+  }
+});
+
+// 3. Listar ou pesquisar faixas de áudio
+api.get("/dropbox/tracks", async (c) => {
+  try {
+    const q = c.req.query("q") || "";
+    const folder = c.req.query("folder") || undefined;
+    const forceRefresh = c.req.query("refresh") === "true";
+
+    let tracks;
+    if (q.trim()) {
+      tracks = await dropboxService.searchTracks(q, folder);
+    } else {
+      tracks = await dropboxService.listTracks(folder, forceRefresh);
+    }
+
+    const cfg = await dropboxService.getConfig();
+    return c.json({
+      success: true,
+      tracks,
+      folder: folder || cfg.musicFolder || "/",
+      total: tracks.length,
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message || "Erro ao buscar faixas do Dropbox." }, 500);
+  }
+});
+
+// 4. Subpastas encontradas dentro da pasta de músicas
+api.get("/dropbox/folders", async (c) => {
+  try {
+    const folders = await dropboxService.getFolders();
+    return c.json({ success: true, folders });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message || "Erro ao obter pastas." }, 500);
+  }
+});
+
+// 5. Opções CORS para streaming
+api.options("/dropbox/stream", (c) => {
+  return c.body(null, 204, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "*",
+  });
+});
+
+// 6. Streaming direto com redirecionamento 302
+api.on(["GET", "HEAD"], "/dropbox/stream", async (c) => {
+  const path = c.req.query("path") || c.req.query("id") || "";
+  if (!path) {
+    return c.json({ error: "Parâmetro 'path' ou 'id' é obrigatório." }, 400);
+  }
+
+  try {
+    const streamUrl = await dropboxService.getStreamUrl(path);
+    c.header("Access-Control-Allow-Origin", "*");
+    c.header("Cache-Control", "no-cache, no-store, must-revalidate");
+    return c.redirect(streamUrl, 302);
+  } catch (err: any) {
+    console.error("[Dropbox Stream] Falha ao resolver URL:", err);
+    return c.json({ error: err.message || "Erro ao resolver stream de áudio do Dropbox." }, 500);
+  }
 });
 
 // ========================
