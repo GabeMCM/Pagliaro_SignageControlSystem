@@ -27,12 +27,23 @@ export interface RadioPreset {
 
 export const PRESET_GOSPEL_RADIOS: RadioPreset[] = [
   {
-    id: "instrumental-gospel",
-    name: "Rádio Instrumental Gospel 24h",
+    id: "piano-landscapes",
+    name: "Piano Landscapes (Música Instrumental)",
     category: "Instrumental & Paz",
-    description: "Hinos e louvores suaves apenas instrumentais (ideal para velórios e homenagens)",
-    url: "http://live8.livemus.com.br:27142/stream",
-    streamUrl: "http://live8.livemus.com.br:27142/stream",
+    description: "Piano e arranjos serenos de paz (ideal para velórios, homenagens e repouso)",
+    url: "https://playerservices.streamtheworld.com/api/livestream-redirect/ACIR23_s01AAC.aac",
+    streamUrl: "https://playerservices.streamtheworld.com/api/livestream-redirect/ACIR23_s01AAC.aac",
+    codec: "AAC",
+    bitrate: 64,
+    country: "US",
+  },
+  {
+    id: "mgt-gospel",
+    name: "MGT Rádio Gospel 24h",
+    category: "Louvor & Adoração",
+    description: "Canal 100% louvores gospel contínuos sem comerciais",
+    url: "https://cast.mgtradio.net/radio/8040/aac",
+    streamUrl: "https://cast.mgtradio.net/radio/8040/aac",
     codec: "AAC",
     bitrate: 64,
     country: "BR",
@@ -49,6 +60,17 @@ export const PRESET_GOSPEL_RADIOS: RadioPreset[] = [
     country: "BR",
   },
   {
+    id: "instrumental-gospel",
+    name: "Rádio Instrumental Gospel 24h",
+    category: "Instrumental & Paz",
+    description: "Hinos e louvores suaves apenas instrumentais",
+    url: "http://live8.livemus.com.br:27142/stream",
+    streamUrl: "http://live8.livemus.com.br:27142/stream",
+    codec: "AAC",
+    bitrate: 64,
+    country: "BR",
+  },
+  {
     id: "doce-louvor",
     name: "Rádio Doce Louvor 24h",
     category: "Louvor & Adoração",
@@ -60,21 +82,10 @@ export const PRESET_GOSPEL_RADIOS: RadioPreset[] = [
     country: "BR",
   },
   {
-    id: "novas-de-paz",
-    name: "Rádio Novas de Paz 24h",
-    category: "Instrumental & Paz",
-    description: "Louvores tradicionais e mensagens de paz em MP3 de alta compatibilidade",
-    url: "https://radio.saopaulo01.com.br/8304/stream",
-    streamUrl: "https://radio.saopaulo01.com.br/8304/stream",
-    codec: "MP3",
-    bitrate: 128,
-    country: "BR",
-  },
-  {
     id: "melodia-fm-975",
     name: "Rádio Melodia 97.5 FM (RJ)",
     category: "Gospel FM 24h",
-    description: "Programação gospel 24h de uma das maiores rádios cristãs do Brasil",
+    description: "Programação gospel 24h de uma das maiores rádios cristãs do Brasil (Stream CDN Oficial)",
     url: "https://26573.live.streamtheworld.com/MELODIAFMAAC.aac",
     streamUrl: "https://26573.live.streamtheworld.com/MELODIAFMAAC.aac",
     codec: "AAC",
@@ -93,48 +104,15 @@ export const PRESET_GOSPEL_RADIOS: RadioPreset[] = [
     country: "BR",
   },
   {
-    id: "gospel-life",
-    name: "Rádio Gospel Life 24h",
-    category: "Louvor & Adoração",
-    description: "Louvores contemporâneos e clássicos gospel 24 horas em MP3",
-    url: "https://s11.maxcast.com.br:9165/live",
-    streamUrl: "https://s11.maxcast.com.br:9165/live",
+    id: "swiss-classic",
+    name: "Rádio Swiss Classic (Clássica Suave)",
+    category: "Instrumental & Paz",
+    description: "Música clássica suave, orquestrada e serena 24 horas em MP3",
+    url: "https://stream.srg-ssr.ch/m/rsc_de/mp3_128",
+    streamUrl: "https://stream.srg-ssr.ch/m/rsc_de/mp3_128",
     codec: "MP3",
     bitrate: 128,
-    country: "BR",
-  },
-  {
-    id: "gospel-louvores-mg",
-    name: "Rádio Gospel Louvores 24h",
-    category: "Louvor & Adoração",
-    description: "Hinos e louvores evangélicos 24 horas no ar",
-    url: "https://stm1.radioipbr.com.br:7004/live",
-    streamUrl: "https://stm1.radioipbr.com.br:7004/live",
-    codec: "AAC",
-    bitrate: 96,
-    country: "BR",
-  },
-  {
-    id: "gospel-hits",
-    name: "Rádio Gospel Hits 24h",
-    category: "Gospel FM 24h",
-    description: "Sucessos da música gospel nacional 24 horas",
-    url: "https://webradio.bsoundradio.com.br/listen/gospelhits/live",
-    streamUrl: "https://webradio.bsoundradio.com.br/listen/gospelhits/live",
-    codec: "AAC",
-    bitrate: 64,
-    country: "BR",
-  },
-  {
-    id: "mgt-gospel",
-    name: "MGT Rádio Gospel 24h",
-    category: "Gospel FM 24h",
-    description: "Canal 100% música gospel 24 horas sem interrupções",
-    url: "https://cast.mgtradio.net/radio/8040/aac",
-    streamUrl: "https://cast.mgtradio.net/radio/8040/aac",
-    codec: "AAC",
-    bitrate: 64,
-    country: "BR",
+    country: "CH",
   },
 ];
 
@@ -172,6 +150,12 @@ export async function resolveRadioStreamUrl(rawInput: string): Promise<string> {
   if (!url) throw new Error("URL de rádio vazia.");
   if (!/^https?:\/\//i.test(url)) {
     url = "https://" + url;
+  }
+
+  // Intercepta e recupera automaticamente streams do servidor 0nlineradio (que encerrou atividades/offline)
+  if (url.includes("0nlineradio.radioho.st") || url.includes("0nlineradio.com")) {
+    console.warn(`[Radio] Redirecionando stream offline '${url}' para stream estável Piano Landscapes`);
+    return "https://playerservices.streamtheworld.com/api/livestream-redirect/ACIR23_s01AAC.aac";
   }
 
   const now = Date.now();
@@ -291,33 +275,257 @@ async function openUpstreamRadio(
 }
 
 /**
- * Faz o proxy do stream contínuo da Web Rádio para o Player / TV.
+ * Hub de Transmissão Compartilhada (Multiplexador de Web Rádio Multi-Sala):
+ *
+ * PROBLEMA RESOLVIDO:
+ * 1. Sincronização Multi-Sala: Quando várias salas sintonizam a mesma Web Rádio, todas compartilham
+ *    UMA ÚNICA conexão upstream no servidor e recebem exatamente o mesmo fluxo de áudio ao mesmo tempo.
+ * 2. Zero Travamento (Anti-Underrun em Smart TVs / Android TV):
+ *    Decoders nativos de Smart TVs (Chrome/WebView Android TV) exigem um "pre-roll" inicial de ~24KB a 32KB
+ *    (~1.5 a 2 segundos de áudio) para iniciar e manter a reprodução sem cair em evento `waiting` a cada
+ *    oscilação de Wi-Fi. Como TODAS as salas recebem exatamente os mesmos 28KB do ring-buffer compartilhado,
+ *    elas continuam 100% sincronizadas entre si E com reserva de buffer suficiente para tocar liso sem engasgos!
  */
-export async function proxyRadioStream(rawUrl: string, method = "GET"): Promise<Response> {
-  try {
-    const resolved = await resolveRadioStreamUrl(rawUrl);
-    const { res, finalUrl, abort } = await openUpstreamRadio(resolved);
+interface RadioSubscriber {
+  id: string;
+  enqueue: (chunk: Uint8Array) => boolean;
+  close: () => void;
+}
 
-    if (finalUrl !== rawUrl) {
-      resolvedUrlCache.set(rawUrl, { url: finalUrl, expiresAt: Date.now() + 3600_000 });
+class SharedRadioBroadcaster {
+  readonly streamUrl: string;
+  contentType = "audio/mpeg";
+  subscribers = new Map<string, RadioSubscriber>();
+  /** Ring-buffer compartilhado de ~48KB (~3.0s em 128kbps) para pre-roll instantâneo sem engasgos (buffer underrun) e alinhado em quadro MP3/AAC */
+  private liveEdgeBuffer: Uint8Array[] = [];
+  private liveEdgeBytes = 0;
+  private readonly MAX_LIVE_EDGE_BYTES = 49152;
+
+  private running = false;
+  private abortUpstream: (() => void) | null = null;
+  private idleCloseTimer: number | null = null;
+  private readyPromise: Promise<void> | null = null;
+  private resolveReady: (() => void) | null = null;
+  private rejectReady: ((err: unknown) => void) | null = null;
+
+  constructor(streamUrl: string) {
+    this.streamUrl = streamUrl;
+  }
+
+  ensureStarted(): Promise<void> {
+    if (this.idleCloseTimer !== null) {
+      clearTimeout(this.idleCloseTimer);
+      this.idleCloseTimer = null;
+    }
+    if (this.running && this.readyPromise) {
+      return this.readyPromise;
+    }
+    this.running = true;
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.resolveReady = resolve;
+      this.rejectReady = reject;
+    });
+    this.pumpLoop();
+    return this.readyPromise;
+  }
+
+  private pushLiveEdgeChunk(chunk: Uint8Array) {
+    this.liveEdgeBuffer.push(chunk);
+    this.liveEdgeBytes += chunk.byteLength;
+    while (this.liveEdgeBytes > this.MAX_LIVE_EDGE_BYTES && this.liveEdgeBuffer.length > 1) {
+      const removed = this.liveEdgeBuffer.shift()!;
+      this.liveEdgeBytes -= removed.byteLength;
+    }
+  }
+
+  private async pumpLoop() {
+    let firstConnect = true;
+    while (this.running) {
+      try {
+        const { res, finalUrl, abort } = await openUpstreamRadio(this.streamUrl);
+        this.abortUpstream = abort;
+        this.contentType = normalizeRadioContentType(res.headers.get("content-type"), finalUrl);
+
+        if (firstConnect) {
+          firstConnect = false;
+          this.resolveReady?.();
+          this.resolveReady = null;
+          this.rejectReady = null;
+        }
+
+        const reader = res.body?.getReader();
+        if (!reader) {
+          abort();
+          throw new Error("Stream sem corpo de leitura.");
+        }
+
+        while (this.running) {
+          // Timeout de leitura de 12s para detectar upstream silenciosamente travado
+          const readPromise = reader.read();
+          let timeoutHandle: number | null = null;
+          const timerPromise = new Promise<{ done: boolean; value?: Uint8Array }>((_, reject) => {
+            timeoutHandle = setTimeout(() => reject(new Error("Timeout de leitura do stream")), 12_000) as unknown as number;
+          });
+
+          const { done, value } = await Promise.race([readPromise, timerPromise]).finally(() => {
+            if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+          });
+          if (done || !value) break;
+
+          this.pushLiveEdgeChunk(value);
+
+          for (const [subId, sub] of this.subscribers.entries()) {
+            const ok = sub.enqueue(value);
+            if (!ok) {
+              this.subscribers.delete(subId);
+            }
+          }
+        }
+      } catch (err) {
+        if (firstConnect) {
+          this.running = false;
+          sharedBroadcasters.delete(this.streamUrl);
+          this.rejectReady?.(err);
+          return;
+        }
+      } finally {
+        if (this.abortUpstream) {
+          try { this.abortUpstream(); } catch {}
+          this.abortUpstream = null;
+        }
+      }
+
+      if (!this.running || this.subscribers.size === 0) {
+        break;
+      }
+      // Breve pausa antes de reconectar upstream automaticamente sem derrubar as TVs
+      await new Promise((r) => setTimeout(r, 800));
     }
 
-    const contentType = normalizeRadioContentType(res.headers.get("content-type"), finalUrl);
+    this.running = false;
+    sharedBroadcasters.delete(this.streamUrl);
+    for (const sub of this.subscribers.values()) {
+      sub.close();
+    }
+    this.subscribers.clear();
+  }
+
+  addSubscriber(sub: RadioSubscriber) {
+    if (this.idleCloseTimer !== null) {
+      clearTimeout(this.idleCloseTimer);
+      this.idleCloseTimer = null;
+    }
+    // Envia o buffer da borda ao vivo (~48KB, ~3s de reserva) para que a TV
+    // inicie imediatamente com cushion anti-underrun sem engasgos nem eventos 'waiting'
+    for (const chunk of this.liveEdgeBuffer) {
+      sub.enqueue(chunk);
+    }
+    this.subscribers.set(sub.id, sub);
+  }
+
+  removeSubscriber(id: string) {
+    this.subscribers.delete(id);
+    if (this.subscribers.size === 0 && this.idleCloseTimer === null) {
+      // Mantém o canal aquecido por 15s caso uma TV esteja apenas dando F5 ou ressincronizando
+      this.idleCloseTimer = setTimeout(() => {
+        this.idleCloseTimer = null;
+        if (this.subscribers.size === 0) {
+          this.stop();
+        }
+      }, 15_000) as unknown as number;
+    }
+  }
+
+  stop() {
+    this.running = false;
+    if (this.idleCloseTimer !== null) {
+      clearTimeout(this.idleCloseTimer);
+      this.idleCloseTimer = null;
+    }
+    if (this.abortUpstream) {
+      try { this.abortUpstream(); } catch {}
+      this.abortUpstream = null;
+    }
+    sharedBroadcasters.delete(this.streamUrl);
+  }
+}
+
+const sharedBroadcasters = new Map<string, SharedRadioBroadcaster>();
+
+/**
+ * Faz o proxy sincronizado do stream contínuo da Web Rádio para o Player / TV.
+ * Todas as salas que sintonizarem a mesma estação compartilham o mesmo fluxo de bytes em tempo real.
+ */
+export async function proxyRadioStream(rawUrl: string, method = "GET"): Promise<Response> {
+  // Stream MP3 universalmente compatível com todos os decoders (Android/Silk/Chromium/Tizen/webOS)
+  const fallbackUrl = "https://stream3.svrdedicado.org/8070/stream";
+  try {
+    let resolved = await resolveRadioStreamUrl(rawUrl);
+
+    let broadcaster = sharedBroadcasters.get(resolved);
+    if (!broadcaster) {
+      broadcaster = new SharedRadioBroadcaster(resolved);
+      sharedBroadcasters.set(resolved, broadcaster);
+    }
+
+    try {
+      await broadcaster.ensureStarted();
+    } catch (startErr) {
+      console.warn(`[Radio] Falha ao conectar na rádio '${resolved}'. Acionando stream de contingência...`, startErr);
+      if (resolved !== fallbackUrl) {
+        resolved = fallbackUrl;
+        let fb = sharedBroadcasters.get(fallbackUrl);
+        if (!fb) {
+          fb = new SharedRadioBroadcaster(fallbackUrl);
+          sharedBroadcasters.set(fallbackUrl, fb);
+        }
+        await fb.ensureStarted();
+        broadcaster = fb;
+      } else {
+        throw startErr;
+      }
+    }
+
     const headers = new Headers({
-      "Content-Type": contentType,
+      "Content-Type": broadcaster.contentType,
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
       "Pragma": "no-cache",
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
       "X-Accel-Buffering": "no",
+      "X-Radio-Sync-Mode": "shared-live-multiplexer",
     });
 
     if (method === "HEAD") {
-      abort();
       return new Response(null, { status: 200, headers });
     }
 
-    return new Response(res.body, { status: 200, headers });
+    const subId = crypto.randomUUID();
+    const activeBroadcaster = broadcaster;
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        activeBroadcaster.addSubscriber({
+          id: subId,
+          enqueue: (chunk: Uint8Array) => {
+            try {
+              controller.enqueue(chunk);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          close: () => {
+            try { controller.close(); } catch {}
+          },
+        });
+      },
+      cancel() {
+        activeBroadcaster.removeSubscriber(subId);
+      },
+    });
+
+    return new Response(stream, { status: 200, headers });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err?.message || "Estação indisponível" }), {
       status: 502,
@@ -411,6 +619,8 @@ export async function searchRadioStations(query: string, limit = 20): Promise<Ra
       for (const s of raw) {
         const streamUrl = String(s.url_resolved || s.url || "").trim();
         if (!streamUrl) continue;
+        // Ignora servidor que encerrou atividades
+        if (streamUrl.includes("0nlineradio.radioho.st") || streamUrl.includes("0nlineradio.com")) continue;
         // Ignora streams HLS (.m3u8) pois o elemento <audio> nativo de TVs não reproduz HLS sem MSE
         if (/\.m3u8(\?|$)/i.test(streamUrl) || Number(s.hls) === 1) continue;
         const codec = String(s.codec || "MP3").toUpperCase();

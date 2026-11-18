@@ -1,11 +1,13 @@
 import { Hono } from "hono";
 import { db } from "../services/db.ts";
 import { wsManager, detectDeviceType } from "../ws/manager.ts";
+import { localMusicService } from "../services/local-music.ts";
 import { dropboxService } from "../services/dropbox.ts";
 import {
   clearAutomationOverride,
   executeRoutine,
   executeSchedule,
+  checkAdiauForNewCeremonies,
   type RoomRoutine,
   type ScheduleTask,
 } from "../services/scheduler.ts";
@@ -30,8 +32,19 @@ import {
   generateSessionToken,
   verifySessionToken,
 } from "../services/auth.ts";
+import QRCode from "npm:qrcode";
 
 export const api = new Hono();
+
+export function resolvePublicOrigin(c: any): string {
+  const envUrl = Deno.env.get("PUBLIC_URL") || Deno.env.get("RENDER_EXTERNAL_URL");
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, "");
+  }
+  const host = c.req.header("x-forwarded-host") || c.req.header("host") || "localhost:8001";
+  const proto = c.req.header("x-forwarded-proto") || (host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https");
+  return `${proto}://${host}`;
+}
 
 function slugify(text: string): string {
   return text
@@ -54,13 +67,36 @@ api.get("/status", async (c) => {
 // SALAS (Rooms)
 // ========================
 api.get("/rooms", async (c) => {
-  const rooms = await db.getRooms();
-  const roomsWithStatus = rooms.map((r: any) => ({
-    ...r,
-    online: wsManager.isOnline(r.slug),
-    clientsCount: wsManager.getClientCount(r.slug),
-    maxClients: wsManager.getMaxClients(),
-  }));
+  const [rooms, allStates] = await Promise.all([db.getRooms(), db.getState()]);
+  const roomsWithStatus = rooms.map((r: any) => {
+    const st = allStates[r.slug] || {};
+    const standby = Boolean(st.standby);
+    const active = !standby;
+    const online = wsManager.isOnline(r.slug);
+    return {
+      ...r,
+      online,
+      standby,
+      active,
+      clientsCount: wsManager.getClientCount(r.slug),
+      maxClients: wsManager.getMaxClients(),
+    };
+  });
+
+  // Ordenação padrão: 1º Online, 2º Ativa (fora do standby), 3º Alfabética
+  roomsWithStatus.sort((a: any, b: any) => {
+    if (Boolean(a.online) !== Boolean(b.online)) {
+      return a.online ? -1 : 1;
+    }
+    if (Boolean(a.active) !== Boolean(b.active)) {
+      return a.active ? -1 : 1;
+    }
+    return String(a.name || "").localeCompare(String(b.name || ""), "pt-BR", {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
+
   return c.json(roomsWithStatus);
 });
 
@@ -317,6 +353,23 @@ api.get("/state", async (c) => {
 
 api.get("/state/:roomSlug", async (c) => {
   const room = c.req.param("roomSlug");
+  const deviceId = c.req.query("deviceId")?.trim();
+  const audioStateParam = c.req.query("audioState")?.trim();
+  if (deviceId) {
+    const ip =
+      c.req.header("x-forwarded-for")?.split(",")[0].trim() ||
+      c.req.header("cf-connecting-ip") ||
+      "localhost";
+    const userAgent = c.req.header("user-agent") || "Smart TV";
+    wsManager.recordHttpPresence(room, {
+      deviceId,
+      ip,
+      userAgent,
+      audioState: audioStateParam
+        ? { state: audioStateParam, detail: c.req.query("audioDetail") || "", at: Date.now() }
+        : undefined,
+    });
+  }
   const roomState = await roomEventQueue.getAuthoritativeRoomState(room);
   if (roomState?.siteUrl) warmAdiauUrl(roomState.siteUrl);
   return c.json(roomState);
@@ -473,6 +526,13 @@ api.post("/devices/register", async (c) => {
     };
 
     await db.saveDevice(device);
+    if (body.assignedRoomSlug) {
+      wsManager.recordHttpPresence(body.assignedRoomSlug, {
+        deviceId: id,
+        ip,
+        userAgent,
+      });
+    }
     wsManager.broadcastDevicesUpdate();
 
     return c.json({
@@ -616,6 +676,336 @@ api.delete("/devices/:id", async (c) => {
   await db.deleteDevice(id);
   wsManager.broadcastDevicesUpdate();
   return c.json({ success: true, message: "Aparelho removido com sucesso." });
+});
+
+// ========================
+// QR CODE & PLAYER PÚBLICO DA FAMÍLIA (/music/:roomSlug)
+// ========================
+
+// 1. Gerador de QR Code vetorial SVG ultraleve e nítido
+api.get("/qr", async (c) => {
+  const text = c.req.query("text") || "";
+  if (!text) {
+    return c.text("Parâmetro 'text' é obrigatório.", 400);
+  }
+  try {
+    const svg = await QRCode.toString(text, {
+      type: "svg",
+      margin: 1,
+      color: {
+        dark: "#000000",
+        light: "#ffffff",
+      },
+    });
+    return c.body(svg, 200, {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "public, max-age=86400",
+    });
+  } catch (err: any) {
+    return c.text(err.message || "Erro ao gerar QR Code", 500);
+  }
+});
+
+// 2. Transmissão do QR Code para a TV da Sala por 10 segundos (Overlay estilo Identificar)
+api.post("/rooms/:roomSlug/show-qr", async (c) => {
+  const roomSlug = c.req.param("roomSlug");
+  const rooms = await db.getRooms();
+  const room = rooms.find((r: any) => r.slug === roomSlug);
+  if (!room) {
+    return c.json({ error: "Sala não encontrada." }, 404);
+  }
+
+  const origin = resolvePublicOrigin(c);
+  const musicUrl = `${origin}/music/${roomSlug}`;
+  const duration = 10; // Exatamente 10s conforme solicitado pelo usuário
+
+  wsManager.broadcast(
+    roomSlug,
+    JSON.stringify({
+      type: "showMusicQr",
+      url: musicUrl,
+      roomSlug,
+      roomName: room.name,
+      duration,
+    })
+  );
+
+  return c.json({
+    success: true,
+    url: musicUrl,
+    duration,
+    roomName: room.name,
+    message: `QR Code enviado para a tela da sala '${room.name}' por ${duration} segundos.`,
+  });
+});
+
+// 3. Estado público de reprodução e fila para o celular da família
+api.get("/public/music/:roomSlug/state", async (c) => {
+  const roomSlug = c.req.param("roomSlug");
+  const rooms = await db.getRooms();
+  const room = rooms.find((r: any) => r.slug === roomSlug);
+  if (!room) {
+    return c.json({ error: "Sala não encontrada." }, 404);
+  }
+
+  const roomState = await roomEventQueue.getAuthoritativeRoomState(roomSlug);
+  const playlists = await db.getPlaylists();
+  const activePlaylist = playlists.find((p: any) => p.id === roomState.audioPlaylist);
+
+  const items = activePlaylist?.items || [];
+  const currentAudioIndex = roomState.currentAudioIndex ?? 0;
+  const currentItem = items[currentAudioIndex] || null;
+
+  const queue = items.map((item: any, idx: number) => ({
+    index: idx,
+    title: item.title || `Faixa ${idx + 1}`,
+    url: item.url,
+    duration: item.duration || 0,
+    current: idx === currentAudioIndex,
+  }));
+
+  let folders: string[] = [];
+  try {
+    folders = await localMusicService.getFolders();
+  } catch (_e) {}
+
+  return c.json({
+    success: true,
+    room: {
+      name: room.name,
+      slug: room.slug,
+    },
+    audioStatus: roomState.audioStatus || "idle",
+    audioVolume: roomState.audioVolume ?? 0,
+    currentAudioIndex,
+    currentTrack: currentItem
+      ? {
+          title: roomState.audioTitle || currentItem.title || "Música em reprodução",
+          url: currentItem.url,
+          duration: currentItem.duration || 0,
+          index: currentAudioIndex,
+        }
+      : roomState.audioStreamUrl
+      ? {
+          title: roomState.audioTitle || "Web Rádio / Transmissão",
+          url: roomState.audioStreamUrl,
+          duration: 0,
+          index: 0,
+        }
+      : null,
+    queue,
+    folders,
+  });
+});
+
+// 4. Controle público de áudio para o celular da família (Apenas áudio, sem privilégios administrativos)
+api.post("/public/music/:roomSlug/control", async (c) => {
+  const roomSlug = c.req.param("roomSlug");
+  const rooms = await db.getRooms();
+  const room = rooms.find((r: any) => r.slug === roomSlug);
+  if (!room) {
+    return c.json({ error: "Sala não encontrada." }, 404);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const command = body.command;
+
+  const roomState = await roomEventQueue.getAuthoritativeRoomState(roomSlug);
+  const playlists = await db.getPlaylists();
+  let activePlaylist = playlists.find((p: any) => p.id === roomState.audioPlaylist);
+
+  if (command === "play" || command === "pause" || command === "next" || command === "prev") {
+    await roomEventQueue.enqueueControl(roomSlug, {
+      target: "audio",
+      command,
+    });
+  } else if (command === "volumeStep") {
+    const currentVol = Number(roomState.audioVolume ?? 0);
+    const step = Number(body.step || 5);
+    const newVol = body.direction === "up"
+      ? Math.min(100, currentVol + step)
+      : Math.max(0, currentVol - step);
+    await roomEventQueue.enqueueControl(roomSlug, {
+      target: "audio",
+      command: "setVolume",
+      value: newVol,
+    });
+  } else if (command === "setVolume") {
+    const vol = Math.max(0, Math.min(100, Number(body.value ?? 0)));
+    await roomEventQueue.enqueueControl(roomSlug, {
+      target: "audio",
+      command: "setVolume",
+      value: vol,
+    });
+  } else if (command === "selectTrackIndex") {
+    const idx = Number(body.index ?? 0);
+    await roomEventQueue.enqueueControl(roomSlug, {
+      target: "audio",
+      command: "setTrackIndex",
+      value: idx,
+    });
+  } else if (command === "playDropboxTrack" || command === "enqueueDropboxTrack") {
+    const track = body.track;
+    if (!track || !track.streamUrl) {
+      return c.json({ error: "Faixa inválida." }, 400);
+    }
+
+    const newItem = {
+      url: track.streamUrl,
+      title: track.title || track.name,
+      type: "audio",
+      duration: track.duration || 0,
+      muted: false,
+      volume: 100,
+    };
+
+    let targetPlaylistId = activePlaylist?.id;
+    let targetItems = [...(activePlaylist?.items || [])];
+
+    if (!activePlaylist) {
+      const playlistName = `Áudio - ${room.name || roomSlug}`;
+      const existingQueue = playlists.find((p: any) => p.name === playlistName);
+      if (existingQueue) {
+        targetPlaylistId = existingQueue.id;
+        activePlaylist = existingQueue;
+        targetItems = [...(existingQueue.items || [])];
+      } else {
+        const created = {
+          id: crypto.randomUUID(),
+          name: playlistName,
+          type: "audio",
+          items: [],
+          loop: true,
+          loopMode: "all",
+          shuffle: false,
+        };
+        targetPlaylistId = created.id;
+        activePlaylist = created;
+        targetItems = [];
+        playlists.push(created);
+        await db.savePlaylists(playlists);
+      }
+    }
+
+    if (command === "playDropboxTrack") {
+      const existingIdx = targetItems.findIndex(
+        (it: any) => it.url === newItem.url || (it.title === newItem.title && it.title)
+      );
+      let playIdx = 0;
+      if (existingIdx >= 0) {
+        playIdx = existingIdx;
+      } else {
+        targetItems.push(newItem);
+        activePlaylist.items = targetItems;
+        await db.savePlaylists(playlists);
+        playIdx = targetItems.length - 1;
+      }
+
+      await roomEventQueue.enqueueSetState(roomSlug, {
+        audioPlaylist: targetPlaylistId,
+        audioStreamUrl: null,
+        audioStatus: "playing",
+        currentAudioIndex: playIdx,
+        audioTitle: newItem.title,
+      });
+      await roomEventQueue.enqueueControl(roomSlug, {
+        target: "audio",
+        command: "setTrackIndex",
+        value: playIdx,
+      });
+    } else {
+      // Enfileirar (NÃO pode dar play se a música estiver pausada)
+      targetItems.push(newItem);
+      activePlaylist.items = targetItems;
+      await db.savePlaylists(playlists);
+
+      if (!roomState.audioPlaylist) {
+        await roomEventQueue.enqueueSetState(roomSlug, {
+          audioPlaylist: targetPlaylistId,
+          audioStreamUrl: null,
+          currentAudioIndex: 0,
+          audioTitle: newItem.title,
+        });
+      } else {
+        wsManager.broadcast(
+          roomSlug,
+          JSON.stringify({
+            type: "updateState",
+            playlistId: targetPlaylistId,
+            updatedPlaylist: activePlaylist,
+          })
+        );
+      }
+    }
+  } else if (command === "removeTrack") {
+    const index = Number(body.index);
+    if (!activePlaylist || !Array.isArray(activePlaylist.items) || isNaN(index) || index < 0 || index >= activePlaylist.items.length) {
+      return c.json({ error: "Índice de faixa inválido." }, 400);
+    }
+
+    const currentAudioIndex = roomState.currentAudioIndex ?? 0;
+    const newItems = activePlaylist.items.filter((_: any, i: number) => i !== index);
+    activePlaylist.items = newItems;
+    await db.savePlaylists(playlists);
+
+    let nextIndex = currentAudioIndex;
+    let nextAudioStatus = roomState.audioStatus;
+    let nextAudioTitle = roomState.audioTitle;
+
+    if (newItems.length === 0) {
+      nextIndex = 0;
+      nextAudioStatus = "idle";
+      nextAudioTitle = null;
+    } else if (index < currentAudioIndex) {
+      nextIndex = Math.max(0, currentAudioIndex - 1);
+      nextAudioTitle = newItems[nextIndex]?.title || null;
+    } else if (index === currentAudioIndex) {
+      if (index >= newItems.length) {
+        nextIndex = 0;
+      }
+      nextAudioTitle = newItems[nextIndex]?.title || null;
+    }
+
+    await roomEventQueue.enqueueSetState(roomSlug, {
+      audioPlaylist: activePlaylist.id,
+      currentAudioIndex: nextIndex,
+      audioStatus: nextAudioStatus,
+      audioTitle: nextAudioTitle,
+    });
+
+    wsManager.broadcast(
+      roomSlug,
+      JSON.stringify({
+        type: "updateState",
+        playlistId: activePlaylist.id,
+        updatedPlaylist: activePlaylist,
+      })
+    );
+  } else if (command === "clearQueue") {
+    if (activePlaylist && Array.isArray(activePlaylist.items)) {
+      activePlaylist.items = [];
+      await db.savePlaylists(playlists);
+
+      await roomEventQueue.enqueueSetState(roomSlug, {
+        audioPlaylist: activePlaylist.id,
+        currentAudioIndex: 0,
+        audioStatus: "idle",
+        audioTitle: null,
+      });
+
+      wsManager.broadcast(
+        roomSlug,
+        JSON.stringify({
+          type: "updateState",
+          playlistId: activePlaylist.id,
+          updatedPlaylist: activePlaylist,
+        })
+      );
+    }
+  }
+
+  const updatedState = await roomEventQueue.getAuthoritativeRoomState(roomSlug);
+  return c.json({ success: true, state: updatedState });
 });
 
 // ========================
@@ -859,13 +1249,91 @@ api.get("/adiau/asset/:id", (c) => {
   });
 });
 
+api.post("/adiau/check-now", async (c) => {
+  await checkAdiauForNewCeremonies(true);
+  return c.json({ success: true, message: "Verificação da Adiaŭ disparada com sucesso." });
+});
+
+api.get("/adiau/config", (c) => {
+  const hash = (Deno.env.get("ADIAU_HASH") || "").trim();
+  const screenName = (Deno.env.get("ADIAU_SCREEN_NAME") || "Flores").trim();
+  return c.json({
+    configured: !!hash,
+    hash,
+    screenName,
+    homenagemBaseUrl: hash
+      ? `https://www.adiau.com.br/v2/messages/?hash=${encodeURIComponent(hash)}&code=pt-br&screenName=${encodeURIComponent(screenName)}`
+      : "",
+    informacaoBaseUrl: hash
+      ? `https://www.adiau.com.br/v2/information/?hash=${encodeURIComponent(hash)}&code=pt-br&screenName=${encodeURIComponent(screenName)}`
+      : "",
+  });
+});
+
 // ========================
-// WEB RÁDIO (Proxy Universal + Estações Gospel 24h + Busca Ao Vivo)
+// WEB RÁDIO (Proxy Universal + Estações Salvas no Banco para Todas as Salas + Busca Ao Vivo)
 // ========================
-api.get("/radio/presets", (c) => {
+const SAVED_RADIOS_SETTING_KEY = "saved_radios_global";
+
+function getDefaultSavedRadiosList() {
+  return [];
+}
+
+api.get("/radio/saved", async (c) => {
+  const saved = await db.getSetting<any[] | null>(SAVED_RADIOS_SETTING_KEY, null);
+  if (Array.isArray(saved)) {
+    // Descarta presets rápidos padrão legados
+    const customOnly = saved.filter((r) => r && !String(r.id || "").startsWith("preset-") && r.isCustom !== false);
+    return c.json({ success: true, radios: customOnly });
+  }
+  return c.json({ success: true, radios: [] });
+});
+
+api.put("/radio/saved", async (c) => {
+  try {
+    const body = await c.req.json();
+    const list = Array.isArray(body?.radios) ? body.radios : [];
+    const sanitized = list
+      .filter((r: any) => r && r.url)
+      .map((r: any, idx: number) => ({
+        id: String(r.id || `radio-${Date.now()}-${idx}`),
+        name: String(r.name || "Web Rádio").trim(),
+        url: String(r.url).trim(),
+        desc: String(r.desc || "").trim(),
+        isCustom: Boolean(r.isCustom),
+        createdAt: Number(r.createdAt || Date.now()),
+      }));
+    await db.saveSetting(SAVED_RADIOS_SETTING_KEY, sanitized);
+    return c.json({ success: true, radios: sanitized });
+  } catch (err: any) {
+    return c.json({ success: false, error: err.message || "Erro ao salvar lista de rádios." }, 500);
+  }
+});
+
+api.post("/radio/saved/reset", async (c) => {
+  const defaults = getDefaultSavedRadiosList();
+  await db.saveSetting(SAVED_RADIOS_SETTING_KEY, defaults);
+  return c.json({ success: true, radios: defaults });
+});
+
+api.get("/radio/presets", async (c) => {
+  const saved = await db.getSetting<any[] | null>(SAVED_RADIOS_SETTING_KEY, null);
+  const presets = Array.isArray(saved)
+    ? saved.map((r) => ({
+        id: r.id,
+        name: r.name,
+        category: r.isCustom ? "Salvas" : "Gospel 24h",
+        description: r.desc || "",
+        url: r.url,
+        streamUrl: r.url,
+        codec: "MP3/AAC",
+        bitrate: 128,
+        country: "BR",
+      }))
+    : PRESET_GOSPEL_RADIOS;
   return c.json({
     success: true,
-    presets: PRESET_GOSPEL_RADIOS,
+    presets,
   });
 });
 
@@ -897,47 +1365,20 @@ api.on(["GET", "HEAD"], "/radio/stream", async (c) => {
 // DROPBOX (Músicas na Nuvem, Busca Direta e Streaming 302)
 // ========================
 
-// 1. Status da conexão Dropbox
-api.get("/dropbox/status", async (c) => {
-  const status = await dropboxService.checkStatus();
+// ========================
+// BIBLIOTECA DE MÚSICAS LOCAIS (Pasta do Servidor + Streaming com Range HTTP 206)
+// ========================
+
+// 1. Status da biblioteca de músicas locais
+const handleMusicStatus = async (c: any) => {
+  const status = await localMusicService.checkStatus();
   return c.json(status);
-});
+};
+api.get("/music/status", handleMusicStatus);
+api.get("/dropbox/status", handleMusicStatus);
 
-// 2. Salvar configuração do Dropbox
-api.post("/dropbox/config", async (c) => {
-  try {
-    const body = await c.req.json();
-    await dropboxService.saveConfig({
-      accessToken: body.accessToken,
-      refreshToken: body.refreshToken,
-      appKey: body.appKey,
-      appSecret: body.appSecret,
-      musicFolder: body.musicFolder,
-    });
-    const status = await dropboxService.checkStatus();
-    return c.json({ success: true, status });
-  } catch (err: any) {
-    return c.json({ success: false, error: err.message || "Erro ao salvar configuração do Dropbox." }, 500);
-  }
-});
-
-// Trocar código de autorização OAuth por refresh token
-api.post("/dropbox/exchange", async (c) => {
-  try {
-    const body = await c.req.json();
-    const result = await dropboxService.exchangeAuthorizationCode(
-      body.code,
-      body.appKey,
-      body.appSecret
-    );
-    return c.json({ success: true, ...result });
-  } catch (err: any) {
-    return c.json({ success: false, error: err.message || "Erro ao trocar código." }, 400);
-  }
-});
-
-// 3. Listar ou pesquisar faixas de áudio
-api.get("/dropbox/tracks", async (c) => {
+// 2. Listar ou pesquisar faixas de áudio locais
+const handleMusicTracks = async (c: any) => {
   try {
     const q = c.req.query("q") || "";
     const folder = c.req.query("folder") || undefined;
@@ -945,59 +1386,65 @@ api.get("/dropbox/tracks", async (c) => {
 
     let tracks;
     if (q.trim()) {
-      tracks = await dropboxService.searchTracks(q, folder);
+      tracks = await localMusicService.searchTracks(q, folder);
     } else {
-      tracks = await dropboxService.listTracks(folder, forceRefresh);
+      tracks = await localMusicService.listTracks(folder, forceRefresh);
     }
 
-    const cfg = await dropboxService.getConfig();
+    const baseDir = localMusicService.getBaseDir();
     return c.json({
       success: true,
       tracks,
-      folder: folder || cfg.musicFolder || "/",
+      folder: folder || baseDir,
       total: tracks.length,
     });
   } catch (err: any) {
-    return c.json({ success: false, error: err.message || "Erro ao buscar faixas do Dropbox." }, 500);
+    return c.json({ success: false, error: err.message || "Erro ao buscar faixas locais." }, 500);
   }
-});
+};
+api.get("/music/tracks", handleMusicTracks);
+api.get("/dropbox/tracks", handleMusicTracks);
 
-// 4. Subpastas encontradas dentro da pasta de músicas
-api.get("/dropbox/folders", async (c) => {
+// 3. Subpastas encontradas dentro da pasta de músicas
+const handleMusicFolders = async (c: any) => {
   try {
-    const folders = await dropboxService.getFolders();
+    const folders = await localMusicService.getFolders();
     return c.json({ success: true, folders });
   } catch (err: any) {
     return c.json({ success: false, error: err.message || "Erro ao obter pastas." }, 500);
   }
-});
+};
+api.get("/music/folders", handleMusicFolders);
+api.get("/dropbox/folders", handleMusicFolders);
 
-// 5. Opções CORS para streaming
-api.options("/dropbox/stream", (c) => {
+// 4. Opções CORS para streaming de áudio
+const handleStreamOptions = (c: any) => {
   return c.body(null, 204, {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
     "Access-Control-Allow-Headers": "*",
   });
-});
+};
+api.options("/music/stream", handleStreamOptions);
+api.options("/dropbox/stream", handleStreamOptions);
 
-// 6. Streaming direto com redirecionamento 302
-api.on(["GET", "HEAD"], "/dropbox/stream", async (c) => {
+// 5. Streaming Direto de Arquivo Local de Áudio com suporte a Range (HTTP 206)
+const handleStreamAudio = async (c: any) => {
   const path = c.req.query("path") || c.req.query("id") || "";
   if (!path) {
     return c.json({ error: "Parâmetro 'path' ou 'id' é obrigatório." }, 400);
   }
 
   try {
-    const streamUrl = await dropboxService.getStreamUrl(path);
-    c.header("Access-Control-Allow-Origin", "*");
-    c.header("Cache-Control", "no-cache, no-store, must-revalidate");
-    return c.redirect(streamUrl, 302);
+    const rangeHeader = c.req.header("range") || null;
+    return await localMusicService.proxyStream(path, rangeHeader);
   } catch (err: any) {
-    console.error("[Dropbox Stream] Falha ao resolver URL:", err);
-    return c.json({ error: err.message || "Erro ao resolver stream de áudio do Dropbox." }, 500);
+    console.error("[Music Stream] Falha ao servir stream local:", err);
+    return c.json({ error: err.message || "Erro ao resolver stream de áudio local." }, 500);
   }
-});
+};
+api.on(["GET", "HEAD"], "/music/stream", handleStreamAudio);
+api.on(["GET", "HEAD"], "/dropbox/stream", handleStreamAudio);
 
 // ========================
 // AUTENTICAÇÃO E USUÁRIOS (RBAC & Hashes Salvos no Banco)

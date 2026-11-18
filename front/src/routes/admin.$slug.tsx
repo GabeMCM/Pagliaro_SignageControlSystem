@@ -72,19 +72,16 @@ import {
   Bookmark,
   BookmarkCheck,
   Lock,
+  QrCode,
+  Printer,
+  Copy,
+  RotateCw,
 } from "lucide-react";
 import { AdiauSection } from "@/components/AdiauSection";
-import { RoutineModal } from "@/components/RoutineModal";
-import { AdiauDeceasedPicker } from "@/components/AdiauDeceasedPicker";
+import { parseAdiauEndTimestamp, formatAdiauDateTime } from "@/lib/adiau";
 import { LoginModal } from "@/components/LoginModal";
 import { useSavedRadios } from "@/lib/saved-radios";
 import { useAuth, ROLE_LABELS } from "@/lib/auth";
-import {
-  VERIFIED_GOSPEL_PRESETS,
-  DEFAULT_ADIAU_URLS,
-  ROUTINE_DAYS,
-  formatRoutineDaysSummary,
-} from "@/lib/constants";
 
 export const Route = createFileRoute("/admin/$slug")({
   component: RoomOperator,
@@ -595,22 +592,31 @@ function RoomOperator() {
       serverVersionRef.current = ver;
     }
     qc.setQueryData(["state", slug], incomingState);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(`signage_admin_state_${slug}`, JSON.stringify(incomingState));
+      } catch {}
+    }
   };
 
-  // Abas Principais: Conteúdo / Áudio / Automação / Aparelhos
-  const [activeTab, setActiveTab] = useState<"content" | "audio" | "automation" | "devices">(() => {
+  // Abas Principais: Conteúdo / Áudio / Aparelhos (Automações e Rotinas antigas removidas)
+  const [activeTab, setActiveTab] = useState<"content" | "audio" | "devices">(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("signage_active_tab") as any) || "audio";
+      const saved = localStorage.getItem("signage_active_tab");
+      if (saved === "content" || saved === "audio" || saved === "devices") return saved;
     }
-    return "audio";
+    return "content";
   });
 
-  const handleSelectTab = (tab: "content" | "audio" | "automation" | "devices") => {
+  const handleSelectTab = (tab: "content" | "audio" | "devices") => {
     setActiveTab(tab);
     if (typeof window !== "undefined") {
       localStorage.setItem("signage_active_tab", tab);
     }
   };
+
+  // Controle de expansão do menu de orientação/rotação da TV
+  const [isRotationExpanded, setIsRotationExpanded] = useState(false);
 
   // Estados para Salvar Fila de Músicas (substituindo a gestão antiga de playlists)
   const [saveQueueModalOpen, setSaveQueueModalOpen] = useState(false);
@@ -631,6 +637,15 @@ function RoomOperator() {
 
   const stateQ = useQuery({
     queryKey: ["state", slug],
+    initialData: () => {
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem(`signage_admin_state_${slug}`);
+          if (raw) return JSON.parse(raw);
+        } catch {}
+      }
+      return undefined;
+    },
     queryFn: async () => {
       const fresh = await signageApi.getState(slug);
       const freshVer = Number(fresh?.version ?? 0);
@@ -641,6 +656,11 @@ function RoomOperator() {
       }
       if (freshVer > serverVersionRef.current) {
         serverVersionRef.current = freshVer;
+      }
+      if (typeof window !== "undefined" && fresh) {
+        try {
+          localStorage.setItem(`signage_admin_state_${slug}`, JSON.stringify(fresh));
+        } catch {}
       }
       return fresh;
     },
@@ -664,6 +684,7 @@ function RoomOperator() {
       audioShuffle?: boolean;
       currentAudioIndex?: number;
       standby?: boolean;
+      rotation?: number;
       audioStatus?: "playing" | "paused";
     }) => {
       // Enfileira na fila FIFO de saída do cliente
@@ -696,8 +717,8 @@ function RoomOperator() {
 
   // Disparo enfileirado (FIFO) com feedback visual imediato e reconciliação pelo Estado Autoritativo do Servidor
   const handleOptimisticCommand = (
-    target: "visual" | "audio" | "site" | "room",
-    command: "play" | "pause" | "next" | "prev" | "reload" | "setVolume" | "setLoopMode" | "setShuffle" | "setTrackIndex" | "setStandby",
+    target: "visual" | "audio" | "site" | "room" | "screen",
+    command: "play" | "pause" | "next" | "prev" | "reload" | "setVolume" | "setLoopMode" | "setShuffle" | "setTrackIndex" | "setStandby" | "setRotation",
     value?: any
   ) => {
     // Nunca permite que um dispositivo sem o estado carregado do servidor dispare alteração de volume
@@ -727,6 +748,8 @@ function RoomOperator() {
         }
       } else if (target === "room" && command === "setStandby") {
         updated.standby = Boolean(value);
+      } else if ((target === "room" || target === "screen") && command === "setRotation") {
+        updated.rotation = Number(value);
       }
       return updated;
     });
@@ -782,130 +805,6 @@ function RoomOperator() {
     },
   });
 
-  // Consulta de agendamentos e automações da sala
-  const schedulesQ = useQuery({
-    queryKey: ["schedules", slug],
-    queryFn: () => signageApi.listSchedules(slug),
-    refetchInterval: 10000,
-  });
-
-  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
-  const [editingSchedule, setEditingSchedule] = useState<ScheduleTask | null>(null);
-  const [wizardModalOpen, setWizardModalOpen] = useState(false);
-  const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
-
-  const createScheduleMut = useMutation({
-    mutationFn: (data: Partial<ScheduleTask>) => signageApi.createSchedule(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["schedules", slug] });
-    },
-  });
-
-  const updateScheduleMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<ScheduleTask> }) =>
-      signageApi.updateSchedule(id, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["schedules", slug] });
-    },
-  });
-
-  const deleteScheduleMut = useMutation({
-    mutationFn: (id: string) => signageApi.deleteSchedule(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["schedules", slug] });
-    },
-  });
-
-  const toggleScheduleMut = useMutation({
-    mutationFn: (id: string) => signageApi.toggleSchedule(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["schedules", slug] });
-    },
-  });
-
-  const runScheduleMut = useMutation({
-    mutationFn: async (id: string) => {
-      setRunningScheduleId(id);
-      try {
-        const res = await signageApi.runScheduleNow(id);
-        return res;
-      } finally {
-        setRunningScheduleId(null);
-      }
-    },
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["state", slug] });
-      qc.invalidateQueries({ queryKey: ["schedules", slug] });
-      alert(res.message || "Ação executada na TV com sucesso!");
-    },
-  });
-
-  // Consulta de rotinas base da sala (programação contínua estilo alarme)
-  const routinesQ = useQuery({
-    queryKey: ["routines", slug],
-    queryFn: () => signageApi.listRoutines(slug),
-    refetchInterval: 10000,
-  });
-
-  const [routineModalOpen, setRoutineModalOpen] = useState(false);
-  const [editingRoutine, setEditingRoutine] = useState<RoomRoutine | null>(null);
-  const [runningRoutineId, setRunningRoutineId] = useState<string | null>(null);
-
-  const createRoutineMut = useMutation({
-    mutationFn: (data: Partial<RoomRoutine>) => signageApi.createRoutine(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["routines"] });
-    },
-  });
-
-  const updateRoutineMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<RoomRoutine> }) =>
-      signageApi.updateRoutine(id, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["routines"] });
-    },
-  });
-
-  const deleteRoutineMut = useMutation({
-    mutationFn: (id: string) => signageApi.deleteRoutine(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["routines"] });
-    },
-  });
-
-  const toggleRoutineMut = useMutation({
-    mutationFn: (id: string) => signageApi.toggleRoutine(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["routines"] });
-    },
-  });
-
-  const runRoutineMut = useMutation({
-    mutationFn: async (id: string) => {
-      setRunningRoutineId(id);
-      try {
-        const res = await signageApi.runRoutineNow(id);
-        return res;
-      } finally {
-        setRunningRoutineId(null);
-      }
-    },
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["state", slug] });
-      qc.invalidateQueries({ queryKey: ["routines", slug] });
-      alert(res.message || "Rotina base ativada na TV com sucesso!");
-    },
-  });
-
-  const restoreRoutineMut = useMutation({
-    mutationFn: () => signageApi.restoreRoutine(slug),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["state", slug] });
-      qc.invalidateQueries({ queryKey: ["routines", slug] });
-      alert(res.message || "Override de cerimônia liberado! A sala retomou a rotina base.");
-    },
-  });
-
   // Feedback e mutations para recarregar TV / sala e site
   const [reloadNotice, setReloadNotice] = useState<string | null>(null);
 
@@ -930,6 +829,25 @@ function RoomOperator() {
     onError: (err: any) => {
       setReloadNotice("Erro ao recarregar site: " + (err.message || "Falha"));
       setTimeout(() => setReloadNotice(null), 3500);
+    },
+  });
+
+  // Estados e controle de QR Code para o celular da família
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrNotice, setQrNotice] = useState<string | null>(null);
+
+  const musicUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/music/${slug}`;
+  const qrSvgUrl = `/api/qr?text=${encodeURIComponent(musicUrl)}`;
+
+  const showMusicQrMut = useMutation({
+    mutationFn: () => signageApi.showMusicQr(slug),
+    onSuccess: () => {
+      setQrNotice("QR Code exibido na TV da sala por 10 segundos!");
+      setTimeout(() => setQrNotice(null), 10000);
+    },
+    onError: (err: any) => {
+      setQrNotice("Erro ao enviar QR Code para a TV: " + (err.message || "Falha na rede"));
+      setTimeout(() => setQrNotice(null), 4000);
     },
   });
 
@@ -1049,7 +967,7 @@ function RoomOperator() {
         ...activeAudio,
         items: targetItems,
       });
-      if (stateQ.data?.audioStreamUrl) {
+      if (stateQ.data?.audioStreamUrl && playImmediately) {
         await signageApi.setState(slug, { audioStreamUrl: null, audioStatus: "playing" });
       }
     } else {
@@ -1065,7 +983,7 @@ function RoomOperator() {
         await signageApi.setState(slug, {
           audioPlaylist: targetPlaylistId,
           audioStreamUrl: null,
-          audioStatus: "playing",
+          ...(playImmediately ? { audioStatus: "playing" } : {}),
         });
       } else {
         const res = await signageApi.createPlaylist({
@@ -1081,7 +999,7 @@ function RoomOperator() {
           await signageApi.setState(slug, {
             audioPlaylist: targetPlaylistId,
             audioStreamUrl: null,
-            audioStatus: "playing",
+            ...(playImmediately ? { audioStatus: "playing" } : {}),
           });
         }
       }
@@ -1127,7 +1045,7 @@ function RoomOperator() {
         ...activeAudio,
         items: targetItems,
       });
-      if (stateQ.data?.audioStreamUrl) {
+      if (stateQ.data?.audioStreamUrl && playImmediately) {
         await signageApi.setState(slug, { audioStreamUrl: null, audioStatus: "playing" });
       }
     } else {
@@ -1143,7 +1061,7 @@ function RoomOperator() {
         await signageApi.setState(slug, {
           audioPlaylist: targetPlaylistId,
           audioStreamUrl: null,
-          audioStatus: "playing",
+          ...(playImmediately ? { audioStatus: "playing" } : {}),
         });
       } else {
         const res = await signageApi.createPlaylist({
@@ -1159,7 +1077,7 @@ function RoomOperator() {
           await signageApi.setState(slug, {
             audioPlaylist: targetPlaylistId,
             audioStreamUrl: null,
-            audioStatus: "playing",
+            ...(playImmediately ? { audioStatus: "playing" } : {}),
           });
         }
       }
@@ -1325,6 +1243,8 @@ function RoomOperator() {
                     updated.currentAudioIndex = data.value;
                 } else if (data.target === "room" && data.command === "setStandby") {
                   updated.standby = data.value;
+                } else if ((data.target === "room" || data.target === "screen") && data.command === "setRotation") {
+                  updated.rotation = Number(data.value);
                 }
                 return updated;
               });
@@ -1378,7 +1298,7 @@ function RoomOperator() {
     setRadioErrorMsg(null);
     setRadioStatusMsg(`Sintonizada: ${station.name}`);
     setAudioStreamInputUrl(station.streamUrl);
-    setState.mutate({ audioStreamUrl: station.streamUrl, audioStatus: "playing" });
+    setState.mutate({ audioStreamUrl: station.streamUrl, audioPlaylist: null, audioStatus: "playing" });
     setTimeout(() => setRadioStatusMsg(null), 4000);
   };
 
@@ -1392,7 +1312,7 @@ function RoomOperator() {
       const probe = await signageApi.probeRadio(raw);
       if (probe.ok && probe.resolvedUrl) {
         setAudioStreamInputUrl(probe.resolvedUrl);
-        setState.mutate({ audioStreamUrl: probe.resolvedUrl, audioStatus: "playing" });
+        setState.mutate({ audioStreamUrl: probe.resolvedUrl, audioPlaylist: null, audioStatus: "playing" });
         setRadioStatusMsg(
           probe.stationName
             ? `Rádio validada e sintonizada: ${probe.stationName}`
@@ -1408,7 +1328,7 @@ function RoomOperator() {
     } catch (_e) {
       // Fallback: sintoniza mesmo se o teste prévio falhar
       setAudioStreamInputUrl(raw);
-      setState.mutate({ audioStreamUrl: raw, audioStatus: "playing" });
+      setState.mutate({ audioStreamUrl: raw, audioPlaylist: null, audioStatus: "playing" });
     } finally {
       setIsProbingRadio(false);
     }
@@ -1461,7 +1381,7 @@ function RoomOperator() {
         items: updatedItems,
       });
       if (stateQ.data?.audioStreamUrl) {
-        await signageApi.setState(slug, { audioStreamUrl: null, audioStatus: "playing" });
+        await signageApi.setState(slug, { audioStreamUrl: null });
       }
     } else {
       const playlistName = `Áudio - ${currentRoom?.name || slug}`;
@@ -1475,7 +1395,6 @@ function RoomOperator() {
         await signageApi.setState(slug, {
           audioPlaylist: existingQueue.id,
           audioStreamUrl: null,
-          audioStatus: "playing",
         });
       } else {
         const res = await signageApi.createPlaylist({
@@ -1490,7 +1409,6 @@ function RoomOperator() {
           await signageApi.setState(slug, {
             audioPlaylist: res.playlist.id,
             audioStreamUrl: null,
-            audioStatus: "playing",
           });
         }
       }
@@ -1525,7 +1443,7 @@ function RoomOperator() {
         items: updatedItems,
       });
       if (stateQ.data?.audioStreamUrl) {
-        await signageApi.setState(slug, { audioStreamUrl: null, audioStatus: "playing" });
+        await signageApi.setState(slug, { audioStreamUrl: null });
       }
     } else {
       const playlistName = `Áudio - ${currentRoom?.name || slug}`;
@@ -1539,7 +1457,6 @@ function RoomOperator() {
         await signageApi.setState(slug, {
           audioPlaylist: existingQueue.id,
           audioStreamUrl: null,
-          audioStatus: "playing",
         });
       } else {
         const res = await signageApi.createPlaylist({
@@ -1554,7 +1471,6 @@ function RoomOperator() {
           await signageApi.setState(slug, {
             audioPlaylist: res.playlist.id,
             audioStreamUrl: null,
-            audioStatus: "playing",
           });
         }
       }
@@ -1824,6 +1740,32 @@ function RoomOperator() {
               <span>{stateQ.data?.standby ? "Standby" : "Suspender"}</span>
             </button>
 
+            {/* Rotação de Tela (Desktop) */}
+            <button
+              onClick={() => {
+                const currentRot = Number(stateQ.data?.rotation || 0);
+                const nextRot = currentRot === 0 ? 90 : currentRot === 90 ? 180 : currentRot === 180 ? 270 : 0;
+                setState.mutate({ rotation: nextRot });
+              }}
+              className={`hidden sm:flex min-h-[28px] px-2 py-0.5 text-xs font-mono font-bold transition items-center justify-center gap-1 ${
+                (stateQ.data?.rotation || 0) !== 0
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                  : "bg-neutral-950 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-900"
+              }`}
+              title="Alternar Orientação da Tela da TV (0°, 90°, 180°, 270°)"
+            >
+              <RotateCw className="h-3 w-3 flex-shrink-0" />
+              <span>
+                {stateQ.data?.rotation === 90
+                  ? "90° Vertical"
+                  : stateQ.data?.rotation === 180
+                  ? "180°"
+                  : stateQ.data?.rotation === 270
+                  ? "270° Vertical"
+                  : "0° Padrão"}
+              </span>
+            </button>
+
             {/* Recarregar (Desktop) */}
             <button
               onClick={() => {
@@ -1837,6 +1779,16 @@ function RoomOperator() {
             >
               <RefreshCw className={`h-3 w-3 flex-shrink-0 ${reloadRoomMut.isPending ? "animate-spin text-white" : ""}`} />
               <span>{reloadRoomMut.isPending ? "Recarregando..." : "Recarregar"}</span>
+            </button>
+
+            {/* QR Code TV */}
+            <button
+              onClick={() => setShowQrModal(true)}
+              className="min-h-[32px] sm:min-h-[28px] px-2 py-0.5 bg-neutral-950 border border-neutral-900 hover:border-amber-500/50 text-neutral-300 hover:text-amber-300 text-xs font-mono font-bold transition flex items-center justify-center gap-1"
+              title="QR Code de Música para Celular da Família"
+            >
+              <QrCode className="h-3.5 w-3.5 sm:h-3 sm:w-3 flex-shrink-0" />
+              <span className="hidden md:inline">QR Música</span>
             </button>
 
             {/* Ver TV */}
@@ -1853,21 +1805,46 @@ function RoomOperator() {
           </div>
         </div>
 
-        {/* Linha de Ações Rápidas no Mobile (Standby e Recarregar em botões grandes) */}
-        <div className="grid grid-cols-2 gap-1.5 sm:hidden pt-0.5">
+        {/* Linha de Ações Rápidas no Mobile (Standby, Rotação e Recarregar em botões grandes) */}
+        <div className="grid grid-cols-3 gap-1.5 sm:hidden pt-0.5">
           <button
             onClick={() => {
               const nextStandby = !stateQ.data?.standby;
               setState.mutate({ standby: nextStandby });
             }}
-            className={`min-h-[38px] px-2.5 py-1 text-xs font-mono font-bold transition flex items-center justify-center gap-1.5 border ${
+            className={`min-h-[38px] px-1.5 py-1 text-xs font-mono font-bold transition flex items-center justify-center gap-1 border ${
               stateQ.data?.standby
                 ? "bg-amber-500 text-black border-amber-400 font-extrabold"
                 : "bg-neutral-950 border-neutral-900 text-neutral-300 active:bg-neutral-900"
             }`}
           >
-            {stateQ.data?.standby ? <Sun className="h-4 w-4 flex-shrink-0" /> : <Moon className="h-4 w-4 flex-shrink-0 text-amber-400" />}
-            <span>{stateQ.data?.standby ? "Standby (ON)" : "Standby (OFF)"}</span>
+            {stateQ.data?.standby ? <Sun className="h-3.5 w-3.5 flex-shrink-0" /> : <Moon className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />}
+            <span className="truncate">{stateQ.data?.standby ? "Standby" : "Suspender"}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              const currentRot = Number(stateQ.data?.rotation || 0);
+              const nextRot = currentRot === 0 ? 90 : currentRot === 90 ? 180 : currentRot === 180 ? 270 : 0;
+              setState.mutate({ rotation: nextRot });
+            }}
+            className={`min-h-[38px] px-1.5 py-1 text-xs font-mono font-bold transition flex items-center justify-center gap-1 border ${
+              (stateQ.data?.rotation || 0) !== 0
+                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                : "bg-neutral-950 border-neutral-900 text-neutral-300 active:bg-neutral-900"
+            }`}
+            title="Girar tela da TV"
+          >
+            <RotateCw className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="truncate">
+              {stateQ.data?.rotation === 90
+                ? "90° Vert"
+                : stateQ.data?.rotation === 180
+                ? "180°"
+                : stateQ.data?.rotation === 270
+                ? "270° Vert"
+                : "0° Pad"}
+            </span>
           </button>
 
           <button
@@ -1877,19 +1854,19 @@ function RoomOperator() {
               }
             }}
             disabled={reloadRoomMut.isPending}
-            className="min-h-[38px] px-2.5 py-1 bg-neutral-950 border border-neutral-900 text-neutral-300 active:bg-neutral-900 text-xs font-mono transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+            className="min-h-[38px] px-1.5 py-1 bg-neutral-950 border border-neutral-900 text-neutral-300 active:bg-neutral-900 text-xs font-mono transition flex items-center justify-center gap-1 disabled:opacity-50"
           >
-            <RefreshCw className={`h-4 w-4 flex-shrink-0 ${reloadRoomMut.isPending ? "animate-spin text-white" : ""}`} />
-            <span>{reloadRoomMut.isPending ? "Recarregando..." : "Recarregar TV"}</span>
+            <RefreshCw className={`h-3.5 w-3.5 flex-shrink-0 ${reloadRoomMut.isPending ? "animate-spin text-white" : ""}`} />
+            <span className="truncate">{reloadRoomMut.isPending ? "..." : "Recarregar"}</span>
           </button>
         </div>
 
-        {/* Linha 2: 4 Abas Principais (Sharp, Flat, Compact) */}
+        {/* Linha 2: 3 Abas Principais (Conteúdo, Áudio, Aparelhos) */}
         <div className="flex items-center justify-between gap-2 pt-1 border-t border-neutral-900">
-          <div className="grid grid-cols-4 bg-neutral-950 p-0.5 border border-neutral-900 gap-0.5 w-full sm:w-auto">
+          <div className="grid grid-cols-3 bg-neutral-950 p-0.5 border border-neutral-900 gap-0.5 w-full sm:w-auto">
             <button
               onClick={() => handleSelectTab("content")}
-              className={`flex items-center justify-center gap-1 py-1 px-2.5 text-xs font-mono transition truncate ${
+              className={`flex items-center justify-center gap-1 py-1 px-3 text-xs font-mono transition truncate ${
                 activeTab === "content"
                   ? "bg-white text-black font-bold"
                   : "text-neutral-400 hover:text-white"
@@ -1900,7 +1877,7 @@ function RoomOperator() {
             </button>
             <button
               onClick={() => handleSelectTab("audio")}
-              className={`flex items-center justify-center gap-1 py-1 px-2.5 text-xs font-mono transition truncate ${
+              className={`flex items-center justify-center gap-1 py-1 px-3 text-xs font-mono transition truncate ${
                 activeTab === "audio"
                   ? "bg-white text-black font-bold"
                   : "text-neutral-400 hover:text-white"
@@ -1910,19 +1887,8 @@ function RoomOperator() {
               <span className="truncate">Áudio</span>
             </button>
             <button
-              onClick={() => handleSelectTab("automation")}
-              className={`flex items-center justify-center gap-1 py-1 px-2.5 text-xs font-mono transition truncate ${
-                activeTab === "automation"
-                  ? "bg-white text-black font-bold"
-                  : "text-neutral-400 hover:text-white"
-              }`}
-            >
-              <CalendarClock className="h-3 w-3 flex-shrink-0" />
-              <span className="truncate">Automação</span>
-            </button>
-            <button
               onClick={() => handleSelectTab("devices")}
-              className={`flex items-center justify-center gap-1 py-1 px-2.5 text-xs font-mono transition truncate ${
+              className={`flex items-center justify-center gap-1 py-1 px-3 text-xs font-mono transition truncate ${
                 activeTab === "devices"
                   ? "bg-white text-black font-bold"
                   : "text-neutral-400 hover:text-white"
@@ -2125,24 +2091,137 @@ function RoomOperator() {
               )}
             </div>
 
-            {/* Se o site está ativo, mostra o link atual de forma limpa */}
+            {/* Se o site está ativo, mostra o link atual e metadados da cerimônia com encerramento automático */}
             {isSiteActive && (
-              <div className="bg-neutral-950 border border-neutral-900 rounded-none p-2.5 text-xs text-neutral-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 overflow-hidden w-full">
-                <div className="truncate flex items-center gap-2 min-w-0 flex-1">
-                  <span className="font-semibold text-neutral-400 flex-shrink-0 text-[11px] uppercase font-mono">No Ar:</span>
-                  <span className="truncate text-white min-w-0 flex-1 font-mono text-[11px]" title={stateQ.data?.siteUrl || ""}>
-                    {stateQ.data?.siteUrl}
-                  </span>
+              <div className="bg-neutral-950 border border-neutral-900 rounded-none p-3 space-y-2 text-xs text-neutral-200 w-full">
+                {stateQ.data?.ceremonyTitle && (
+                  <div className="flex items-center gap-2 border-b border-neutral-900/80 pb-2">
+                    <span className="text-[10px] font-mono uppercase font-bold text-neutral-400">Cerimônia:</span>
+                    <span className="font-bold text-white text-sm">{stateQ.data.ceremonyTitle}</span>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 overflow-hidden">
+                  <div className="truncate flex items-center gap-2 min-w-0 flex-1">
+                    <span className="font-semibold text-neutral-400 flex-shrink-0 text-[11px] uppercase font-mono">No Ar:</span>
+                    <span className="truncate text-white min-w-0 flex-1 font-mono text-[11px]" title={stateQ.data?.siteUrl || ""}>
+                      {stateQ.data?.siteUrl}
+                    </span>
+                  </div>
                 </div>
+
+                {stateQ.data?.ceremonyEndAt && (
+                  <div className="pt-2 border-t border-neutral-900/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-emerald-950/20 p-2 border border-emerald-500/20">
+                    <div className="flex items-center gap-2 text-emerald-300 font-mono text-xs">
+                      <Clock className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                      <span>
+                        Encerramento programado para{" "}
+                        <strong className="text-white">
+                          {new Date(stateQ.data.ceremonyEndAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                        </strong>
+                        {" "}(standby automático ao término)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm("Deseja cancelar o encerramento automático e manter a cerimônia em exibição contínua?")) {
+                          setState.mutate({ ceremonyEndAt: null });
+                        }
+                      }}
+                      className="px-2 py-0.5 text-[10px] font-mono bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 self-start sm:self-auto"
+                    >
+                      Remover timer
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* SEÇÃO INTEGRADA ADIAŬ: Captura automática de cerimônias ativas */}
+            {/* CONTROLE DE ORIENTAÇÃO / ROTAÇÃO DA TV (HORIZONTAL / VERTICAL) - Botão Expansível */}
+            <div className="border border-neutral-800 bg-neutral-950 rounded-none overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setIsRotationExpanded(!isRotationExpanded)}
+                className="w-full p-2.5 sm:p-3 flex items-center justify-between gap-2 hover:bg-neutral-900/60 transition text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <RotateCw className={`h-4 w-4 text-emerald-400 flex-shrink-0 transition-transform duration-200 ${isRotationExpanded ? "rotate-90" : ""}`} />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-white font-mono uppercase tracking-wider">
+                        Orientação da Tela / TV
+                      </span>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.2 border border-emerald-500/40 bg-emerald-500/10 text-emerald-300">
+                        {stateQ.data?.rotation === 90
+                          ? "90° Retrato"
+                          : stateQ.data?.rotation === 180
+                          ? "180° Invertido"
+                          : stateQ.data?.rotation === 270
+                          ? "270° Retrato"
+                          : "0° Padrão (Horizontal)"}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-neutral-400 block truncate">
+                      Gire a exibição para TVs instaladas na vertical ou horizontal
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0 text-neutral-400">
+                  <span className="text-[11px] font-mono hidden sm:inline">{isRotationExpanded ? "Ocultar" : "Alterar"}</span>
+                  {isRotationExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </div>
+              </button>
+
+              {isRotationExpanded && (
+                <div className="p-2.5 sm:p-3 pt-0 border-t border-neutral-900/80 bg-neutral-950/80 space-y-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 font-mono text-xs pt-2">
+                    {[
+                      { deg: 0, label: "0° Padrão", sub: "Horizontal", icon: Tv },
+                      { deg: 90, label: "90° Vertical", sub: "Retrato (Direita)", icon: RotateCw },
+                      { deg: 180, label: "180° Invertido", sub: "Horizontal", icon: RotateCw },
+                      { deg: 270, label: "270° Vertical", sub: "Retrato (Esquerda)", icon: RotateCw },
+                    ].map((item) => {
+                      const currentRot = Number(stateQ.data?.rotation || 0);
+                      const isSelected = currentRot === item.deg;
+                      return (
+                        <button
+                          key={item.deg}
+                          type="button"
+                          onClick={() => {
+                            setState.mutate({ rotation: item.deg });
+                          }}
+                          disabled={setState.isPending}
+                          className={`p-2.5 border transition flex flex-col items-center justify-center gap-1 text-center cursor-pointer ${
+                            isSelected
+                              ? "bg-emerald-500 text-black border-emerald-400 font-extrabold shadow-sm"
+                              : "bg-neutral-900 border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 active:bg-neutral-800"
+                          }`}
+                        >
+                          <item.icon className={`h-4 w-4 ${isSelected ? "text-black" : "text-emerald-400"}`} />
+                          <span className="font-bold text-xs">{item.label}</span>
+                          <span className={`text-[10px] ${isSelected ? "text-black/80 font-medium" : "text-neutral-400 font-normal"}`}>{item.sub}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* SEÇÃO INTEGRADA ADIAŬ: Captura automática de cerimônias ativas com Encerramento Automático */}
             <AdiauSection
               currentSiteUrl={stateQ.data?.siteUrl}
-              onApplySiteUrl={(url) => {
+              onApplySiteUrl={(url, att) => {
                 setSiteInputUrl(url);
-                setState.mutate({ siteUrl: url, mode: "site" });
+                const endAt = att ? parseAdiauEndTimestamp(att.attendanceEndDate || att.burialDate) : null;
+                setState.mutate({
+                  siteUrl: url,
+                  mode: "site",
+                  standby: false,
+                  ceremonyEndAt: endAt,
+                  ceremonyTitle: att?.deceasedName || null,
+                });
               }}
               isApplying={setState.isPending}
             />
@@ -2208,7 +2287,37 @@ function RoomOperator() {
                     </p>
                   </div>
                 </div>
+
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => showMusicQrMut.mutate()}
+                    disabled={showMusicQrMut.isPending}
+                    className="min-h-[32px] px-2.5 py-1 rounded-none bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25 text-xs font-mono font-bold flex items-center gap-1.5 transition"
+                    title="Exibir QR Code na TV da sala por 10 segundos"
+                  >
+                    <Tv className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>{showMusicQrMut.isPending ? "Exibindo..." : "QR Code na TV (10s)"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowQrModal(true)}
+                    className="min-h-[32px] px-2.5 py-1 rounded-none bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white text-xs font-mono font-medium flex items-center gap-1.5 transition"
+                    title="Ver / Imprimir QR Code do Celular da Família"
+                  >
+                    <QrCode className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span className="hidden sm:inline">Ver QR Code</span>
+                  </button>
+                </div>
               </div>
+
+              {qrNotice && (
+                <div className="px-3 py-1.5 rounded-none bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-mono font-semibold flex items-center gap-2">
+                  <Check className="h-3.5 w-3.5 text-amber-400" />
+                  <span>{qrNotice}</span>
+                </div>
+              )}
             </div>
 
             {/* CONTROLE PRINCIPAL DE ÁUDIO: STATUS, BOTÕES E VOLUME (EM PRIMEIRO LUGAR) */}
@@ -2322,8 +2431,8 @@ function RoomOperator() {
                     : "text-neutral-400 hover:text-white"
                 }`}
               >
-                <Cloud className="h-3.5 w-3.5 flex-shrink-0" />
-                <span className="truncate">Meu Dropbox</span>
+                <FolderOpen className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="truncate">Pastas de Músicas</span>
               </button>
               <button
                 onClick={() => setBasicAudioTab("stream")}
@@ -2350,19 +2459,19 @@ function RoomOperator() {
             </div>
 
             {/* ============================================================ */}
-            {/* SUB-ABA: MEU DROPBOX (BUSCA DIRETA NA NUVEM)                 */}
+            {/* SUB-ABA: MÚSICAS LOCAIS / DA SALA                            */}
             {/* ============================================================ */}
             {basicAudioTab === "dropbox" && (
               <div className="space-y-3 w-full">
-                {/* 1. Aviso quando o Dropbox não estiver configurado no servidor (.env) */}
+                {/* 1. Aviso quando a biblioteca de músicas não estiver disponível */}
                 {!dropboxStatusQ.data?.configured && (
                   <div className="bg-neutral-950 border border-neutral-900 p-6 text-center space-y-2">
-                    <Cloud className="h-7 w-7 text-neutral-500 mx-auto" />
+                    <FolderOpen className="h-7 w-7 text-neutral-500 mx-auto" />
                     <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                      Músicas do Meu Dropbox
+                      Biblioteca de Músicas
                     </h4>
                     <p className="text-xs text-neutral-400 max-w-md mx-auto leading-relaxed">
-                      O acesso ao Dropbox agora é configurado diretamente nas variáveis de ambiente do servidor (<code className="text-neutral-300 font-mono text-[11px]">.env</code> ou painel do Render).
+                      A biblioteca é carregada diretamente da pasta de músicas do servidor (<code className="text-neutral-300 font-mono text-[11px]">/home/capgestec/Músicas/signage</code>).
                     </p>
                     {dropboxStatusQ.data?.error && (
                       <p className="text-[11px] text-red-400 font-mono pt-1">
@@ -2379,16 +2488,14 @@ function RoomOperator() {
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
                         <span className="text-xs font-bold text-white truncate">
-                          {dropboxStatusQ.data.accountName || "Dropbox Conectado"}
+                          {dropboxStatusQ.data.accountName || "Biblioteca Local Conectada"}
                         </span>
                         <span className="text-[10px] text-neutral-500 hidden sm:inline truncate">
-                          (Pasta: {dropboxStatusQ.data.folder || "/Músicas"})
+                          (Pasta: {dropboxStatusQ.data.folder || "signage"})
                         </span>
-                        {dropboxStatusQ.data.hasRefreshToken && (
-                          <span className="text-[9px] bg-emerald-950 border border-emerald-800 text-emerald-400 px-1.5 py-0.5 font-mono uppercase tracking-wider">
-                            Renovação Automática
-                          </span>
-                        )}
+                        <span className="text-[9px] bg-emerald-950 border border-emerald-800 text-emerald-400 px-1.5 py-0.5 font-mono uppercase tracking-wider">
+                          Armazenamento Local
+                        </span>
                       </div>
 
                       <div className="flex items-center gap-1.5">
@@ -2396,7 +2503,7 @@ function RoomOperator() {
                           onClick={handleRefreshDropbox}
                           disabled={isRefreshingDropbox}
                           className="px-2.5 py-1 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition flex items-center gap-1"
-                          title="Sincronizar e recarregar faixas do Dropbox"
+                          title="Sincronizar e recarregar faixas da biblioteca local"
                         >
                           <RefreshCw className={`h-3 w-3 ${isRefreshingDropbox ? "animate-spin" : ""}`} />
                           <span>Sincronizar</span>
@@ -2442,6 +2549,42 @@ function RoomOperator() {
                       </div>
                     </div>
 
+                    {/* Menu Rápido de Pastas */}
+                    {(dropboxFoldersQ.data?.folders || []).length > 0 && (
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 no-scrollbar">
+                        <button
+                          type="button"
+                          onClick={() => setDropboxFolder("")}
+                          className={`px-2.5 py-1 text-[11px] font-mono font-semibold transition flex items-center gap-1 flex-shrink-0 ${
+                            !dropboxFolder
+                              ? "bg-white text-black font-bold"
+                              : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
+                          }`}
+                        >
+                          <Sparkles className="h-3 w-3" />
+                          <span>Todas</span>
+                        </button>
+                        {(dropboxFoldersQ.data?.folders || []).map((f) => {
+                          const isSel = dropboxFolder === f;
+                          return (
+                            <button
+                              key={f}
+                              type="button"
+                              onClick={() => setDropboxFolder(isSel ? "" : f)}
+                              className={`px-2.5 py-1 text-[11px] font-mono font-semibold transition flex items-center gap-1.5 flex-shrink-0 ${
+                                isSel
+                                  ? "bg-amber-500 text-black font-bold"
+                                  : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
+                              }`}
+                            >
+                              <Folder className="h-3 w-3" />
+                              <span>{f}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {/* Ações em Lote e Contagem */}
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-neutral-400">
                       <div>
@@ -2484,7 +2627,7 @@ function RoomOperator() {
                     {dropboxTracksQ.isLoading ? (
                       <div className="p-8 text-center text-neutral-500 text-xs flex flex-col items-center justify-center gap-2">
                         <Loader2 className="h-5 w-5 animate-spin text-neutral-400" />
-                        <span>Carregando músicas da sua pasta do Dropbox...</span>
+                        <span>Carregando músicas da biblioteca local...</span>
                       </div>
                     ) : filteredDropboxTracks.length === 0 ? (
                       <div className="p-6 text-center text-neutral-500 text-xs border border-neutral-900 bg-neutral-950/40 space-y-1">
@@ -2494,7 +2637,7 @@ function RoomOperator() {
                         <p className="text-[10px]">
                           {dropboxQuery
                             ? "Tente pesquisar por outro nome ou limpe o campo de busca."
-                            : "Coloque arquivos MP3 ou M4A na sua pasta do Dropbox e clique em Sincronizar."}
+                            : "Coloque arquivos de áudio (MP3, M4A, WAV, etc.) na pasta do servidor e clique em Sincronizar."}
                         </p>
                       </div>
                     ) : (
@@ -2876,8 +3019,8 @@ function RoomOperator() {
                           onClick={() => setBasicAudioTab("dropbox")}
                           className="px-3 py-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-800 text-xs font-semibold hover:bg-neutral-800 hover:text-white transition flex items-center gap-1.5"
                         >
-                          <Cloud className="h-3.5 w-3.5" />
-                          <span>Buscar no Meu Dropbox</span>
+                          <FolderOpen className="h-3.5 w-3.5" />
+                          <span>Buscar Músicas</span>
                         </button>
                         <button
                           onClick={() => setBasicAudioTab("stream")}
@@ -2897,17 +3040,17 @@ function RoomOperator() {
             {/* SUB-ABA 4: SINTONIZAR WEB RÁDIO 24H                          */}
             {/* ============================================================ */}
             {basicAudioTab === "stream" && (
-              <div className="rounded-none border border-neutral-900 bg-neutral-950/60 p-3 space-y-3.5">
+              <div className="rounded-none border border-neutral-900 bg-neutral-950/60 p-3 space-y-3">
                 {/* Cabeçalho da Web Rádio */}
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-900 pb-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-900 pb-2">
                   <div className="flex items-center gap-2">
                     <RadioIcon
                       className={`h-4 w-4 ${
                         isAudioStreamActive ? "text-emerald-400 animate-pulse" : "text-neutral-400"
                       }`}
                     />
-                    <span className="text-xs font-bold text-white">
-                      Web Rádios Ao Vivo 24h (Gospel, Instrumental & Louvor)
+                    <span className="text-xs font-bold text-white uppercase font-mono">
+                      Web Rádios ({savedRadios.length})
                     </span>
                     {isAudioStreamActive && (
                       <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-none font-bold uppercase tracking-wider">
@@ -2916,160 +3059,108 @@ function RoomOperator() {
                     )}
                   </div>
 
-                  {isAudioStreamActive && (
+                  <div className="flex items-center gap-1.5">
+                    {isAudioStreamActive && (
+                      <button
+                        onClick={handleClearAudioStream}
+                        className="px-2 py-1 rounded-none bg-red-500/10 border border-red-500/30 text-[11px] text-red-300 hover:bg-red-500/20 flex items-center gap-1 font-semibold transition"
+                      >
+                        <X className="h-3 w-3" />
+                        <span>Parar</span>
+                      </button>
+                    )}
+
                     <button
-                      onClick={handleClearAudioStream}
-                      className="px-2.5 py-1 rounded-none bg-red-500/10 border border-red-500/30 text-xs text-red-300 hover:bg-red-500/20 flex items-center gap-1 font-semibold transition"
+                      type="button"
+                      onClick={() => setIsAddingCustomRadio(!isAddingCustomRadio)}
+                      className="px-2.5 py-1 text-[11px] font-mono bg-neutral-900 hover:bg-neutral-850 border border-neutral-900 text-neutral-300 hover:text-white transition flex items-center gap-1"
                     >
-                      <X className="h-3.5 w-3.5" />
-                      <span>Desconectar Rádio</span>
+                      <Plus className="h-3 w-3" />
+                      <span>{isAddingCustomRadio ? "Fechar" : "Nova Rádio"}</span>
                     </button>
-                  )}
+                  </div>
                 </div>
 
                 {/* Mensagens de retorno (validação / sintonização) */}
                 {radioStatusMsg && (
-                  <div className="flex items-center gap-2 rounded-none border border-emerald-500/30 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-300 font-semibold">
-                    <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-emerald-400" />
+                  <div className="flex items-center gap-2 rounded-none border border-emerald-500/30 bg-emerald-950/30 px-2.5 py-1.5 text-xs text-emerald-300 font-semibold">
+                    <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-emerald-400" />
                     <span>{radioStatusMsg}</span>
                   </div>
                 )}
 
                 {radioErrorMsg && (
-                  <div className="flex items-center gap-2 rounded-none border border-amber-500/30 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
-                    <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-400" />
+                  <div className="flex items-center gap-2 rounded-none border border-amber-500/30 bg-amber-950/30 px-2.5 py-1.5 text-xs text-amber-200">
+                    <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
                     <span>{radioErrorMsg}</span>
                   </div>
                 )}
 
-                {/* 1. MINHAS RÁDIOS SALVAS & FAVORITAS */}
+                {/* 1. MINHAS RÁDIOS SALVAS */}
                 <div className="space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300 block">
-                        Minhas Rádios Salvas & Favoritas ({savedRadios.length})
-                      </span>
-                      <span className="text-[10px] text-neutral-400">
-                        Sintonize em 1 clique ou gerencie suas emissoras prediletas
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm("Deseja restaurar as rádios gospel padrão recomendadas?")) {
-                            resetToDefaults();
-                            setRadioStatusMsg("Rádios padrão restauradas com sucesso.");
-                            setTimeout(() => setRadioStatusMsg(null), 3000);
-                          }
-                        }}
-                        className="px-2 py-1 text-[10px] font-mono bg-neutral-950 hover:bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-white transition"
-                        title="Restaurar lista original de rádios gospel recomendadas"
-                      >
-                        Restaurar Padrões
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingCustomRadio(!isAddingCustomRadio)}
-                        className="px-2.5 py-1 text-[11px] font-mono bg-neutral-900 hover:bg-neutral-850 border border-neutral-900 text-neutral-300 hover:text-white transition flex items-center gap-1.5"
-                      >
-                        <Plus className="h-3 w-3" />
-                        <span>{isAddingCustomRadio ? "Fechar Formulário" : "Salvar Nova Rádio"}</span>
-                      </button>
-                    </div>
-                  </div>
-
                   {/* Formulário de Adicionar Nova Rádio Salva */}
                   {isAddingCustomRadio && (
-                    <div className="p-3 border border-neutral-900 bg-neutral-950 space-y-2">
-                      <div className="text-xs font-bold text-white font-mono flex items-center gap-1.5">
-                        <Bookmark className="h-3.5 w-3.5 text-neutral-400" />
-                        <span>Cadastrar Rádio nos Favoritos</span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          placeholder="Nome da Rádio (ex: Rádio Suave Louvor)"
-                          value={newRadioName}
-                          onChange={(e) => setNewRadioName(e.target.value)}
-                          className="bg-black border border-neutral-900 px-2.5 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-600 font-mono"
-                        />
-                        <input
-                          type="url"
-                          placeholder="Link da Rádio (https://... / Icecast / Zeno)"
-                          value={newRadioUrl}
-                          onChange={(e) => setNewRadioUrl(e.target.value)}
-                          className="bg-black border border-neutral-900 px-2.5 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-600 font-mono"
-                        />
-                      </div>
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-                        <input
-                          type="text"
-                          placeholder="Descrição ou estilo (opcional)"
-                          value={newRadioDesc}
-                          onChange={(e) => setNewRadioDesc(e.target.value)}
-                          className="flex-1 bg-black border border-neutral-900 px-2.5 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-600 font-mono"
-                        />
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <button
-                            type="button"
-                            onClick={() => setIsAddingCustomRadio(false)}
-                            className="px-3 py-1.5 text-xs font-mono bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-white"
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!newRadioUrl.trim()) {
-                                alert("Por favor, informe a URL da rádio.");
-                                return;
-                              }
-                              const clean = cleanAudioUrl(newRadioUrl);
-                              saveRadio({
-                                name: newRadioName.trim() || "Minha Rádio",
-                                url: clean,
-                                desc: newRadioDesc.trim() || "Rádio salva pelo operador",
-                                isCustom: true,
-                              });
-                              setNewRadioName("");
-                              setNewRadioUrl("");
-                              setNewRadioDesc("");
-                              setIsAddingCustomRadio(false);
-                              setRadioStatusMsg("Rádio salva com sucesso nos seus favoritos!");
-                              setTimeout(() => setRadioStatusMsg(null), 3000);
-                            }}
-                            className="px-3 py-1.5 text-xs font-mono bg-white text-black font-bold uppercase hover:bg-neutral-200"
-                          >
-                            Salvar Rádio
-                          </button>
-                        </div>
+                    <div className="p-2.5 border border-neutral-900 bg-neutral-950 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Nome da Rádio"
+                        value={newRadioName}
+                        onChange={(e) => setNewRadioName(e.target.value)}
+                        className="sm:w-48 bg-black border border-neutral-900 px-2.5 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-600 font-mono"
+                      />
+                      <input
+                        type="url"
+                        placeholder="URL do Stream (https://...)"
+                        value={newRadioUrl}
+                        onChange={(e) => setNewRadioUrl(e.target.value)}
+                        className="flex-1 bg-black border border-neutral-900 px-2.5 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-neutral-600 font-mono"
+                      />
+                      <div className="flex items-center gap-1.5 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingCustomRadio(false)}
+                          className="px-2.5 py-1.5 text-xs font-mono bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-white"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!newRadioUrl.trim()) return;
+                            const clean = cleanAudioUrl(newRadioUrl);
+                            saveRadio({
+                              name: newRadioName.trim() || "Minha Rádio",
+                              url: clean,
+                              desc: "",
+                              isCustom: true,
+                            });
+                            setNewRadioName("");
+                            setNewRadioUrl("");
+                            setNewRadioDesc("");
+                            setIsAddingCustomRadio(false);
+                            setRadioStatusMsg("Rádio salva!");
+                            setTimeout(() => setRadioStatusMsg(null), 2500);
+                          }}
+                          className="px-3 py-1.5 text-xs font-mono bg-white text-black font-bold uppercase hover:bg-neutral-200"
+                        >
+                          Salvar
+                        </button>
                       </div>
                     </div>
                   )}
 
                   {/* Grid de Rádios Salvas */}
                   {savedRadios.length === 0 ? (
-                    <div className="p-4 border border-neutral-900 bg-neutral-950 text-center space-y-2">
-                      <p className="text-xs text-neutral-400 font-mono">
-                        Nenhuma rádio salva na sua lista. Você pode buscar novas emissoras abaixo ou restaurar as rádios recomendadas.
+                    <div className="p-3 border border-neutral-900 bg-neutral-950 text-center space-y-1">
+                      <p className="text-xs text-neutral-300 font-mono">
+                        Nenhuma rádio salva.
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          resetToDefaults();
-                          setRadioStatusMsg("Rádios padrão restauradas.");
-                          setTimeout(() => setRadioStatusMsg(null), 3000);
-                        }}
-                        className="px-3 py-1.5 text-xs font-mono bg-neutral-900 border border-neutral-900 text-white hover:bg-neutral-800 transition"
-                      >
-                        Restaurar Rádios Padrão
-                      </button>
+                      <p className="text-[11px] text-neutral-500">
+                        Clique em &quot;Nova Rádio&quot; acima, busque estações no diretório online ou cole uma URL direta de áudio.
+                      </p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-72 overflow-y-auto pr-1">
                       {savedRadios.map((station) => {
                         const isThisActive =
                           isAudioStreamActive &&
@@ -3078,47 +3169,31 @@ function RoomOperator() {
                         return (
                           <div
                             key={station.id || station.url}
-                            className={`rounded-none border p-2.5 flex items-center justify-between gap-2.5 transition ${
+                            className={`rounded-none border px-2.5 py-2 flex items-center justify-between gap-2 transition ${
                               isThisActive
-                                ? "border-emerald-500/60 bg-emerald-950/25 shadow-xs"
+                                ? "border-emerald-500/60 bg-emerald-950/25"
                                 : "border-neutral-900 bg-neutral-900/60 hover:border-neutral-700"
                             }`}
                           >
-                            <div className="min-w-0 flex-1 space-y-0.5">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-xs font-bold text-white truncate">
-                                  {station.name}
-                                </span>
-                                {station.isCustom ? (
-                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none border border-neutral-800 bg-neutral-950 text-neutral-300">
-                                    Minha Rádio
-                                  </span>
-                                ) : (
-                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none border border-neutral-900 bg-neutral-950 text-neutral-400">
-                                    Verificada
-                                  </span>
-                                )}
-                                {isThisActive && (
-                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded-none bg-emerald-500 text-black">
-                                    No Ar
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[11px] text-neutral-400 line-clamp-1">
-                                {station.desc}
-                              </p>
+                            <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                              {isThisActive && (
+                                <span className="h-2 w-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                              )}
+                              <span className="text-xs font-bold text-white truncate">
+                                {station.name}
+                              </span>
                             </div>
 
                             <div className="flex items-center gap-1 flex-shrink-0">
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (confirm(`Deseja remover "${station.name}" da sua lista de rádios?`)) {
-                                    deleteRadio(station.id);
-                                  }
+                                  deleteRadio(station.id || station.url);
+                                  setRadioStatusMsg(`"${station.name}" removida.`);
+                                  setTimeout(() => setRadioStatusMsg(null), 2000);
                                 }}
-                                className="p-2 rounded-none bg-neutral-900 hover:bg-red-950 hover:text-red-300 border border-neutral-900 text-neutral-400 transition"
-                                title="Excluir rádio da lista"
+                                className="p-1.5 rounded-none bg-neutral-900 hover:bg-red-950 hover:text-red-300 border border-neutral-900 text-neutral-400 transition"
+                                title="Excluir rádio"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -3138,14 +3213,14 @@ function RoomOperator() {
                                   })
                                 }
                                 disabled={setState.isPending}
-                                className={`px-3 py-2 rounded-none text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition ${
+                                className={`px-2.5 py-1.5 rounded-none text-xs font-bold uppercase tracking-wider flex items-center gap-1 transition ${
                                   isThisActive
                                     ? "bg-emerald-500 text-black hover:bg-emerald-400"
                                     : "bg-white text-black hover:bg-neutral-200"
                                 }`}
                               >
-                                <RadioIcon className="h-3.5 w-3.5" />
-                                <span>{isThisActive ? "No Ar" : "Sintonizar"}</span>
+                                <RadioIcon className="h-3 w-3" />
+                                <span>{isThisActive ? "No Ar" : "Tocar"}</span>
                               </button>
                             </div>
                           </div>
@@ -3155,20 +3230,14 @@ function RoomOperator() {
                   )}
                 </div>
 
-                {/* 2. BUSCAR OUTRAS RÁDIOS AO VIVO NO DIRETÓRIO MUNDIAL */}
-                <div className="border-t border-neutral-900 pt-3 space-y-2">
+                {/* 2. BUSCAR RÁDIOS ONLINE */}
+                <div className="border-t border-neutral-900 pt-2.5 space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300">
-                      Buscar Outras Web Rádios Ao Vivo (Diretório Online)
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 font-mono">
+                      Buscar no Diretório Online
                     </span>
                     <div className="flex flex-wrap items-center gap-1">
-                      {[
-                        "Gospel",
-                        "Instrumental Gospel",
-                        "Louvor",
-                        "Harpa Cristã",
-                        "Piano Instrumental",
-                      ].map((chip) => (
+                      {["Gospel", "Instrumental", "Louvor", "Harpa", "Piano"].map((chip) => (
                         <button
                           key={chip}
                           type="button"
@@ -3183,29 +3252,29 @@ function RoomOperator() {
 
                   <div className="flex flex-col sm:flex-row items-stretch gap-1.5">
                     <input
-                      placeholder="Pesquisar rádio por nome ou estilo (ex: Gospel, Louvor, Melodia, Instrumental...)"
+                      placeholder="Buscar rádio por nome ou estilo..."
                       value={radioSearchQuery}
                       onChange={(e) => setRadioSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && handleSearchRadios()}
-                      className="flex-1 rounded-none border border-neutral-900 bg-neutral-950 px-3 py-2 text-xs text-white outline-none focus:border-neutral-500"
+                      className="flex-1 rounded-none border border-neutral-900 bg-neutral-950 px-2.5 py-1.5 text-xs text-white outline-none focus:border-neutral-500"
                     />
                     <button
                       type="button"
                       onClick={() => handleSearchRadios()}
                       disabled={!radioSearchQuery.trim() || isSearchingRadio}
-                      className="min-h-[36px] px-4 py-2 rounded-none bg-neutral-800 border border-neutral-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-neutral-700 disabled:opacity-40 transition flex items-center justify-center gap-1.5"
+                      className="min-h-[34px] px-3 py-1.5 rounded-none bg-neutral-800 border border-neutral-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-neutral-700 disabled:opacity-40 transition flex items-center justify-center gap-1.5"
                     >
                       {isSearchingRadio ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Search className="h-3.5 w-3.5" />
                       )}
-                      <span>Buscar Rádios</span>
+                      <span>Buscar</span>
                     </button>
                   </div>
 
                   {radioSearchResults.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-60 overflow-y-auto pr-1 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-56 overflow-y-auto pr-1">
                       {radioSearchResults.map((station) => {
                         const isThisActive =
                           isAudioStreamActive &&
@@ -3213,7 +3282,7 @@ function RoomOperator() {
                         return (
                           <div
                             key={station.id}
-                            className={`rounded-none border p-2 flex items-center justify-between gap-2 ${
+                            className={`rounded-none border px-2.5 py-1.5 flex items-center justify-between gap-2 ${
                               isThisActive
                                 ? "border-emerald-500/60 bg-emerald-950/25"
                                 : "border-neutral-900 bg-neutral-900/40"
@@ -3223,8 +3292,8 @@ function RoomOperator() {
                               <div className="text-xs font-semibold text-white truncate">
                                 {station.name}
                               </div>
-                              <div className="text-[10px] text-neutral-400 truncate">
-                                {station.codec} • {station.bitrate || 128} kbps • {station.country}
+                              <div className="text-[10px] text-neutral-500 truncate">
+                                {station.codec} • {station.bitrate || 128}k
                               </div>
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
@@ -3237,32 +3306,22 @@ function RoomOperator() {
                                     saveRadio({
                                       name: station.name,
                                       url: station.streamUrl,
-                                      desc: `${station.codec} • ${station.bitrate || 128} kbps • ${station.country}`,
+                                      desc: "",
                                       isCustom: true,
                                     });
                                   }
                                 }}
-                                className={`px-2 py-1.5 rounded-none border text-[11px] font-mono transition flex items-center gap-1 ${
+                                className={`p-1.5 rounded-none border text-[11px] font-mono transition flex items-center ${
                                   isRadioSavedInStore(station.streamUrl)
                                     ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/50"
                                     : "bg-black text-neutral-400 border-neutral-900 hover:text-white"
                                 }`}
-                                title={
-                                  isRadioSavedInStore(station.streamUrl)
-                                    ? "Remover dos Favoritos"
-                                    : "Salvar nos Favoritos"
-                                }
+                                title={isRadioSavedInStore(station.streamUrl) ? "Salva" : "Salvar"}
                               >
                                 {isRadioSavedInStore(station.streamUrl) ? (
-                                  <>
-                                    <BookmarkCheck className="h-3 w-3" />
-                                    <span>Salva</span>
-                                  </>
+                                  <BookmarkCheck className="h-3.5 w-3.5" />
                                 ) : (
-                                  <>
-                                    <Bookmark className="h-3 w-3" />
-                                    <span>Salvar</span>
-                                  </>
+                                  <Bookmark className="h-3.5 w-3.5" />
                                 )}
                               </button>
 
@@ -3271,7 +3330,7 @@ function RoomOperator() {
                                 onClick={() => handleTuneRadioStation(station)}
                                 className="px-2.5 py-1.5 rounded-none bg-white text-black text-[11px] font-bold uppercase hover:bg-neutral-200 transition"
                               >
-                                {isThisActive ? "No Ar" : "Sintonizar"}
+                                {isThisActive ? "No Ar" : "Tocar"}
                               </button>
                             </div>
                           </div>
@@ -3281,72 +3340,50 @@ function RoomOperator() {
                   )}
                 </div>
 
-                {/* 3. COLAR LINK DIRETO / MANUAL DE STREAM */}
-                <div className="border-t border-neutral-900 pt-3 space-y-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-300 block">
-                    Ou Sintonizar por Link Direto da Rádio (URL Manual)
-                  </span>
-
-                  <div className="flex flex-col sm:flex-row items-stretch gap-1.5">
-                    <input
-                      placeholder="Link da rádio (ex: https://stream.zeno.fm/..., Icecast/Shoutcast MP3/AAC, .pls ou .m3u)"
-                      value={audioStreamInputUrl}
-                      onChange={(e) => setAudioStreamInputUrl(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleApplyAudioStream()}
-                      className="flex-1 rounded-none border border-neutral-900 bg-neutral-950 px-3 py-2 text-xs text-white outline-none focus:border-neutral-500 font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!audioStreamInputUrl.trim()) return;
-                        const name = prompt("Nome da Rádio para salvar nos favoritos:", "Minha Rádio");
-                        if (name) {
-                          saveRadio({
-                            name: name.trim(),
-                            url: cleanAudioUrl(audioStreamInputUrl),
-                            desc: "Salva via link manual",
-                            isCustom: true,
-                          });
-                          setRadioStatusMsg(`Rádio "${name.trim()}" salva nos seus favoritos!`);
-                          setTimeout(() => setRadioStatusMsg(null), 3500);
-                        }
-                      }}
-                      disabled={!audioStreamInputUrl.trim()}
-                      className="min-h-[36px] px-3 py-2 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white hover:bg-neutral-850 disabled:opacity-40 transition flex items-center justify-center gap-1 text-xs font-mono"
-                      title="Salvar esta rádio para usar em outras salas e rotinas"
-                    >
-                      <Bookmark className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline">Salvar</span>
-                    </button>
-                    <button
-                      onClick={handleApplyAudioStream}
-                      disabled={!audioStreamInputUrl.trim() || setState.isPending || isProbingRadio}
-                      className="min-h-[36px] px-4 py-2 rounded-none bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5 shadow-sm"
-                    >
-                      {isProbingRadio ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <RadioIcon className="h-3.5 w-3.5" />
-                      )}
-                      <span>{isProbingRadio ? "Validando..." : "Validar e Sintonizar"}</span>
-                    </button>
-                  </div>
-
-                  <div className="rounded-none border border-neutral-900 bg-neutral-900/40 p-2.5 text-[11px] text-neutral-400 space-y-1">
-                    <div className="font-semibold text-neutral-200 flex items-center gap-1.5">
-                      <Info className="h-3.5 w-3.5 text-neutral-400 flex-shrink-0" />
-                      <span>Quais Web Rádios funcionam neste sistema?</span>
-                    </div>
-                    <p>
-                      <strong className="text-emerald-400">Funcionam em todas as TVs:</strong>{" "}
-                      Streams contínuos em formato <strong>MP3</strong> ou <strong>AAC / AAC+</strong>{" "}
-                      (servidores <strong>Zeno.fm</strong>, <strong>Shoutcast</strong>,{" "}
-                      <strong>Icecast</strong>, <strong>SonicPanel</strong>, <strong>BRLive</strong>,{" "}
-                      <strong>MaxCast</strong> e arquivos <code>.pls</code> ou <code>.m3u</code>),
-                      inclusive links <code>http://</code> ou com portas como <code>:7004</code>,{" "}
-                      <code>:8197</code>, <code>:9165</code> — o servidor converte e entrega tudo via proxy seguro para a TV.
-                    </p>
-                  </div>
+                {/* 3. LINK DIRETO (OPCIONAL) */}
+                <div className="border-t border-neutral-900 pt-2.5 flex flex-col sm:flex-row items-stretch gap-1.5">
+                  <input
+                    placeholder="Ou cole a URL direta do stream (MP3/AAC)..."
+                    value={audioStreamInputUrl}
+                    onChange={(e) => setAudioStreamInputUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleApplyAudioStream()}
+                    className="flex-1 rounded-none border border-neutral-900 bg-neutral-950 px-2.5 py-1.5 text-xs text-white outline-none focus:border-neutral-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!audioStreamInputUrl.trim()) return;
+                      const name = prompt("Nome da Rádio:", "Minha Rádio");
+                      if (name) {
+                        saveRadio({
+                          name: name.trim(),
+                          url: cleanAudioUrl(audioStreamInputUrl),
+                          desc: "",
+                          isCustom: true,
+                        });
+                        setRadioStatusMsg(`"${name.trim()}" salva!`);
+                        setTimeout(() => setRadioStatusMsg(null), 2500);
+                      }
+                    }}
+                    disabled={!audioStreamInputUrl.trim()}
+                    className="min-h-[34px] px-2.5 py-1.5 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-300 hover:text-white disabled:opacity-40 transition flex items-center justify-center gap-1 text-xs font-mono"
+                    title="Salvar nos favoritos"
+                  >
+                    <Bookmark className="h-3.5 w-3.5" />
+                    <span>Salvar</span>
+                  </button>
+                  <button
+                    onClick={handleApplyAudioStream}
+                    disabled={!audioStreamInputUrl.trim() || setState.isPending || isProbingRadio}
+                    className="min-h-[34px] px-3 py-1.5 rounded-none bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 disabled:opacity-40 transition flex items-center justify-center gap-1.5"
+                  >
+                    {isProbingRadio ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RadioIcon className="h-3.5 w-3.5" />
+                    )}
+                    <span>{isProbingRadio ? "..." : "Tocar URL"}</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -3354,56 +3391,7 @@ function RoomOperator() {
         )}
 
         {/* ============================================================ */}
-        {/* ABA 3: AGENDAMENTOS E AUTOMAÇÕES DA SALA                     */}
-        {/* ============================================================ */}
-        {activeTab === "automation" && (
-          <RoomSchedulesCard
-            slug={slug}
-            schedules={schedulesQ.data}
-            isLoading={schedulesQ.isLoading}
-            routines={routinesQ.data}
-            isRoutinesLoading={routinesQ.isLoading}
-            audioPlaylists={audioPlaylists}
-            onOpenNewModal={() => {
-              setEditingSchedule(null);
-              setScheduleModalOpen(true);
-            }}
-            onOpenEditModal={(task) => {
-              setEditingSchedule(task);
-              setScheduleModalOpen(true);
-            }}
-            onOpenWizardModal={() => setWizardModalOpen(true)}
-            onToggle={(id) => toggleScheduleMut.mutate(id)}
-            onRunNow={(id) => runScheduleMut.mutate(id)}
-            onDelete={(id) => {
-              if (confirm("Deseja realmente remover este agendamento programado?")) {
-                deleteScheduleMut.mutate(id);
-              }
-            }}
-            isRunningId={runningScheduleId}
-            onOpenNewRoutineModal={() => {
-              setEditingRoutine(null);
-              setRoutineModalOpen(true);
-            }}
-            onOpenEditRoutineModal={(routine) => {
-              setEditingRoutine(routine);
-              setRoutineModalOpen(true);
-            }}
-            onToggleRoutine={(id) => toggleRoutineMut.mutate(id)}
-            onRunRoutineNow={(id) => runRoutineMut.mutate(id)}
-            onDeleteRoutine={(id) => {
-              if (confirm("Deseja realmente remover esta rotina base?")) {
-                deleteRoutineMut.mutate(id);
-              }
-            }}
-            onRestoreRoutine={() => restoreRoutineMut.mutate()}
-            isRestoringRoutine={restoreRoutineMut.isPending}
-            isRunningRoutineId={runningRoutineId}
-          />
-        )}
-
-        {/* ============================================================ */}
-        {/* ABA 4: APARELHOS / TVS CONECTADAS                            */}
+        {/* ABA 3: APARELHOS / TVS CONECTADAS                            */}
         {/* ============================================================ */}
         {activeTab === "devices" && (
           <RoomDevicesCard
@@ -3574,73 +3562,18 @@ function RoomOperator() {
       )}
 
       {/* ============================================================ */}
-      {/* MODAL DE AGENDAMENTO INDIVIDUAL                              */}
+      {/* MODAL DE QR CODE PARA CELULAR DA FAMÍLIA                     */}
       {/* ============================================================ */}
-      <ScheduleModal
-        isOpen={scheduleModalOpen}
-        onClose={() => {
-          setScheduleModalOpen(false);
-          setEditingSchedule(null);
-        }}
+      <MusicQrModal
+        isOpen={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        roomName={currentRoom?.name || slug}
         slug={slug}
-        currentSiteUrl={stateQ.data?.siteUrl}
-        audioPlaylists={audioPlaylists}
-        initialData={editingSchedule}
-        onSave={(data) => {
-          if (editingSchedule?.id) {
-            updateScheduleMut.mutate({ id: editingSchedule.id, data });
-          } else {
-            createScheduleMut.mutate(data);
-          }
-        }}
-      />
-
-      {/* ============================================================ */}
-      {/* MODAL DE ROTEIRO AUTOMÁTICO DE VELÓRIO (3 ETAPAS)            */}
-      {/* ============================================================ */}
-      <CeremonyWizardModal
-        isOpen={wizardModalOpen}
-        onClose={() => setWizardModalOpen(false)}
-        slug={slug}
-        currentSiteUrl={stateQ.data?.siteUrl}
-        audioPlaylists={audioPlaylists}
-        onSuccess={() => {
-          qc.invalidateQueries({ queryKey: ["schedules", slug] });
-        }}
-      />
-
-      {/* ============================================================ */}
-      {/* MODAL DE ROTINA BASE (ALARME SEMANAL DA SALA)                */}
-      {/* ============================================================ */}
-      <RoutineModal
-        isOpen={routineModalOpen}
-        onClose={() => {
-          setRoutineModalOpen(false);
-          setEditingRoutine(null);
-        }}
-        defaultRoomSlug={slug}
-        availableRooms={roomsQ.data?.map((r) => ({ slug: r.slug, name: r.name })) || []}
-        audioPlaylists={audioPlaylists}
-        initialData={editingRoutine}
-        onSave={(data, targetRooms) => {
-          if (editingRoutine?.id) {
-            updateRoutineMut.mutate({ id: editingRoutine.id, data });
-            if (targetRooms && targetRooms.length > 1) {
-              const otherRooms = targetRooms.filter((s) => s !== data.roomSlug);
-              otherRooms.forEach((targetSlug) => {
-                createRoutineMut.mutate({ ...data, roomSlug: targetSlug });
-              });
-            }
-          } else {
-            if (targetRooms && targetRooms.length > 0) {
-              targetRooms.forEach((targetSlug) => {
-                createRoutineMut.mutate({ ...data, roomSlug: targetSlug });
-              });
-            } else {
-              createRoutineMut.mutate({ ...data, roomSlug: slug });
-            }
-          }
-        }}
+        musicUrl={musicUrl}
+        qrSvgUrl={qrSvgUrl}
+        onShowOnTv={() => showMusicQrMut.mutate()}
+        isSendingToTv={showMusicQrMut.isPending}
+        qrNotice={qrNotice}
       />
 
       {/* ============================================================ */}
@@ -3888,1426 +3821,155 @@ function RoomDevicesCard({
 }
 
 /**
- * Interface de propriedades do Card de Agendamentos e Automações
+ * Modal para visualizar, copiar e imprimir QR Code de Música para Celular da Família
  */
-interface RoomSchedulesCardProps {
-  slug: string;
-  schedules?: ScheduleTask[];
-  isLoading: boolean;
-  routines?: RoomRoutine[];
-  isRoutinesLoading?: boolean;
-  audioPlaylists: Playlist[];
-  onOpenNewModal: () => void;
-  onOpenEditModal: (task: ScheduleTask) => void;
-  onOpenWizardModal: () => void;
-  onToggle: (id: string) => void;
-  onRunNow: (id: string) => void;
-  onDelete: (id: string) => void;
-  isRunningId?: string | null;
-  onOpenNewRoutineModal: () => void;
-  onOpenEditRoutineModal: (routine: RoomRoutine) => void;
-  onToggleRoutine: (id: string) => void;
-  onRunRoutineNow: (id: string) => void;
-  onDeleteRoutine: (id: string) => void;
-  onRestoreRoutine: () => void;
-  isRestoringRoutine?: boolean;
-  isRunningRoutineId?: string | null;
-}
-
-/**
- * Card de Automações & Agendamentos da Sala (Linha do Tempo de Velório / Cerimônia + Rotinas Base)
- */
-function RoomSchedulesCard({
-  slug,
-  schedules = [],
-  isLoading,
-  routines = [],
-  isRoutinesLoading,
-  audioPlaylists,
-  onOpenNewModal,
-  onOpenEditModal,
-  onOpenWizardModal,
-  onToggle,
-  onRunNow,
-  onDelete,
-  isRunningId,
-  onOpenNewRoutineModal,
-  onOpenEditRoutineModal,
-  onToggleRoutine,
-  onRunRoutineNow,
-  onDeleteRoutine,
-  onRestoreRoutine,
-  isRestoringRoutine,
-  isRunningRoutineId,
-}: RoomSchedulesCardProps) {
-  const [subTab, setSubTab] = useState<"schedules" | "routines">("schedules");
-
-  // Ordena os agendamentos cronologicamente (do mais próximo para o futuro)
-  const sortedSchedules = useMemo(() => {
-    return [...schedules].sort((a, b) => {
-      const timeA = new Date(a.scheduledAt).getTime() || 0;
-      const timeB = new Date(b.scheduledAt).getTime() || 0;
-      return timeA - timeB;
-    });
-  }, [schedules]);
-
-  // Ordena as rotinas pelo horário de início ("HH:mm")
-  const sortedRoutines = useMemo(() => {
-    return [...routines].sort((a, b) => (a.startTime || "00:00").localeCompare(b.startTime || "00:00"));
-  }, [routines]);
-
-  const activeCount = schedules.filter((s) => s.enabled && !s.executed).length;
-  const activeRoutinesCount = routines.filter((r) => r.enabled).length;
-
-  return (
-    <section className="rounded-none border border-neutral-900 bg-neutral-900/40 p-3 sm:p-4 space-y-3">
-      {/* Header do Card */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-neutral-900">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="p-1.5 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-900 flex-shrink-0">
-            {subTab === "schedules" ? (
-              <CalendarClock className="h-4 w-4" />
-            ) : (
-              <Clock className="h-4 w-4 text-emerald-400" />
-            )}
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2 flex-wrap">
-              <span>{subTab === "schedules" ? "Automação & Cerimônias" : "Rotinas Base da Sala"}</span>
-              {subTab === "schedules" ? (
-                activeCount > 0 ? (
-                  <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-900 px-1.5 py-0.2 rounded-none font-mono font-bold">
-                    {activeCount} {activeCount === 1 ? "programado" : "programados"}
-                  </span>
-                ) : (
-                  <span className="text-[10px] bg-neutral-900 text-neutral-500 px-1.5 py-0.2 rounded-none font-mono">
-                    Sem agendamentos
-                  </span>
-                )
-              ) : (
-                activeRoutinesCount > 0 ? (
-                  <span className="text-[10px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded-none font-mono font-bold">
-                    {activeRoutinesCount} {activeRoutinesCount === 1 ? "rotina ativa" : "rotinas ativas"}
-                  </span>
-                ) : (
-                  <span className="text-[10px] bg-neutral-900 text-neutral-500 px-1.5 py-0.2 rounded-none font-mono">
-                    Sem rotinas ativas
-                  </span>
-                )
-              )}
-            </h2>
-            <p className="text-[11px] text-neutral-400 truncate">
-              {subTab === "schedules"
-                ? "Ligue a TV, abra memoriais e toque músicas em horários programados (Prioridade Alta)."
-                : "Programação semanal estilo alarme de celular. Opera de fundo quando não há cerimônias."}
-            </p>
-          </div>
-        </div>
-
-        {/* Botões do Topo */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {subTab === "schedules" ? (
-            <>
-              <button
-                onClick={onOpenWizardModal}
-                className="flex-1 sm:flex-none min-h-[34px] px-3 py-1 rounded-none bg-white hover:bg-neutral-200 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
-                title="Gera automaticamente as 3 etapas de um velório: Recepção, Despedida e Encerramento"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>Roteiro de Velório</span>
-              </button>
-
-              <button
-                onClick={onOpenNewModal}
-                className="flex-1 sm:flex-none min-h-[34px] px-3 py-1 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-200 border border-neutral-900 font-semibold text-xs transition flex items-center justify-center gap-1.5"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Novo Horário</span>
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={onOpenNewRoutineModal}
-              className="flex-1 sm:flex-none min-h-[34px] px-3 py-1 rounded-none bg-white hover:bg-neutral-200 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Nova Rotina Base</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Seletor de Sub-Abas: Cerimônias vs Rotinas Base */}
-      <div className="flex items-center gap-1 p-1 bg-neutral-950 rounded-none border border-neutral-900">
-        <button
-          type="button"
-          onClick={() => setSubTab("schedules")}
-          className={`flex-1 py-1.5 px-3 rounded-none text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-            subTab === "schedules"
-              ? "bg-white text-black shadow-xs font-extrabold"
-              : "text-neutral-400 hover:text-white"
-          }`}
-        >
-          <CalendarClock className="h-3.5 w-3.5" />
-          <span>Cerimônias & Agendamentos</span>
-          {activeCount > 0 && (
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-none font-mono ${
-                subTab === "schedules"
-                  ? "bg-black/15 text-black font-extrabold"
-                  : "bg-neutral-800 text-neutral-300"
-              }`}
-            >
-              {activeCount}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setSubTab("routines")}
-          className={`flex-1 py-1.5 px-3 rounded-none text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-            subTab === "routines"
-              ? "bg-white text-black shadow-xs font-extrabold"
-              : "text-neutral-400 hover:text-white"
-          }`}
-        >
-          <Clock className="h-3.5 w-3.5" />
-          <span>Rotinas Semanais (Fundo)</span>
-          {activeRoutinesCount > 0 && (
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-none font-mono ${
-                subTab === "routines"
-                  ? "bg-black/15 text-black font-extrabold"
-                  : "bg-neutral-800 text-neutral-300"
-              }`}
-            >
-              {activeRoutinesCount}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* ========================================================= */}
-      {/* VISÃO 1: AGENDAMENTOS E CERIMÔNIAS (PRIORIDADE ALTA)      */}
-      {/* ========================================================= */}
-      {subTab === "schedules" && (
-        <>
-          {isLoading ? (
-            <div className="flex items-center justify-center p-6 text-neutral-400 text-xs gap-2">
-              <Loader2 className="h-4 w-4 animate-spin text-neutral-400" />
-              <span>Carregando programação da sala...</span>
-            </div>
-          ) : sortedSchedules.length === 0 ? (
-            <div className="rounded-none border border-dashed border-neutral-900 bg-neutral-950/40 p-4 sm:p-5 text-center space-y-2.5">
-              <div className="mx-auto h-9 w-9 rounded-none bg-neutral-900 border border-neutral-900 flex items-center justify-center text-neutral-400">
-                <Calendar className="h-4 w-4" />
-              </div>
-              <div className="space-y-0.5">
-                <h3 className="text-xs sm:text-sm font-bold text-white">Nenhum evento agendado para esta sala</h3>
-                <p className="text-[11px] text-neutral-400 max-w-md mx-auto">
-                  Precisa deixar a TV programada para sair da suspensão às 19:30, tocar músicas de despedida às 08:00 e suspender às 08:15? Use nosso assistente guiado.
-                </p>
-              </div>
-              <button
-                onClick={onOpenWizardModal}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>Criar Roteiro Padrão de Velório</span>
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {sortedSchedules.map((task) => {
-                const isExecuted = Boolean(task.executed);
-                const isPaused = !task.enabled;
-                const isRunning = isRunningId === task.id;
-                const audioPlaylistName =
-                  task.actions.audioPlaylist
-                    ? audioPlaylists.find((p) => p.id === task.actions.audioPlaylist)?.name || "Playlist de Áudio"
-                    : null;
-
-                return (
-                  <div
-                    key={task.id}
-                    className={`p-2.5 sm:p-3 rounded-none border transition-all ${
-                      isExecuted
-                        ? "border-neutral-900 bg-neutral-950/40 opacity-75"
-                        : isPaused
-                        ? "border-amber-500/25 bg-neutral-950/60"
-                        : "border-neutral-900 bg-neutral-950 shadow-xs hover:border-neutral-700"
-                    } space-y-2`}
-                  >
-                    {/* Linha 1: Horário, Título e Badges */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {/* Badge de Horário */}
-                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-none bg-neutral-900 border border-neutral-900 font-mono text-xs font-bold text-white">
-                          <Clock className="h-3 w-3 text-neutral-400" />
-                          <span>{formatScheduleDateTime(task.scheduledAt)}</span>
-                        </div>
-
-                        {/* Status Badge */}
-                        {isExecuted ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none text-[10px] font-bold bg-neutral-800 text-neutral-400 border border-neutral-900">
-                            <CheckCircle2 className="h-3 w-3 text-emerald-400" />
-                            <span>Concluído</span>
-                          </span>
-                        ) : isPaused ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/25">
-                            <Pause className="h-3 w-3" />
-                            <span>Pausado</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            <span>Agendado</span>
-                          </span>
-                        )}
-
-                        <h3 className="text-xs font-bold text-white truncate ml-0.5">
-                          {task.title}
-                        </h3>
-                      </div>
-
-                      {/* Ações Rápidas: Testar, Pausar, Editar, Excluir */}
-                      <div className="flex items-center gap-1 self-end sm:self-auto flex-shrink-0">
-                        <button
-                          onClick={() => onRunNow(task.id)}
-                          disabled={isRunning}
-                          className="min-h-[28px] px-2 py-0.5 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-900 text-[11px] font-semibold transition flex items-center gap-1 disabled:opacity-40"
-                          title="Dispara as ações deste agendamento na TV agora mesmo para teste"
-                        >
-                          {isRunning ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Zap className="h-3 w-3 text-amber-400" />
-                          )}
-                          <span>Testar</span>
-                        </button>
-
-                        <button
-                          onClick={() => onToggle(task.id)}
-                          className={`min-h-[28px] px-2 py-0.5 rounded-none border text-[11px] font-semibold transition flex items-center gap-1 ${
-                            task.enabled
-                              ? "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                              : "bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25"
-                          }`}
-                          title={task.enabled ? "Pausar este agendamento" : "Ativar este agendamento"}
-                        >
-                          {task.enabled ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                          <span>{task.enabled ? "Pausar" : "Ativar"}</span>
-                        </button>
-
-                        <button
-                          onClick={() => onOpenEditModal(task)}
-                          className="min-h-[28px] h-7 w-7 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700 transition flex items-center justify-center"
-                          title="Editar agendamento"
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </button>
-
-                        <button
-                          onClick={() => onDelete(task.id)}
-                          className="min-h-[28px] h-7 w-7 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition flex items-center justify-center"
-                          title="Excluir agendamento"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Linha 2: Tags / Ações que serão disparadas */}
-                    <div className="flex items-center gap-1 flex-wrap text-[10px] pt-1 border-t border-neutral-900">
-                      {/* Standby / Suspensão */}
-                      {task.actions.standby === false && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-900 font-medium">
-                          <Sun className="h-3 w-3 text-amber-400" />
-                          <span>Liga TV (Sai do Standby)</span>
-                        </span>
-                      )}
-                      {task.actions.standby === true && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-400 border border-neutral-900 font-medium">
-                          <Moon className="h-3 w-3 text-amber-400" />
-                          <span>Suspende TV (Standby)</span>
-                        </span>
-                      )}
-
-                      {/* Site / Memorial */}
-                      {task.actions.siteUrl && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-900 font-medium max-w-xs truncate">
-                          <Globe className="h-3 w-3 flex-shrink-0 text-neutral-400" />
-                          <span className="truncate">{task.actions.siteUrl}</span>
-                        </span>
-                      )}
-
-                      {/* Playlist de Áudio */}
-                      {audioPlaylistName && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-900 font-medium">
-                          <Music className="h-3 w-3 text-neutral-400" />
-                          <span>{audioPlaylistName}</span>
-                        </span>
-                      )}
-
-                      {/* Volume */}
-                      {task.actions.audioVolume !== undefined && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-900 font-medium font-mono">
-                          <Volume2 className="h-3 w-3 text-neutral-400" />
-                          <span>Vol: {task.actions.audioVolume}%</span>
-                        </span>
-                      )}
-
-                      {/* Status de Áudio */}
-                      {task.actions.audioStatus === "playing" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 font-medium">
-                          <Play className="h-3 w-3" />
-                          <span>Tocar Músicas</span>
-                        </span>
-                      )}
-                      {task.actions.audioStatus === "paused" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-400 border border-neutral-900 font-medium">
-                          <Pause className="h-3 w-3" />
-                          <span>Pausar Som</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ========================================================= */}
-      {/* VISÃO 2: ROTINAS BASE DA SALA (ESTILO ALARME DE SMARTPHONE)*/}
-      {/* ========================================================= */}
-      {subTab === "routines" && (
-        <div className="space-y-3">
-          {/* Banner de Prioridade e Retomada */}
-          <div className="rounded-none border border-blue-900/40 bg-blue-950/20 p-2.5 sm:p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
-            <div className="flex items-start gap-2">
-              <div className="p-1 rounded-none bg-blue-900/40 text-blue-300 border border-blue-800/60 mt-0.5 sm:mt-0 flex-shrink-0">
-                <Info className="h-3.5 w-3.5" />
-              </div>
-              <div className="space-y-0.5">
-                <p className="text-white font-medium text-[11px] sm:text-xs">
-                  <span className="font-bold text-blue-200">Hierarquia Inteligente:</span> As rotinas base funcionam por baixo das automações.
-                </p>
-                <p className="text-neutral-400 text-[10px] sm:text-[11px]">
-                  Quando há uma cerimônia agendada, ela assume a tela com prioridade alta. Ao término da cerimônia ou em horários livres, a TV retoma automaticamente a rotina base do dia.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <Link
-                to="/admin/routines"
-                className="px-2.5 py-1 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-900 text-[11px] font-mono transition flex items-center gap-1.5 flex-shrink-0"
-                title="Abrir Central de Rotinas Globais (Agnóstica de Salas)"
-              >
-                <CalendarClock className="h-3 w-3 text-neutral-400" />
-                <span>Central de Rotinas</span>
-              </Link>
-              <button
-                onClick={onRestoreRoutine}
-                disabled={isRestoringRoutine}
-                className="px-2.5 py-1 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-900 text-[11px] font-semibold transition flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap disabled:opacity-50"
-                title="Libera qualquer override de automação ativa e aplica imediatamente a rotina base correspondente ao dia/horário atual"
-              >
-                {isRestoringRoutine ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-3 w-3 text-blue-400" />
-                )}
-                <span>Retomar Rotina Base</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Lista de Rotinas */}
-          {isRoutinesLoading ? (
-            <div className="flex items-center justify-center p-6 text-neutral-400 text-xs gap-2">
-              <Loader2 className="h-4 w-4 animate-spin text-neutral-400" />
-              <span>Carregando rotinas base da sala...</span>
-            </div>
-          ) : sortedRoutines.length === 0 ? (
-            <div className="rounded-none border border-dashed border-neutral-900 bg-neutral-950/40 p-4 sm:p-5 text-center space-y-2.5">
-              <div className="mx-auto h-9 w-9 rounded-none bg-neutral-900 border border-neutral-900 flex items-center justify-center text-neutral-400">
-                <Clock className="h-4 w-4" />
-              </div>
-              <div className="space-y-0.5">
-                <h3 className="text-xs sm:text-sm font-bold text-white">Nenhuma rotina base configurada para esta sala</h3>
-                <p className="text-[11px] text-neutral-400 max-w-md mx-auto">
-                  Crie uma rotina contínua (estilo alarme) para definir o que deve tocar e aparecer na tela quando a sala não estiver em velório (ex: ligar às 07:00 com rádio gospel e suspender às 19:00).
-                </p>
-              </div>
-              <button
-                onClick={onOpenNewRoutineModal}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Criar Primeira Rotina Base</span>
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {sortedRoutines.map((routine) => {
-                const isPaused = !routine.enabled;
-                const isRunning = isRunningRoutineId === routine.id;
-                const audioPlaylistName = routine.actions?.audioPlaylist
-                  ? audioPlaylists.find((p) => p.id === routine.actions.audioPlaylist)?.name || "Playlist de Áudio"
-                  : null;
-                const radioPresetName = routine.actions?.audioStreamUrl
-                  ? VERIFIED_GOSPEL_PRESETS.find((p) => p.url === routine.actions.audioStreamUrl)?.name || routine.actions.audioStreamUrl
-                  : null;
-
-                return (
-                  <div
-                    key={routine.id}
-                    className={`p-2.5 sm:p-3 rounded-none border transition-all ${
-                      isPaused
-                        ? "border-amber-500/25 bg-neutral-950/60"
-                        : "border-neutral-900 bg-neutral-950 shadow-xs hover:border-neutral-700"
-                    } space-y-2`}
-                  >
-                    {/* Linha 1: Horário Slot + Status + Pílulas dos Dias + Título + Ações */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {/* Horário */}
-                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-none bg-neutral-900 border border-neutral-900 font-mono text-xs font-bold text-white">
-                          <Clock className="h-3 w-3 text-neutral-400" />
-                          <span>{routine.startTime} → {routine.endTime}</span>
-                        </div>
-
-                        {/* Status */}
-                        {isPaused ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/25">
-                            <Pause className="h-3 w-3" />
-                            <span>Pausada</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            <span>Ativa</span>
-                          </span>
-                        )}
-
-                        {/* Pílulas dos 7 Dias da Semana */}
-                        <div className="flex items-center gap-0.5 ml-0.5">
-                          {ROUTINE_DAYS.map((d) => {
-                            const isDayActive = routine.daysOfWeek?.includes(d.day);
-                            return (
-                              <span
-                                key={d.day}
-                                title={`${d.full}: ${isDayActive ? "Ativo nesta rotina" : "Inativo"}`}
-                                className={`h-4 min-w-[16px] px-0.5 rounded-none text-[9px] font-bold flex items-center justify-center ${
-                                  isDayActive
-                                    ? isPaused
-                                      ? "bg-neutral-800 text-neutral-300 border border-neutral-900"
-                                      : "bg-white text-black font-extrabold"
-                                    : "text-neutral-600 bg-neutral-900/50"
-                                }`}
-                              >
-                                {d.label[0]}
-                              </span>
-                            );
-                          })}
-                        </div>
-
-                        <h3 className="text-xs font-bold text-white truncate ml-1">
-                          {routine.title}
-                        </h3>
-                      </div>
-
-                      {/* Botões de Ação */}
-                      <div className="flex items-center gap-1 self-end sm:self-auto flex-shrink-0">
-                        <button
-                          onClick={() => onRunRoutineNow(routine.id)}
-                          disabled={isRunning}
-                          className="min-h-[28px] px-2 py-0.5 rounded-none bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-900 text-[11px] font-semibold transition flex items-center gap-1 disabled:opacity-40"
-                          title="Aplica esta rotina na tela da TV imediatamente para conferir o resultado"
-                        >
-                          {isRunning ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Zap className="h-3 w-3 text-amber-400" />
-                          )}
-                          <span>Testar</span>
-                        </button>
-
-                        <button
-                          onClick={() => onToggleRoutine(routine.id)}
-                          className={`min-h-[28px] px-2 py-0.5 rounded-none border text-[11px] font-semibold transition flex items-center gap-1 ${
-                            routine.enabled
-                              ? "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                              : "bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25"
-                          }`}
-                          title={routine.enabled ? "Pausar rotina base" : "Ativar rotina base"}
-                        >
-                          {routine.enabled ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                          <span>{routine.enabled ? "Pausar" : "Ativar"}</span>
-                        </button>
-
-                        <button
-                          onClick={() => onOpenEditRoutineModal(routine)}
-                          className="min-h-[28px] h-7 w-7 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700 transition flex items-center justify-center"
-                          title="Editar rotina base"
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </button>
-
-                        <button
-                          onClick={() => onDeleteRoutine(routine.id)}
-                          className="min-h-[28px] h-7 w-7 rounded-none bg-neutral-900 border border-neutral-900 text-neutral-400 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition flex items-center justify-center"
-                          title="Excluir rotina base"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Linha 2: Resumo das Ações Configuradas */}
-                    <div className="flex items-center gap-1 flex-wrap text-[10px] pt-1 border-t border-neutral-900">
-                      {/* Standby */}
-                      {routine.actions?.standby === true ? (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-indigo-300 border border-indigo-900/40 font-medium">
-                          <Moon className="h-3 w-3 text-indigo-400" />
-                          <span>Modo Repouso (TV em Standby)</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-amber-300 border border-amber-900/40 font-medium">
-                          <Sun className="h-3 w-3 text-amber-400" />
-                          <span>Sala Ativa (TV Ligada)</span>
-                        </span>
-                      )}
-
-                      {/* Exibição Visual */}
-                      {routine.actions?.mode === "site" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-900 font-medium max-w-xs truncate">
-                          <Globe className="h-3 w-3 flex-shrink-0 text-neutral-400" />
-                          <span className="truncate">{routine.actions.siteUrl || "Site Padrão (Adiaŭ)"}</span>
-                        </span>
-                      )}
-                      {routine.actions?.mode === "playlist" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-900 font-medium">
-                          <Tv className="h-3 w-3 text-neutral-400" />
-                          <span>Carrossel de Mídias</span>
-                        </span>
-                      )}
-
-                      {/* Rádio ou Playlist */}
-                      {radioPresetName && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-900 font-medium max-w-xs truncate">
-                          <Radio className="h-3 w-3 text-neutral-400 flex-shrink-0" />
-                          <span className="truncate">{radioPresetName}</span>
-                        </span>
-                      )}
-                      {audioPlaylistName && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-300 border border-neutral-900 font-medium">
-                          <Music className="h-3 w-3 text-neutral-400" />
-                          <span>{audioPlaylistName}</span>
-                        </span>
-                      )}
-
-                      {/* Volume */}
-                      {routine.actions?.audioVolume !== undefined && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-900 font-medium font-mono">
-                          <Volume2 className="h-3 w-3 text-neutral-400" />
-                          <span>Vol: {routine.actions.audioVolume}%</span>
-                        </span>
-                      )}
-
-                      {/* Status de Áudio */}
-                      {routine.actions?.audioStatus === "playing" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 font-medium">
-                          <Play className="h-3 w-3" />
-                          <span>Tocar Áudio</span>
-                        </span>
-                      )}
-                      {routine.actions?.audioStatus === "paused" && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-none bg-neutral-900 text-neutral-400 border border-neutral-900 font-medium">
-                          <Pause className="h-3 w-3" />
-                          <span>Som Silenciado</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/**
- * Modal Assistente Guiado: Roteiro Automático de Velório em 3 Etapas
- */
-function CeremonyWizardModal({
+function MusicQrModal({
   isOpen,
   onClose,
-  slug,
-  currentSiteUrl,
-  audioPlaylists,
-  onSuccess,
+  roomName,
+  slug: _slug,
+  musicUrl,
+  qrSvgUrl,
+  onShowOnTv,
+  isSendingToTv,
+  qrNotice,
 }: {
   isOpen: boolean;
   onClose: () => void;
+  roomName: string;
   slug: string;
-  currentSiteUrl?: string | null;
-  audioPlaylists: Playlist[];
-  onSuccess: () => void;
+  musicUrl: string;
+  qrSvgUrl: string;
+  onShowOnTv: () => void;
+  isSendingToTv: boolean;
+  qrNotice: string | null;
 }) {
+  const [copied, setCopied] = useState(false);
   if (!isOpen) return null;
 
-  // Horário de Início: Hoje às 19:30 (ou amanhã se já passou das 20:00)
-  const defaultStartTime = useMemo(() => {
-    const d = new Date();
-    d.setHours(19, 30, 0, 0);
-    if (d.getTime() < Date.now() - 30 * 60 * 1000) {
-      d.setDate(d.getDate() + 1);
-    }
-    return toLocalDatetimeString(d);
-  }, []);
-
-  // Horário da Despedida: Próximo dia às 08:00
-  const defaultFarewellTime = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(8, 0, 0, 0);
-    return toLocalDatetimeString(d);
-  }, []);
-
-  // Horário do Encerramento: Próximo dia às 08:15
-  const defaultEndTime = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(8, 15, 0, 0);
-    return toLocalDatetimeString(d);
-  }, []);
-
-  const [startTime, setStartTime] = useState(defaultStartTime);
-  const [memorialUrl, setMemorialUrl] = useState(currentSiteUrl || "");
-  const [deceasedName, setDeceasedName] = useState("");
-  const [startPlaylist, setStartPlaylist] = useState(audioPlaylists[0]?.id || "");
-  const [startVolume, setStartVolume] = useState(0);
-
-  const [farewellTime, setFarewellTime] = useState(defaultFarewellTime);
-  const [farewellPlaylist, setFarewellPlaylist] = useState(audioPlaylists[0]?.id || "");
-  const [farewellVolume, setFarewellVolume] = useState(0);
-
-  const [endTime, setEndTime] = useState(defaultEndTime);
-  const [endPlaylist, setEndPlaylist] = useState("");
-  const [endVolume, setEndVolume] = useState(0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
-    try {
-      // 1. Recepção
-      await signageApi.createSchedule({
-        roomSlug: slug,
-        title: deceasedName ? `Recepção & Homenagem (${deceasedName})` : "Recepção & Abertura da Cerimônia",
-        scheduledAt: toUtcIsoString(startTime),
-        enabled: true,
-        actions: {
-          standby: false, // Liga TV / sai do modo suspenso
-          siteUrl: memorialUrl.trim() || undefined,
-          mode: memorialUrl.trim() ? "site" : undefined,
-          audioPlaylist: startPlaylist || undefined,
-          audioStatus: startPlaylist ? "playing" : undefined,
-          audioVolume: Math.round(startVolume),
-        },
-      });
-
-      // 2. Despedida
-      await signageApi.createSchedule({
-        roomSlug: slug,
-        title: "Despedida da Família (Fechamento do Caixão)",
-        scheduledAt: toUtcIsoString(farewellTime),
-        enabled: true,
-        actions: {
-          audioPlaylist: farewellPlaylist || undefined,
-          audioStatus: farewellPlaylist ? "playing" : undefined,
-          audioVolume: Math.round(farewellVolume),
-        },
-      });
-
-      // 3. Encerramento
-      await signageApi.createSchedule({
-        roomSlug: slug,
-        title: "Encerramento da Cerimônia (Standby)",
-        scheduledAt: toUtcIsoString(endTime),
-        enabled: true,
-        actions: {
-          standby: true, // Volta para modo suspenso (relógio, clima, blackout suave)
-          audioPlaylist: endPlaylist || undefined,
-          audioStatus: endPlaylist ? "playing" : "paused",
-          audioVolume: Math.round(endVolume),
-        },
-      });
-
-      onSuccess();
-      onClose();
-    } catch (err: any) {
-      alert("Erro ao criar roteiro: " + (err.message || err));
-    } finally {
-      setIsSubmitting(false);
+  const handleCopy = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(musicUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
+  const handlePrint = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>QR Code de Música - Pagliaro</title>
+        <style>
+          body { font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #fff; color: #111; }
+          .card { text-align: center; border: 4px solid #111; border-radius: 24px; padding: 48px; max-width: 420px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+          .badge { display: inline-block; background: #000; color: #fff; font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.15em; padding: 6px 16px; border-radius: 999px; margin-bottom: 20px; }
+          h1 { margin: 0 0 8px 0; font-size: 38px; font-weight: 900; letter-spacing: 0.05em; }
+          p { margin: 0 0 24px 0; font-size: 18px; color: #555; }
+          .qr { width: 260px; height: 260px; margin: 0 auto 24px auto; display: block; }
+          .tip { font-size: 16px; font-weight: 600; color: #222; margin-top: 12px; }
+          .footer { margin-top: 32px; font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.2em; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="badge">Músicas & Homenagens</div>
+          <h1>PAGLIARO</h1>
+          <p>${roomName}</p>
+          <img class="qr" src="${qrSvgUrl}" alt="QR Code" />
+          <div class="tip">Aponte a câmera do celular para escolher as músicas da sala</div>
+          <div class="footer">Serviços Sociais Pagliaro</div>
+        </div>
+        <script>window.onload = function() { window.print(); }<\/script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-xl rounded-none border border-neutral-900 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto">
-        <div className="flex items-center justify-between pb-2.5 border-b border-neutral-900">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-900">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-white">
-                Roteiro Automático de Velório
-              </h3>
-              <p className="text-[11px] text-neutral-400">
-                Gere em 1 clique as 3 etapas da cerimônia com volume livre e horário
-              </p>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-6 shadow-2xl space-y-5 text-center">
+        <div className="flex items-center justify-between border-b border-neutral-900 pb-3">
+          <div className="flex items-center gap-2 text-amber-400">
+            <QrCode className="h-5 w-5" />
+            <span className="font-bold text-sm text-white">QR Code • Celular da Família</span>
           </div>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-white transition">
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="space-y-2.5 text-xs">
-          {/* ETAPA 1: Recepção e Início */}
-          <div className="p-3 rounded-none border border-neutral-900 bg-neutral-900/40 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
-                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-none border border-neutral-900 font-bold">
-                  01
-                </span>
-                Recepção & Abertura da TV
-              </span>
-              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-900 px-2 py-0.5 rounded-none font-mono font-semibold">
-                Sai do Standby
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-                  Data e Horário de Início:
-                </label>
-                <DateTimePickerField value={startTime} onChange={setStartTime} />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-                  Playlist da Recepção:
-                </label>
-                <select
-                  value={startPlaylist}
-                  onChange={(e) => setStartPlaylist(e.target.value)}
-                  className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
-                >
-                  <option value="">Nenhuma música (Silêncio)</option>
-                  {audioPlaylists.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.items?.length || 0} faixas)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-                Falecido / Homenagem da Recepção (Adiaŭ ou Link):
-              </label>
-              <AdiauDeceasedPicker
-                value={memorialUrl}
-                onChange={(url, name) => {
-                  setMemorialUrl(url);
-                  if (name) setDeceasedName(name);
-                }}
-              />
-            </div>
-
-            {/* Controle de Volume da Recepção */}
-            <div className="space-y-1.5 pt-1 border-t border-neutral-900">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-neutral-300">
-                  Volume Livre da Recepção:
-                </span>
-                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-900">
-                  {Math.round(startVolume)}%
-                </span>
-              </div>
-              <VolumeControlRow
-                value={startVolume}
-                onChange={setStartVolume}
-              />
-            </div>
-          </div>
-
-          {/* ETAPA 2: Despedida da Família */}
-          <div className="p-3 rounded-none border border-neutral-900 bg-neutral-900/40 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
-                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-none border border-neutral-900 font-bold">
-                  02
-                </span>
-                Despedida da Família (Fechamento)
-              </span>
-              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-900 px-2 py-0.5 rounded-none font-mono font-semibold">
-                Músicas Especiais
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-                  Data e Horário da Despedida:
-                </label>
-                <DateTimePickerField value={farewellTime} onChange={setFarewellTime} />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-                  Playlist de Despedida:
-                </label>
-                <select
-                  value={farewellPlaylist}
-                  onChange={(e) => setFarewellPlaylist(e.target.value)}
-                  className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
-                >
-                  <option value="">Manter playlist atual</option>
-                  {audioPlaylists.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.items?.length || 0} faixas)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Controle de Volume da Despedida */}
-            <div className="space-y-1.5 pt-1 border-t border-neutral-900">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-neutral-300">
-                  Volume Livre da Despedida:
-                </span>
-                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-900">
-                  {Math.round(farewellVolume)}%
-                </span>
-              </div>
-              <VolumeControlRow
-                value={farewellVolume}
-                onChange={setFarewellVolume}
-              />
-            </div>
-          </div>
-
-          {/* ETAPA 3: Encerramento e Modo Suspenso */}
-          <div className="p-3 rounded-none border border-neutral-900 bg-neutral-900/40 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
-                <span className="font-mono text-[10px] bg-neutral-800 text-neutral-300 px-1.5 py-0.5 rounded-none border border-neutral-900 font-bold">
-                  03
-                </span>
-                Encerramento & Desocupação
-              </span>
-              <span className="text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-900 px-2 py-0.5 rounded-none font-mono font-semibold">
-                Retorna ao Standby
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-                  Data e Horário de Saída:
-                </label>
-                <DateTimePickerField value={endTime} onChange={setEndTime} />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
-                  Som de Fundo após Saída:
-                </label>
-                <select
-                  value={endPlaylist}
-                  onChange={(e) => setEndPlaylist(e.target.value)}
-                  className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600"
-                >
-                  <option value="">Pausar Som Completamente (Silêncio)</option>
-                  {audioPlaylists.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.items?.length || 0} faixas)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Controle de Volume do Fundo */}
-            <div className="space-y-1.5 pt-1 border-t border-neutral-900">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-neutral-300">
-                  Volume Livre do Fundo (Standby):
-                </span>
-                <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-900">
-                  {Math.round(endVolume)}%
-                </span>
-              </div>
-              <VolumeControlRow
-                value={endVolume}
-                onChange={setEndVolume}
-              />
-            </div>
-          </div>
+        <div className="space-y-1">
+          <h3 className="text-xl font-extrabold uppercase tracking-wider text-white">Pagliaro</h3>
+          <p className="text-xs text-neutral-400">{roomName} • Controle de Músicas</p>
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-900">
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-[36px] px-3.5 rounded-none border border-neutral-900 bg-neutral-900 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-            className="min-h-[36px] flex items-center gap-2 px-4 rounded-none bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow disabled:opacity-40"
-          >
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-            <span>Criar Roteiro Automático</span>
-          </button>
+        {/* Imagem do QR Code */}
+        <div className="bg-white p-4 rounded-2xl inline-block shadow-lg mx-auto">
+          <img src={qrSvgUrl} alt="QR Code Música" className="w-48 h-48 block" />
         </div>
-      </div>
-    </div>
-  );
-}
 
-/**
- * Modal Individual para Criar ou Editar um Agendamento
- */
-function ScheduleModal({
-  isOpen,
-  onClose,
-  slug,
-  currentSiteUrl,
-  audioPlaylists,
-  initialData,
-  onSave,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  slug: string;
-  currentSiteUrl?: string | null;
-  audioPlaylists: Playlist[];
-  initialData?: ScheduleTask | null;
-  onSave: (data: Partial<ScheduleTask>) => void;
-}) {
-  if (!isOpen) return null;
+        <p className="text-xs text-neutral-400 max-w-xs mx-auto">
+          A família pode escanear com a câmera do celular para escolher músicas da sala, pausar, avançar e regular o volume.
+        </p>
 
-  const isEditing = Boolean(initialData);
-
-  const [title, setTitle] = useState(initialData?.title || "");
-  const [scheduledAt, setScheduledAt] = useState(() => {
-    if (initialData?.scheduledAt) {
-      try {
-        const d = new Date(initialData.scheduledAt);
-        if (!isNaN(d.getTime())) return toLocalDatetimeString(d);
-      } catch {}
-      return initialData.scheduledAt;
-    }
-    const d = new Date();
-    d.setMinutes(d.getMinutes() + 30);
-    return toLocalDatetimeString(d);
-  });
-
-  const [standbyAction, setStandbyAction] = useState<"wake" | "standby" | "none">(() => {
-    if (initialData?.actions.standby === false) return "wake";
-    if (initialData?.actions.standby === true) return "standby";
-    return "none";
-  });
-
-  const [siteUrl, setSiteUrl] = useState(initialData?.actions.siteUrl || "");
-
-  const [audioType, setAudioType] = useState<"radio" | "playlist" | "none">(() => {
-    if (initialData?.actions.audioStreamUrl) return "radio";
-    if (initialData?.actions.audioPlaylist) return "playlist";
-    if (initialData?.actions.audioStatus === "paused") return "none";
-    return "radio";
-  });
-
-  const { radios: savedRadios } = useSavedRadios();
-
-  const [selectedRadioPreset, setSelectedRadioPreset] = useState<string>(() => {
-    if (initialData?.actions.audioStreamUrl) {
-      const match = savedRadios.find(
-        (p) => p.url === initialData.actions.audioStreamUrl
-      );
-      return match ? match.url : "custom";
-    }
-    return savedRadios[0]?.url || "";
-  });
-
-  const [customRadioUrl, setCustomRadioUrl] = useState<string>(() => {
-    if (initialData?.actions.audioStreamUrl) {
-      const match = savedRadios.find(
-        (p) => p.url === initialData.actions.audioStreamUrl
-      );
-      return match ? "" : initialData.actions.audioStreamUrl;
-    }
-    return "";
-  });
-
-  const [audioPlaylist, setAudioPlaylist] = useState(
-    initialData?.actions.audioPlaylist || (audioPlaylists[0]?.id ?? "")
-  );
-  const [audioVolume, setAudioVolume] = useState<number>(
-    initialData?.actions.audioVolume ?? 25
-  );
-  const [audioStatus, setAudioStatus] = useState<"playing" | "paused" | "none">(() => {
-    if (initialData?.actions.audioStatus === "playing") return "playing";
-    if (initialData?.actions.audioStatus === "paused") return "paused";
-    return "playing";
-  });
-
-  const handleSave = () => {
-    if (!scheduledAt) {
-      alert("Por favor, selecione a data e horário do agendamento.");
-      return;
-    }
-
-    const autoTitle =
-      title.trim() ||
-      initialData?.title ||
-      (() => {
-        if (standbyAction === "wake") return "Ligar TV (Sai do Standby)";
-        if (standbyAction === "standby") return "Suspender TV (Standby)";
-        if (siteUrl.trim()) return "Abrir Memorial / Site";
-        if (audioType === "radio") return "Tocar Web Rádio";
-        if (audioType === "playlist") return "Tocar Playlist";
-        if (audioStatus === "paused") return "Pausar Áudio";
-        return "Ação Agendada";
-      })();
-
-    const actions: ScheduleTask["actions"] = {};
-
-    if (standbyAction === "wake") actions.standby = false;
-    else if (standbyAction === "standby") actions.standby = true;
-
-    if (siteUrl.trim()) {
-      actions.siteUrl = siteUrl.trim();
-      actions.mode = "site";
-    }
-
-    if (audioType === "radio") {
-      const stream = (selectedRadioPreset === "custom" ? customRadioUrl : selectedRadioPreset || "").trim();
-      if (stream) {
-        actions.audioStreamUrl = stream;
-        actions.audioPlaylist = undefined;
-        actions.audioStatus = "playing";
-      }
-    } else if (audioType === "playlist") {
-      if (audioPlaylist) {
-        actions.audioPlaylist = audioPlaylist;
-        actions.audioStreamUrl = undefined;
-        actions.audioStatus = "playing";
-      }
-    } else {
-      actions.audioStatus = "paused";
-      actions.audioStreamUrl = null;
-      actions.audioPlaylist = null;
-    }
-
-    if (audioVolume !== undefined) {
-      actions.audioVolume = audioVolume;
-    }
-
-    if (audioStatus !== "none" && audioType !== "none") {
-      actions.audioStatus = audioStatus;
-    }
-
-    onSave({
-      roomSlug: slug,
-      title: autoTitle,
-      scheduledAt: toUtcIsoString(scheduledAt),
-      enabled: true,
-      executed: false,
-      executedAt: null,
-      actions,
-    });
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
-      <div className="w-full max-w-lg rounded-none border border-neutral-900 bg-neutral-950 p-3 sm:p-5 flex flex-col shadow-2xl space-y-3 max-h-[94dvh] my-auto overflow-y-auto font-sans">
-        <div className="flex items-center justify-between pb-2.5 border-b border-neutral-900">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-none bg-neutral-900 text-neutral-200 border border-neutral-900">
-              <CalendarClock className="h-4 w-4" />
-            </div>
-            <h3 className="text-sm sm:text-base font-bold text-white font-mono uppercase tracking-wide">
-              {isEditing ? "Editar Agendamento" : "Novo Agendamento na TV"}
-            </h3>
+        {qrNotice && (
+          <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-bold animate-in fade-in">
+            {qrNotice}
           </div>
-          <button onClick={onClose} className="p-1 text-neutral-400 hover:text-white transition">
-            <X className="h-4 w-4" />
+        )}
+
+        {/* Copiar Link */}
+        <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 rounded-xl p-1.5 pl-3">
+          <span className="text-xs font-mono text-neutral-300 truncate flex-1 text-left">
+            {musicUrl}
+          </span>
+          <button
+            onClick={handleCopy}
+            className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-white flex items-center gap-1.5 transition flex-shrink-0"
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+            <span>{copied ? "Copiado!" : "Copiar"}</span>
           </button>
         </div>
 
-        <div className="space-y-3 text-xs">
-          {/* Identificação / Título */}
-          <div>
-            <label className="text-[11px] font-semibold text-neutral-300 block mb-1 font-mono">
-              Identificação / Título do Agendamento:
-            </label>
-            <input
-              type="text"
-              placeholder="Ex: Recepção da Família, Início Cerimônia, Encerramento..."
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
-            />
-          </div>
-
-          {/* Data e Hora */}
-          <div>
-            <label className="text-[11px] font-semibold text-neutral-300 block mb-1 font-mono">
-              Data e Horário de Execução:
-            </label>
-            <DateTimePickerField value={scheduledAt} onChange={setScheduledAt} />
-          </div>
-
-          {/* Tela da TV / Standby */}
-          <div className="space-y-1">
-            <label className="text-[11px] font-semibold text-neutral-300 block font-mono">
-              Ação na Tela da TV:
-            </label>
-            <div className="grid grid-cols-3 gap-1.5 font-mono">
-              <button
-                type="button"
-                onClick={() => setStandbyAction("wake")}
-                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
-                  standbyAction === "wake"
-                    ? "bg-white text-black border-white font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Sun className="h-3.5 w-3.5" />
-                <span className="text-[10px] leading-tight">Ligar TV / Sair Standby</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setStandbyAction("standby")}
-                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
-                  standbyAction === "standby"
-                    ? "bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Moon className="h-3.5 w-3.5" />
-                <span className="text-[10px] leading-tight">Modo Standby (Suspenso)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setStandbyAction("none")}
-                className={`p-2 rounded-none border text-center transition flex flex-col items-center gap-1 ${
-                  standbyAction === "none"
-                    ? "bg-neutral-800 border-neutral-900 text-white font-bold"
-                    : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Tv className="h-3.5 w-3.5" />
-                <span className="text-[10px] leading-tight">Não Mudar Tela</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Falecido / Homenagem da Adiaŭ ou Link do Memorial */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-neutral-300 font-mono block">
-              Memorial / Homenagem na Tela (Adiaŭ ou Link):
-            </label>
-            <AdiauDeceasedPicker
-              value={siteUrl}
-              onChange={(url, deceasedName) => {
-                setSiteUrl(url);
-                if (deceasedName && !title) {
-                  setTitle(`Homenagem: ${deceasedName}`);
-                }
-              }}
-            />
-          </div>
-
-          {/* Áudio & Web Rádio */}
-          <div className="space-y-1.5 pt-1 border-t border-neutral-900">
-            <label className="text-[11px] font-semibold text-neutral-300 block font-mono">
-              Ação de Áudio & Rádio:
-            </label>
-            <div className="grid grid-cols-3 gap-1.5 font-mono">
-              <button
-                type="button"
-                onClick={() => setAudioType("radio")}
-                className={`p-2 border text-center transition flex flex-col items-center gap-1 ${
-                  audioType === "radio"
-                    ? "bg-white text-black border-white font-bold"
-                    : "bg-black border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Radio className="h-3.5 w-3.5" />
-                <span className="text-[10px]">Web Rádio 24h</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAudioType("playlist")}
-                className={`p-2 border text-center transition flex flex-col items-center gap-1 ${
-                  audioType === "playlist"
-                    ? "bg-white text-black border-white font-bold"
-                    : "bg-black border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Music className="h-3.5 w-3.5" />
-                <span className="text-[10px]">Playlist Áudio</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAudioType("none")}
-                className={`p-2 border text-center transition flex flex-col items-center gap-1 ${
-                  audioType === "none"
-                    ? "bg-white text-black border-white font-bold"
-                    : "bg-black border-neutral-900 text-neutral-400 hover:text-white"
-                }`}
-              >
-                <Volume2 className="h-3.5 w-3.5" />
-                <span className="text-[10px]">Silenciar / Pausa</span>
-              </button>
-            </div>
-
-            {/* Configuração de Rádio */}
-            {audioType === "radio" && (
-              <div className="space-y-1.5 p-2 border border-neutral-900 bg-neutral-900/30">
-                <label className="text-[10px] text-neutral-400 font-mono block">
-                  Selecione a Emissora Gospel / Instrumental:
-                </label>
-                <select
-                  value={selectedRadioPreset}
-                  onChange={(e) => setSelectedRadioPreset(e.target.value)}
-                  className="w-full rounded-none border border-neutral-900 bg-black px-2 py-1 text-white text-xs font-mono outline-none focus:border-neutral-600"
-                >
-                  {savedRadios.map((p) => (
-                    <option key={p.id || p.url} value={p.url}>
-                      {p.name} {p.isCustom ? "(Salva)" : ""}
-                    </option>
-                  ))}
-                  <option value="custom">-- Link Personalizado de Rádio --</option>
-                </select>
-                {selectedRadioPreset === "custom" && (
-                  <input
-                    type="url"
-                    placeholder="https://link-da-radio.com/stream"
-                    value={customRadioUrl}
-                    onChange={(e) => setCustomRadioUrl(e.target.value)}
-                    className="w-full rounded-none border border-neutral-900 bg-black px-2 py-1 text-white text-xs font-mono outline-none focus:border-neutral-600 mt-1"
-                  />
-                )}
-              </div>
-            )}
-
-            {/* Configuração de Playlist */}
-            {audioType === "playlist" && (
-              <div className="space-y-1.5 p-2 border border-neutral-900 bg-neutral-900/30">
-                <label className="text-[10px] text-neutral-400 font-mono block">
-                  Músicas / Playlist de Áudio:
-                </label>
-                <select
-                  value={audioPlaylist}
-                  onChange={(e) => setAudioPlaylist(e.target.value)}
-                  className="w-full rounded-none border border-neutral-900 bg-black px-2.5 py-1.5 text-white text-xs outline-none focus:border-neutral-600 font-mono"
-                >
-                  <option value="">Manter playlist atual</option>
-                  {audioPlaylists.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.items?.length || 0} faixas)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Volume de Áudio */}
-            {audioType !== "none" && (
-              <div className="space-y-1.5 pt-1 border-t border-neutral-900">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-neutral-300 font-mono">
-                    Volume Livre do Áudio:
-                  </span>
-                  <span className="font-mono font-bold text-xs text-white bg-neutral-900 px-2 py-0.5 rounded-none border border-neutral-900">
-                    {audioVolume}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={audioVolume}
-                  onChange={(e) => setAudioVolume(Number(e.target.value))}
-                  className="w-full accent-white h-1.5 bg-neutral-900 cursor-pointer"
-                />
-                <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                  <span className="text-[9px] uppercase tracking-wider text-neutral-500 mr-1 font-mono">Atalhos:</span>
-                  {VOLUME_PRESETS.map((p) => (
-                    <button
-                      key={p.val}
-                      type="button"
-                      onClick={() => setAudioVolume(p.val)}
-                      className={`px-1.5 py-0.5 rounded-none text-[10px] font-mono font-semibold border transition ${
-                        audioVolume === p.val
-                          ? "bg-white text-black border-white font-bold"
-                          : "bg-neutral-900 border-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700"
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-neutral-900 font-mono">
+        {/* Botões de Ação */}
+        <div className="grid grid-cols-3 gap-2 pt-1 font-mono">
           <button
             type="button"
-            onClick={onClose}
-            className="min-h-[36px] px-3.5 rounded-none border border-neutral-900 bg-neutral-900 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800 transition"
+            onClick={onShowOnTv}
+            disabled={isSendingToTv}
+            className="py-2.5 px-2 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-black font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition shadow"
+            title="Exibir este QR Code na tela da TV por 10 segundos"
           >
-            Cancelar
+            <Tv className="h-4 w-4" />
+            <span>Na TV (10s)</span>
           </button>
+
+          <a
+            href={musicUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="py-2.5 px-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition border border-neutral-800"
+          >
+            <ExternalLink className="h-4 w-4" />
+            <span>Abrir</span>
+          </a>
+
           <button
             type="button"
-            onClick={handleSave}
-            className="min-h-[36px] flex items-center gap-2 px-4 rounded-none bg-white hover:bg-neutral-200 text-black text-xs font-bold transition shadow"
+            onClick={handlePrint}
+            className="py-2.5 px-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition border border-neutral-800"
           >
-            <Check className="h-4 w-4" />
-            <span>{isEditing ? "Salvar Alterações" : "Criar Agendamento"}</span>
+            <Printer className="h-4 w-4" />
+            <span>Imprimir</span>
           </button>
         </div>
       </div>

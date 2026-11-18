@@ -1,157 +1,60 @@
 import { db } from "./db.ts";
 import { roomEventQueue } from "./event-queue.ts";
+import { wsManager } from "../ws/manager.ts";
 
 export interface ScheduleTask {
   id: string;
   roomSlug: string;
   title: string;
-  scheduledAt: string; // ISO string ou formato "YYYY-MM-DDTHH:mm"
+  scheduledAt: string;
   enabled: boolean;
   executed?: boolean;
   executedAt?: number | null;
-  durationMinutes?: number; // Duração opcional da automação em minutos (override)
-  createdAt: number;
-  actions: {
-    standby?: boolean; // false = liga tela / sai de suspensão, true = modo suspenso
-    siteUrl?: string | null;
-    mode?: "site" | "playlist";
-    playlist?: string | null;
-    audioPlaylist?: string | null;
-    audioStreamUrl?: string | null;
-    audioVolume?: number;
-    audioStatus?: "playing" | "paused" | "idle";
-    currentAudioIndex?: number;
-    audioLoopMode?: "all" | "one" | "none";
-    audioShuffle?: boolean;
-  };
+  durationMinutes?: number;
+  createdAt?: number;
+  actions?: Record<string, any>;
 }
 
-/**
- * Rotina Base da Sala (Programação diária / semanal contínua estilo alarme de smartphone)
- * Funciona por baixo das automações: quando nenhuma automação estiver ativa, a rotina assume.
- */
 export interface RoomRoutine {
   id: string;
   roomSlug: string;
   title: string;
-  daysOfWeek: number[]; // 0=Domingo, 1=Segunda, ..., 6=Sábado (livre como alarme)
-  startTime: string;    // "HH:mm" (ex: "07:00")
-  endTime: string;      // "HH:mm" (ex: "19:00", suporta atravessar meia-noite como "22:00" até "06:00")
+  daysOfWeek: number[];
+  startTime: string;
+  endTime: string;
   enabled: boolean;
   priority?: number;
-  actions: {
-    standby?: boolean;
-    siteUrl?: string | null;
-    mode?: "site" | "playlist";
-    playlist?: string | null;
-    audioPlaylist?: string | null;
-    audioStreamUrl?: string | null;
-    audioVolume?: number;
-    audioStatus?: "playing" | "paused" | "idle";
-    currentAudioIndex?: number;
-    audioLoopMode?: "all" | "one" | "none";
-    audioShuffle?: boolean;
-  };
-  createdAt: number;
+  actions?: Record<string, any>;
+  createdAt?: number;
   updatedAt?: number;
 }
 
-let tickerTimer: any = null;
-let isChecking = false;
-
-// Controle de Prioridade: Automações ativas que bloqueiam rotinas temporariamente
+// Stubs para retrocompatibilidade com endpoints legados
 export const activeRoomAutomationOverrides = new Map<string, { id: string; title: string; expiresAt: number }>();
-// Última rotina aplicada em cada sala (para não reenviar comandos repetidos desnecessários)
 export const lastAppliedRoutinePerRoom = new Map<string, string>();
 
-/**
- * Converte qualquer formato de data/hora de agendamento para timestamp UTC com proteção de timezone.
- * Evita que servidores em nuvem rodando em UTC (como o Render) interpretem horários do Brasil como UTC.
- */
-export function parseScheduledTime(scheduledAt: string | number | undefined | null): number {
-  if (typeof scheduledAt === "number") return scheduledAt;
-  if (!scheduledAt) return NaN;
-  const str = String(scheduledAt).trim();
-  // Se for timestamp numérico em string
-  if (/^\d{10,13}$/.test(str)) {
-    const num = Number(str);
-    return str.length === 10 ? num * 1000 : num;
-  }
-  // Se já tiver indicação de timezone ('Z' ou '+HH:MM' ou '-HH:MM')
-  if (str.endsWith("Z") || /[+-]\d{2}(:?\d{2})?$/.test(str)) {
-    return new Date(str).getTime();
-  }
-  // Se for "YYYY-MM-DDTHH:mm" sem fuso explícito, o servidor pode estar em UTC (Render).
-  // Assume o fuso de Brasília (UTC-3 / -03:00) para evitar que o Render interprete como UTC
-  const safeStr = str.length === 16 ? `${str}:00-03:00` : `${str}-03:00`;
-  const parsed = new Date(safeStr).getTime();
-  if (!isNaN(parsed)) return parsed;
-  return new Date(str).getTime();
+export function clearAutomationOverride(_roomSlug: string): void {
+  // Rotinas antigas descontinuadas
+}
+
+export async function executeSchedule(_task: ScheduleTask, _markExecuted = true): Promise<boolean> {
+  return true;
+}
+
+export async function executeRoutine(_routine: RoomRoutine): Promise<boolean> {
+  return true;
 }
 
 /**
- * Executa uma ação agendada no estado da sala através da Fila de Eventos do Servidor
+ * Retorna o dia da semana (0=Dom a 6=Sáb), hora, minuto e timestamp no fuso de Brasília (America/Sao_Paulo / UTC-3)
  */
-export async function executeSchedule(task: ScheduleTask, markExecuted = true): Promise<boolean> {
-  if (!task || !task.roomSlug) return false;
-
-  try {
-    const room = task.roomSlug;
-    const actions = task.actions || {};
-    const updates: Record<string, any> = {};
-
-    if (actions.standby !== undefined) updates.standby = Boolean(actions.standby);
-    if (actions.siteUrl !== undefined) updates.siteUrl = actions.siteUrl ? String(actions.siteUrl).trim() : null;
-    if (actions.mode !== undefined) updates.mode = actions.mode;
-    if (actions.playlist !== undefined) updates.playlist = actions.playlist;
-    if (actions.audioPlaylist !== undefined) updates.audioPlaylist = actions.audioPlaylist;
-    if (actions.audioStreamUrl !== undefined) updates.audioStreamUrl = actions.audioStreamUrl ? String(actions.audioStreamUrl).trim() : null;
-    if (actions.audioVolume !== undefined) updates.audioVolume = Math.max(0, Math.min(100, Number(actions.audioVolume)));
-    if (actions.audioStatus !== undefined) updates.audioStatus = actions.audioStatus;
-    if (actions.currentAudioIndex !== undefined) updates.currentAudioIndex = Number(actions.currentAudioIndex);
-    if (actions.audioLoopMode !== undefined) updates.audioLoopMode = actions.audioLoopMode;
-    if (actions.audioShuffle !== undefined) updates.audioShuffle = Boolean(actions.audioShuffle);
-
-    // Enfileira na Fila de Eventos Central do Servidor (garante prioridade e versão monotônica)
-    await roomEventQueue.enqueueSetState(room, updates, `schedule:${task.id}`);
-
-    // Registra como Override de Prioridade Ativo nesta sala
-    const durationMs = (task.durationMinutes && task.durationMinutes > 0 ? task.durationMinutes : 120) * 60_000;
-    activeRoomAutomationOverrides.set(room, {
-      id: task.id,
-      title: task.title,
-      expiresAt: Date.now() + durationMs,
-    });
-    // Limpa a rotina anterior para forçar reaplicação suave quando a cerimônia acabar
-    lastAppliedRoutinePerRoom.delete(room);
-
-    // Atualiza status do agendamento
-    if (markExecuted) {
-      task.executed = true;
-      task.executedAt = Date.now();
-      await db.saveSchedule(task);
-    }
-
-    console.log(`[Scheduler] Agendamento executado: "${task.title}" na sala "${room}" (override até ${new Date(Date.now() + durationMs).toLocaleTimeString("pt-BR")})`);
-    return true;
-  } catch (err) {
-    console.error(`[Scheduler] Erro ao executar agendamento "${task.title}":`, err);
-    return false;
-  }
-}
-
-/**
- * Remove qualquer override de automação e devolve a sala imediatamente à Rotina Base
- */
-export function clearAutomationOverride(roomSlug: string): void {
-  activeRoomAutomationOverrides.delete(roomSlug);
-  lastAppliedRoutinePerRoom.delete(roomSlug);
-}
-
-/**
- * Retorna o dia da semana (0=Dom a 6=Sáb) e hora "HH:mm" no horário de Brasília (UTC-3)
- */
-export function getBrasiliaTime(): { dayOfWeek: number; timeStr: string; nowMs: number } {
+export function getBrasiliaTime(): {
+  dayOfWeek: number;
+  hour: number;
+  minute: number;
+  timeStr: string;
+  nowMs: number;
+} {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Sao_Paulo",
@@ -161,169 +64,223 @@ export function getBrasiliaTime(): { dayOfWeek: number; timeStr: string; nowMs: 
     minute: "2-digit",
   });
   const parts = formatter.formatToParts(now);
-  let hour = "00";
-  let min = "00";
+  let hourStr = "00";
+  let minStr = "00";
   let weekday = "Sun";
   for (const p of parts) {
-    if (p.type === "hour") hour = p.value;
-    else if (p.type === "minute") min = p.value;
+    if (p.type === "hour") hourStr = p.value;
+    else if (p.type === "minute") minStr = p.value;
     else if (p.type === "weekday") weekday = p.value;
   }
   const dayMap: Record<string, number> = {
     Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
   };
   const dayOfWeek = dayMap[weekday] ?? now.getDay();
+  const hour = parseInt(hourStr, 10);
+  const minute = parseInt(minStr, 10);
+
   return {
     dayOfWeek,
-    timeStr: `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`,
+    hour,
+    minute,
+    timeStr: `${hourStr.padStart(2, "0")}:${minStr.padStart(2, "0")}`,
     nowMs: now.getTime(),
   };
 }
 
-/**
- * Verifica se um slot de rotina está ativo no dia e horário informados.
- * Suporta horários regulares (ex: 07:00 às 19:00) e noturnos que cruzam a meia-noite (ex: 22:00 às 06:00).
- */
-export function isRoutineSlotActive(routine: RoomRoutine, dayOfWeek: number, timeStr: string): boolean {
-  if (!routine.enabled) return false;
-  if (!Array.isArray(routine.daysOfWeek) || !routine.daysOfWeek.includes(dayOfWeek)) {
-    return false;
-  }
-  const start = routine.startTime || "00:00";
-  const end = routine.endTime || "23:59";
-  if (start <= end) {
-    return timeStr >= start && timeStr < end;
-  }
-  // Horário noturno atravessando a meia-noite (ex: 22:00 até 07:00)
-  return timeStr >= start || timeStr < end;
+let tickerTimer: any = null;
+let isChecking = false;
+let lastAdiauCheckSlot = "";
+let isAdiauInitialRun = true;
+const knownAdiauAttendanceIds = new Set<string | number>();
+
+function getAdiauCheckUrl(): string | null {
+  const hash = (Deno.env.get("ADIAU_HASH") || "").trim();
+  const screenName = (Deno.env.get("ADIAU_SCREEN_NAME") || "Flores").trim();
+  if (!hash) return null;
+  return `https://www.adiau.com.br/v2/messages/messages-v2.php?action=getAttendances&hashcode=${encodeURIComponent(hash)}&screenName=${encodeURIComponent(screenName)}`;
 }
 
 /**
- * Executa uma rotina base na sala
+ * Consulta a lista da Adiaŭ e notifica os admins conectados caso haja novas homenagens
  */
-export async function executeRoutine(routine: RoomRoutine): Promise<boolean> {
-  if (!routine || !routine.roomSlug) return false;
+export async function checkAdiauForNewCeremonies(forceAlert = false): Promise<void> {
+  const checkUrl = getAdiauCheckUrl();
+  if (!checkUrl) {
+    if (forceAlert) {
+      console.warn("[AdiauMonitor] Verificação cancelada: ADIAU_HASH não configurado no .env");
+    }
+    return;
+  }
 
   try {
-    const room = routine.roomSlug;
-    const actions = routine.actions || {};
-    const updates: Record<string, any> = {};
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
 
-    if (actions.standby !== undefined) updates.standby = Boolean(actions.standby);
-    if (actions.siteUrl !== undefined) updates.siteUrl = actions.siteUrl ? String(actions.siteUrl).trim() : null;
-    if (actions.mode !== undefined) updates.mode = actions.mode;
-    if (actions.playlist !== undefined) updates.playlist = actions.playlist;
-    if (actions.audioPlaylist !== undefined) updates.audioPlaylist = actions.audioPlaylist;
-    if (actions.audioStreamUrl !== undefined) updates.audioStreamUrl = actions.audioStreamUrl ? String(actions.audioStreamUrl).trim() : null;
-    if (actions.audioVolume !== undefined) updates.audioVolume = Math.max(0, Math.min(100, Number(actions.audioVolume)));
-    if (actions.audioStatus !== undefined) updates.audioStatus = actions.audioStatus;
-    if (actions.currentAudioIndex !== undefined) updates.currentAudioIndex = Number(actions.currentAudioIndex);
-    if (actions.audioLoopMode !== undefined) updates.audioLoopMode = actions.audioLoopMode;
-    if (actions.audioShuffle !== undefined) updates.audioShuffle = Boolean(actions.audioShuffle);
+    const res = await fetch(checkUrl, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 PagliaroSignage/2.0",
+      },
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
 
-    // Enfileira na fila do servidor
-    await roomEventQueue.enqueueSetState(room, updates, `routine:${routine.id}`);
-    lastAppliedRoutinePerRoom.set(room, routine.id);
-    console.log(`[Scheduler] Rotina Base ativada: "${routine.title}" na sala "${room}"`);
-    return true;
-  } catch (err) {
-    console.error(`[Scheduler] Erro ao executar rotina "${routine.title}":`, err);
-    return false;
+    if (!res.ok) {
+      console.warn(`[AdiauMonitor] Servidor Adiaŭ retornou status HTTP ${res.status}`);
+      return;
+    }
+
+    const data = await res.json();
+    if (!data || data.status !== true || !data.services) {
+      return;
+    }
+
+    const rawList = data.services.attendances || data.services.data || [];
+    if (!Array.isArray(rawList)) return;
+
+    if (isAdiauInitialRun && !forceAlert) {
+      for (const item of rawList) {
+        if (item && item.id) knownAdiauAttendanceIds.add(item.id);
+      }
+      isAdiauInitialRun = false;
+      console.log(`[AdiauMonitor] Inicializado com ${knownAdiauAttendanceIds.size} homenagens conhecidas na Adiaŭ.`);
+      return;
+    }
+
+    // Detecta novas homenagens que não estavam registradas
+    const newAttendances = rawList.filter((item: any) => item && item.id && !knownAdiauAttendanceIds.has(item.id));
+
+    if (newAttendances.length > 0) {
+      for (const item of newAttendances) {
+        knownAdiauAttendanceIds.add(item.id);
+      }
+
+      console.log(
+        `[AdiauMonitor] 🔔 Detectada(s) ${newAttendances.length} nova(s) homenagem(ns) disponível(is) na Adiaŭ!`
+      );
+
+      // Envia notificação em tempo real via WebSocket para todos os dispositivos de Admin conectados
+      wsManager.broadcastAdmins(
+        JSON.stringify({
+          type: "adiauAlert",
+          title: "Novas Homenagens Disponíveis",
+          message: `${newAttendances.length} nova(s) homenagem(ns) disponível(is) na Adiaŭ para abertura em salas.`,
+          newCount: newAttendances.length,
+          attendances: newAttendances.map((a: any) => ({
+            id: a.id,
+            deceasedName: a.deceasedName || "Sem Nome",
+            startDate: a.attendanceStartDate,
+            endDate: a.attendanceEndDate || a.burialDate,
+            location: a.location?.name || a.burialPlace || "",
+          })),
+          timestamp: Date.now(),
+        })
+      );
+    }
+  } catch (err: any) {
+    console.warn(`[AdiauMonitor] Erro ao consultar lista da Adiaŭ:`, err?.message || err);
   }
 }
 
 /**
- * Avaliador Central:
- * 1. Processa Agendamentos / Automações (Prioridade Alta)
- * 2. Em segundo plano, garante que a sala esteja seguindo a Rotina Base do dia/horário atual
+ * Encerra automaticamente a exibição e coloca a sala em Standby exatamente no horário marcado
  */
-async function checkPendingSchedulesAndRoutines() {
+async function checkCeremonyAutoStandby(): Promise<void> {
+  try {
+    const allStates = await db.getState();
+    const now = Date.now();
+
+    for (const [slug, rawState] of Object.entries(allStates)) {
+      if (!slug || !rawState || typeof rawState !== "object") continue;
+      const roomState = rawState as Record<string, any>;
+
+      // Apenas salas que possuem site ativo e horário de término definido
+      if (roomState.siteUrl && roomState.ceremonyEndAt) {
+        const endTimestamp = Number(roomState.ceremonyEndAt);
+        if (!isNaN(endTimestamp) && now >= endTimestamp) {
+          const ceremonyName = roomState.ceremonyTitle || "Homenagem Adiaŭ";
+          console.log(
+            `[AdiauScheduler] ⏰ Horário programado atingido na sala "${slug}" (${new Date(endTimestamp).toLocaleTimeString("pt-BR")}). Encerrando "${ceremonyName}" e ativando Standby...`
+          );
+
+          // 1. Enfileira o encerramento da exibição e ativa o modo Standby
+          await roomEventQueue.enqueueSetState(
+            slug,
+            {
+              siteUrl: null,
+              mode: "playlist",
+              standby: true,
+              ceremonyEndAt: null,
+              ceremonyTitle: null,
+            },
+            "adiau:auto-standby"
+          );
+
+          // 2. Avisa os administradores conectados sobre o encerramento automático da sala
+          wsManager.broadcastAdmins(
+            JSON.stringify({
+              type: "notification",
+              title: "Cerimônia Concluída",
+              message: `A cerimônia "${ceremonyName}" na sala "${slug}" atingiu o horário previsto e foi encerrada automaticamente. A TV entrou em Standby.`,
+              room: slug,
+              timestamp: Date.now(),
+            })
+          );
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("[AdiauScheduler] Erro ao verificar encerramento automático das salas:", err);
+  }
+}
+
+/**
+ * Ticker principal do Scheduler:
+ * - A cada 10 segundos: verifica salas ativas para encerramento automático pontual
+ * - Nos minutos :01 e :31 de cada hora: consulta a Adiaŭ para detectar novas homenagens
+ */
+async function schedulerTicker() {
   if (isChecking) return;
   isChecking = true;
 
   try {
-    const now = Date.now();
-    const { dayOfWeek, timeStr } = getBrasiliaTime();
+    // 1. Verifica salas ativas com horário de término alcançado (precisão de 10s)
+    await checkCeremonyAutoStandby();
 
-    // -------------------------------------------------------------
-    // ETAPA 1: Processar Agendamentos / Cerimônias Pontuais (PRIORIDADE ALTA)
-    // -------------------------------------------------------------
-    const schedules = await db.getSchedules();
-
-    for (const task of schedules) {
-      if (task.enabled && !task.executed) {
-        const targetTime = parseScheduledTime(task.scheduledAt);
-        if (!isNaN(targetTime) && targetTime <= now) {
-          if (now - targetTime > 24 * 60 * 60 * 1000) {
-            console.log(`[Scheduler] Agendamento antigo expirado: "${task.title}" (${task.scheduledAt})`);
-            task.executed = true;
-            task.executedAt = null;
-            await db.saveSchedule(task);
-          } else {
-            await executeSchedule(task, true);
-          }
-        }
+    // 2. Verifica a Adiaŭ aos minutos :01 e :31 de cada hora (Horário de Brasília)
+    const { hour, minute } = getBrasiliaTime();
+    if (minute === 1 || minute === 31) {
+      const slotKey = `${hour}:${minute}`;
+      if (lastAdiauCheckSlot !== slotKey) {
+        lastAdiauCheckSlot = slotKey;
+        console.log(`[AdiauScheduler] Executando verificação periódica da Adiaŭ aos :${String(minute).padStart(2, "0")} (Brasília: ${hour}:${minute})...`);
+        await checkAdiauForNewCeremonies();
       }
     }
-
-    // Limpa overrides expirados
-    for (const [room, override] of activeRoomAutomationOverrides.entries()) {
-      if (now >= override.expiresAt) {
-        console.log(`[Scheduler] Fim da automação prioritária "${override.title}" na sala "${room}". Retomando Rotina Base...`);
-        activeRoomAutomationOverrides.delete(room);
-        lastAppliedRoutinePerRoom.delete(room);
-      }
-    }
-
-    // -------------------------------------------------------------
-    // ETAPA 2: Avaliar Rotina Base (Funciona por baixo das automações)
-    // -------------------------------------------------------------
-    const rooms = await db.getRooms();
-
-    for (const room of rooms) {
-      const slug = room.slug;
-      if (!slug) continue;
-
-      // Se há uma automação/cerimônia ATIVA com prioridade nesta sala, não aplica rotina
-      if (activeRoomAutomationOverrides.has(slug)) {
-        continue;
-      }
-
-      // Busca todas as rotinas cadastradas para esta sala
-      const routines: RoomRoutine[] = await db.getRoutines(slug);
-      if (!routines || routines.length === 0) continue;
-
-      // Encontra a rotina correspondente ao dia da semana e horário atual
-      const activeSlot = routines.find((r) => isRoutineSlotActive(r, dayOfWeek, timeStr));
-
-      if (activeSlot) {
-        const lastApplied = lastAppliedRoutinePerRoom.get(slug);
-        if (lastApplied !== activeSlot.id) {
-          await executeRoutine(activeSlot);
-        }
-      }
-    }
-  } catch (e) {
-    console.error("[Scheduler] Erro durante verificação de agendamentos e rotinas:", e);
+  } catch (err: any) {
+    console.error("[AdiauScheduler] Erro no ticker:", err);
   } finally {
     isChecking = false;
   }
 }
 
 /**
- * Inicializa o motor de agendamentos e rotinas
+ * Inicializa o motor de monitoramento Adiaŭ e encerramento automático
  */
 export function initScheduler() {
   if (tickerTimer) return;
-  console.log("[Scheduler] Motor de automações e rotinas base iniciado (checagem a cada 10s).");
-  // Executa imediatamente uma verificação na inicialização
-  checkPendingSchedulesAndRoutines();
-  // Configura checagem recorrente a cada 10 segundos
-  tickerTimer = setInterval(checkPendingSchedulesAndRoutines, 10_000);
+  console.log("[Scheduler] Motor Adiaŭ iniciado (verificação :01/:31 e encerramento automático ativo).");
+
+  // Primeira checagem para popular homenagens conhecidas
+  checkAdiauForNewCeremonies().catch(() => {});
+
+  // Ticker recorrente a cada 10 segundos
+  tickerTimer = setInterval(schedulerTicker, 10_000);
 }
 
 /**
- * Encerra o motor de agendamentos e rotinas
+ * Encerra o motor
  */
 export function stopScheduler() {
   if (tickerTimer) {

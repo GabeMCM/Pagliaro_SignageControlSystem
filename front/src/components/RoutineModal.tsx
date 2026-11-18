@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Clock,
   Calendar,
@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import type { RoomRoutine, Playlist } from "@/lib/signage-api";
 import {
-  DEFAULT_ADIAU_URLS,
+  getDefaultAdiauUrlsFromServer,
   ROUTINE_DAYS,
   formatRoutineDaysSummary,
   VOLUME_PRESETS,
@@ -72,7 +72,7 @@ export function RoutineModal({
     return "site";
   });
 
-  const [siteUrl, setSiteUrl] = useState(initialData?.actions?.siteUrl || DEFAULT_ADIAU_URLS[0].url);
+  const [siteUrl, setSiteUrl] = useState(initialData?.actions?.siteUrl || "");
 
   const [audioType, setAudioType] = useState<"radio" | "playlist" | "none">(() => {
     if (initialData?.actions?.audioStreamUrl) return "radio";
@@ -82,6 +82,11 @@ export function RoutineModal({
   });
 
   const { radios: savedRadios } = useSavedRadios();
+  const [adiauUrls, setAdiauUrls] = useState<{ label: string; url: string }[]>([]);
+
+  useEffect(() => {
+    getDefaultAdiauUrlsFromServer().then(setAdiauUrls);
+  }, []);
 
   const [selectedRadioPreset, setSelectedRadioPreset] = useState<string>(() => {
     if (initialData?.actions?.audioStreamUrl) {
@@ -421,14 +426,14 @@ export function RoutineModal({
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => setSiteUrl(DEFAULT_ADIAU_URLS[0].url)}
+                      onClick={() => adiauUrls[0] && setSiteUrl(adiauUrls[0].url)}
                       className="text-[9px] font-mono px-1.5 py-0.5 bg-black border border-neutral-900 text-neutral-300 hover:text-white"
                     >
                       Adiaŭ Flores
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSiteUrl(DEFAULT_ADIAU_URLS[1].url)}
+                      onClick={() => adiauUrls[1] && setSiteUrl(adiauUrls[1].url)}
                       className="text-[9px] font-mono px-1.5 py-0.5 bg-black border border-neutral-900 text-neutral-300 hover:text-white"
                     >
                       Adiaŭ Info

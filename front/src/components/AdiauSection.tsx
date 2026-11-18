@@ -26,12 +26,13 @@ import {
   formatAdiauSchedule,
   formatAdiauDateTime,
   DEFAULT_ADIAU_CONFIG,
+  fetchAdiauServerConfig,
 } from "../lib/adiau";
 import { copyToClipboard } from "../lib/clipboard";
 
 interface AdiauSectionProps {
   currentSiteUrl?: string | null;
-  onApplySiteUrl: (url: string) => void;
+  onApplySiteUrl: (url: string, att?: AdiauAttendance) => void;
   isApplying?: boolean;
 }
 
@@ -54,6 +55,18 @@ export function AdiauSection({
 
   // Estado do modal de configurações avançadas
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+
+  // Se o localStorage não tiver hash configurado, busca do servidor
+  useEffect(() => {
+    const current = getAdiauConfig();
+    if (!current.homenagemBaseUrl || !current.homenagemBaseUrl.includes("hash=")) {
+      fetchAdiauServerConfig().then((serverCfg) => {
+        if (serverCfg.homenagemBaseUrl) {
+          setConfig(serverCfg);
+        }
+      });
+    }
+  }, []);
 
   // Busca cerimônias na Adiaŭ
   const loadAttendances = useCallback(
@@ -129,7 +142,7 @@ export function AdiauSection({
   // Aplica a transmissão na sala
   const handleApplyAttendance = (att: AdiauAttendance) => {
     const finalUrl = buildAdiauTransmissionUrl(activeType, config, att, clientInfo);
-    onApplySiteUrl(finalUrl);
+    onApplySiteUrl(finalUrl, att);
   };
 
   // Copia o link da transmissão
@@ -505,9 +518,11 @@ function AdiauConfigModal({
   };
 
   const handleRestoreDefaults = () => {
-    setHomenagemUrl(DEFAULT_ADIAU_CONFIG.homenagemBaseUrl);
-    setInformacaoUrl(DEFAULT_ADIAU_CONFIG.informacaoBaseUrl);
-    setScreenNames([...DEFAULT_ADIAU_CONFIG.screenNames]);
+    fetchAdiauServerConfig().then((serverCfg) => {
+      setHomenagemUrl(serverCfg.homenagemBaseUrl);
+      setInformacaoUrl(serverCfg.informacaoBaseUrl);
+      setScreenNames([...serverCfg.screenNames]);
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -517,8 +532,8 @@ function AdiauConfigModal({
       : screenNames[0] || "Flores";
 
     onSave({
-      homenagemBaseUrl: homenagemUrl.trim() || DEFAULT_ADIAU_CONFIG.homenagemBaseUrl,
-      informacaoBaseUrl: informacaoUrl.trim() || DEFAULT_ADIAU_CONFIG.informacaoBaseUrl,
+      homenagemBaseUrl: homenagemUrl.trim() || "",
+      informacaoBaseUrl: informacaoUrl.trim() || "",
       screenNames: screenNames.length > 0 ? screenNames : ["Flores"],
       selectedScreenName: finalSelected,
     });
