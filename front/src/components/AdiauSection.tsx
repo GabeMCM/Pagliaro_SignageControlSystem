@@ -56,20 +56,6 @@ export function AdiauSection({
   // Estado do modal de configurações avançadas
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
 
-  // Se o localStorage não tiver hash configurado, busca do servidor
-  useEffect(() => {
-    const current = getAdiauConfig();
-    if (!current.homenagemBaseUrl || !current.homenagemBaseUrl.includes("hash=")) {
-      fetchAdiauServerConfig().then((serverCfg) => {
-        if (serverCfg.homenagemBaseUrl) {
-          setConfig(serverCfg);
-          saveAdiauConfig(serverCfg);
-          loadAttendances(activeType, serverCfg);
-        }
-      });
-    }
-  }, [activeType, loadAttendances]);
-
   // Busca cerimônias na Adiaŭ
   const loadAttendances = useCallback(
     async (typeToLoad: "homenagem" | "informacao", targetConfig: AdiauConfig) => {
@@ -91,6 +77,20 @@ export function AdiauSection({
     },
     []
   );
+
+  // Se o localStorage não tiver hash configurado, busca do servidor
+  useEffect(() => {
+    const current = getAdiauConfig();
+    if (!current.homenagemBaseUrl || !current.homenagemBaseUrl.includes("hash=")) {
+      fetchAdiauServerConfig().then((serverCfg) => {
+        if (serverCfg && serverCfg.homenagemBaseUrl) {
+          setConfig(serverCfg);
+          saveAdiauConfig(serverCfg);
+          loadAttendances(activeType, serverCfg);
+        }
+      });
+    }
+  }, [activeType, loadAttendances]);
 
   // Carrega ao montar ou ao alterar tipo, screenName ou URLs base
   useEffect(() => {

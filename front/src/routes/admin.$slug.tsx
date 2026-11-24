@@ -685,6 +685,8 @@ function RoomOperator() {
       currentAudioIndex?: number;
       standby?: boolean;
       rotation?: number;
+      ceremonyEndAt?: number | null;
+      ceremonyTitle?: string | null;
       audioStatus?: "playing" | "paused";
     }) => {
       // Enfileira na fila FIFO de saída do cliente
