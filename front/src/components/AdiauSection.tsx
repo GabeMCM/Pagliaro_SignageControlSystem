@@ -63,10 +63,12 @@ export function AdiauSection({
       fetchAdiauServerConfig().then((serverCfg) => {
         if (serverCfg.homenagemBaseUrl) {
           setConfig(serverCfg);
+          saveAdiauConfig(serverCfg);
+          loadAttendances(activeType, serverCfg);
         }
       });
     }
-  }, []);
+  }, [activeType, loadAttendances]);
 
   // Busca cerimônias na Adiaŭ
   const loadAttendances = useCallback(
@@ -90,10 +92,12 @@ export function AdiauSection({
     []
   );
 
-  // Carrega ao montar ou ao alterar tipo ou screenName
+  // Carrega ao montar ou ao alterar tipo, screenName ou URLs base
   useEffect(() => {
-    loadAttendances(activeType, config);
-  }, [activeType, config.selectedScreenName, loadAttendances]);
+    if (config.homenagemBaseUrl || config.informacaoBaseUrl) {
+      loadAttendances(activeType, config);
+    }
+  }, [activeType, config.selectedScreenName, config.homenagemBaseUrl, config.informacaoBaseUrl, loadAttendances]);
 
   // Troca o design de tela selecionado
   const handleSelectScreenName = (screenName: string) => {

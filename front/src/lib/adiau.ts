@@ -86,20 +86,39 @@ const STORAGE_KEY = "pagliaro_adiau_config_v1";
 export function getAdiauConfig(): AdiauConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_ADIAU_CONFIG;
-    const parsed = JSON.parse(raw);
-    return {
-      homenagemBaseUrl: parsed.homenagemBaseUrl || DEFAULT_ADIAU_CONFIG.homenagemBaseUrl,
-      informacaoBaseUrl: parsed.informacaoBaseUrl || DEFAULT_ADIAU_CONFIG.informacaoBaseUrl,
-      screenNames:
-        Array.isArray(parsed.screenNames) && parsed.screenNames.length > 0
-          ? parsed.screenNames
-          : DEFAULT_ADIAU_CONFIG.screenNames,
-      selectedScreenName: parsed.selectedScreenName || DEFAULT_ADIAU_CONFIG.selectedScreenName,
-    };
-  } catch (_e) {
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.homenagemBaseUrl && parsed.homenagemBaseUrl.includes("hash=")) {
+        return {
+          homenagemBaseUrl: parsed.homenagemBaseUrl,
+          informacaoBaseUrl: parsed.informacaoBaseUrl || DEFAULT_ADIAU_CONFIG.informacaoBaseUrl,
+          screenNames:
+            Array.isArray(parsed.screenNames) && parsed.screenNames.length > 0
+              ? parsed.screenNames
+              : DEFAULT_ADIAU_CONFIG.screenNames,
+          selectedScreenName: parsed.selectedScreenName || DEFAULT_ADIAU_CONFIG.selectedScreenName,
+        };
+      }
+    }
+    if (_serverAdiauConfig && _serverAdiauConfig.homenagemBaseUrl) {
+      return _serverAdiauConfig;
+    }
     return DEFAULT_ADIAU_CONFIG;
+  } catch (_e) {
+    return _serverAdiauConfig || DEFAULT_ADIAU_CONFIG;
   }
+}
+
+// Inicializa a configuração do servidor imediatamente em segundo plano
+if (typeof window !== "undefined") {
+  fetchAdiauServerConfig().then((cfg) => {
+    if (cfg && cfg.homenagemBaseUrl) {
+      const current = localStorage.getItem(STORAGE_KEY);
+      if (!current || !current.includes("hash=")) {
+        saveAdiauConfig(cfg);
+      }
+    }
+  }).catch(() => {});
 }
 
 export function saveAdiauConfig(config: AdiauConfig): void {
@@ -162,14 +181,30 @@ export async function fetchAdiauAttendances(
   client: AdiauClientInfo | null;
   clientLogo?: string | null;
 }> {
-  const baseUrl = type === "homenagem" ? config.homenagemBaseUrl : config.informacaoBaseUrl;
-  const parsed = parseBaseAdiauUrl(baseUrl);
-  const screenName = overrideScreenName || config.selectedScreenName || parsed.screenName;
-  const hash = parsed.hash;
+  let baseUrl = type === "homenagem" ? config.homenagemBaseUrl : config.informacaoBaseUrl;
+  let parsed = parseBaseAdiauUrl(baseUrl);
+  let hash = parsed.hash;
 
+  // 1. Fallback: se o config passado não tiver hash, busca automaticamente do backend
   if (!hash) {
-    throw new Error("Hash do Adiaŭ não encontrado na URL configurada.");
+    const serverCfg = await fetchAdiauServerConfig();
+    if (serverCfg && serverCfg.homenagemBaseUrl) {
+      baseUrl = type === "homenagem" ? serverCfg.homenagemBaseUrl : serverCfg.informacaoBaseUrl;
+      parsed = parseBaseAdiauUrl(baseUrl);
+      hash = parsed.hash;
+      try {
+        saveAdiauConfig(serverCfg);
+      } catch (_e) {}
+    }
   }
+
+  // 2. Se mesmo assim não houver hash, retorna vazio de forma graciosa sem quebrar a tela
+  if (!hash) {
+    console.warn("[Adiau] Hash da Adiau não configurado no servidor (.env) ou no cliente.");
+    return { attendances: [], client: null, clientLogo: null };
+  }
+
+  const screenName = overrideScreenName || config.selectedScreenName || parsed.screenName || "Flores";
 
   // Endpoints PHP da Adiaŭ (suportam CORS livre *)
   const endpoint =
@@ -177,27 +212,33 @@ export async function fetchAdiauAttendances(
       ? `https://www.adiau.com.br/v2/messages/messages-v2.php?action=getAttendances&hashcode=${encodeURIComponent(hash)}&screenName=${encodeURIComponent(screenName)}`
       : `https://www.adiau.com.br/v2/information/information-v2.php?action=getAttendances&hashcode=${encodeURIComponent(hash)}&screenName=${encodeURIComponent(screenName)}`;
 
-  const res = await fetch(endpoint, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
+  try {
+    const res = await fetch(endpoint, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
 
-  if (!res.ok) {
-    throw new Error(`Servidor Adiaŭ retornou erro HTTP ${res.status}`);
-  }
+    if (!res.ok) {
+      console.warn(`[Adiau] Servidor Adiaŭ retornou erro HTTP ${res.status}`);
+      return { attendances: [], client: null, clientLogo: null };
+    }
 
-  const data = await res.json();
-  if (!data || data.status !== true || !data.services) {
+    const data = await res.json();
+    if (!data || data.status !== true || !data.services) {
+      return { attendances: [], client: null, clientLogo: null };
+    }
+
+    const svc = data.services;
+    const rawList = svc.attendances || svc.data || svc.transmissions || svc.items || [];
+    const attendances: AdiauAttendance[] = Array.isArray(rawList) ? rawList : [];
+    const client: AdiauClientInfo | null = svc.client || null;
+    const clientLogo: string | null = data.clientLogo || svc.logoUrl || null;
+
+    return { attendances, client, clientLogo };
+  } catch (err: any) {
+    console.error("[Adiau] Erro ao buscar dados da Adiau:", err);
     return { attendances: [], client: null, clientLogo: null };
   }
-
-  const svc = data.services;
-  const rawList = svc.attendances || svc.data || svc.transmissions || svc.items || [];
-  const attendances: AdiauAttendance[] = Array.isArray(rawList) ? rawList : [];
-  const client: AdiauClientInfo | null = svc.client || null;
-  const clientLogo: string | null = data.clientLogo || svc.logoUrl || null;
-
-  return { attendances, client, clientLogo };
 }
 
 /**
