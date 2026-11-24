@@ -42,10 +42,30 @@ export interface DeviceSession {
   deviceLabel: string;
 }
 
+interface RecentRoomDevice {
+  key: string;
+  id: string;
+  deviceId?: string;
+  room: string;
+  connectedAt: number;
+  lastSeenAt: number;
+  ip: string;
+  userAgent: string;
+  deviceLabel: string;
+  audioState?: PlayerAudioState | null;
+}
+
 export const MAX_CLIENTS_PER_ROOM = 2;
+const RECENT_PRESENCE_TTL_MS = 45_000;
 
 // Mapa de salas para clientes TV (Players): Map<roomSlug, Map<clientId, ConnectedClient>>
 const roomClients = new Map<string, Map<string, ConnectedClient>>();
+
+// Mapa de presença recente/HTTP por sala para evitar oscilação de status (Offline/Online) em reconexões rápidas de Smart TVs
+const recentRoomDevices = new Map<string, Map<string, RecentRoomDevice>>();
+
+// Último heartbeat global por deviceId (WS ou HTTP)
+const recentDeviceSeenAt = new Map<string, number>();
 
 // Mapa de salas para observadores do Painel Admin (não ocupam vagas de TV): Map<roomSlug, Set<WSContext>>
 const roomAdmins = new Map<string, Set<WSContext>>();
@@ -63,6 +83,7 @@ export function detectDeviceType(userAgent: string): string {
   if (/webos|web0s|netcast/i.test(userAgent)) return "Smart TV LG (webOS)";
   if (/android.*tv|google.*tv|bravia/i.test(userAgent)) return "Android TV";
   if (/smart-tv|smarttv|hbbtv|viera|philips|opera tv|roku/i.test(userAgent)) return "Smart TV";
+  if (/linux.*(?:aarch64|armv7l|arm).*chrome/i.test(userAgent)) return "Smart TV Hisense (Linux)";
   if (/android/i.test(userAgent)) return "Dispositivo Android";
   if (/ipad/i.test(userAgent)) return "Apple iPad";
   if (/iphone/i.test(userAgent)) return "Apple iPhone";
@@ -84,7 +105,92 @@ function getFriendlyDeviceLabel(userAgent: string, currentCount: number): string
   return `${base} #${currentCount}${browser}`;
 }
 
+function getDevicePresenceKey(deviceId?: string, ip?: string, userAgent?: string): string {
+  if (deviceId && deviceId.trim()) return `dev:${deviceId.trim()}`;
+  return `net:${ip || "localhost"}:${(userAgent || "").slice(0, 64)}`;
+}
+
+function pruneRecentRoomDevices(room: string) {
+  const recents = recentRoomDevices.get(room);
+  if (!recents) return;
+  const now = Date.now();
+  for (const [k, item] of Array.from(recents.entries())) {
+    if (now - item.lastSeenAt > RECENT_PRESENCE_TTL_MS) {
+      recents.delete(k);
+    }
+  }
+  if (recents.size === 0) {
+    recentRoomDevices.delete(room);
+  }
+}
+
 export const wsManager = {
+  /**
+   * Registra batimento de presença via HTTP Polling (/api/state/:room ou /api/devices/register)
+   * Garante que a TV permaneça Online mesmo se o WebSocket do Android TV oscilar.
+   */
+  recordHttpPresence(
+    room: string,
+    meta?: {
+      deviceId?: string;
+      ip?: string;
+      userAgent?: string;
+      audioState?: PlayerAudioState | null;
+    }
+  ) {
+    if (!room) return;
+    const now = Date.now();
+    if (meta?.deviceId) {
+      recentDeviceSeenAt.set(meta.deviceId, now);
+      // Se o aparelho mudou de sala, limpa presença recente em outras salas
+      for (const [otherRoom, recMap] of recentRoomDevices.entries()) {
+        if (otherRoom !== room) {
+          recMap.delete(`dev:${meta.deviceId}`);
+        }
+      }
+    }
+
+    // Se já está com WebSocket aberto na sala, apenas atualiza o timestamp na memória recente
+    const clients = roomClients.get(room);
+    if (clients && meta?.deviceId) {
+      for (const client of clients.values()) {
+        if (client.deviceId === meta.deviceId) {
+          if (meta.audioState) {
+            client.audioState = meta.audioState;
+          }
+          return;
+        }
+      }
+    }
+
+    if (!recentRoomDevices.has(room)) {
+      recentRoomDevices.set(room, new Map());
+    }
+    const recents = recentRoomDevices.get(room)!;
+    const key = getDevicePresenceKey(meta?.deviceId, meta?.ip, meta?.userAgent);
+    const existing = recents.get(key);
+    const userAgent = meta?.userAgent || existing?.userAgent || "Smart TV";
+    const ip = meta?.ip || existing?.ip || "localhost";
+    const wasOnline = this.isOnline(room);
+
+    recents.set(key, {
+      key,
+      id: existing?.id || ("tv_http_" + (meta?.deviceId ? meta.deviceId.slice(-6) : Math.random().toString(36).substring(2, 7))),
+      deviceId: meta?.deviceId || existing?.deviceId,
+      room,
+      connectedAt: existing?.connectedAt || now,
+      lastSeenAt: now,
+      ip,
+      userAgent,
+      deviceLabel: existing?.deviceLabel || getFriendlyDeviceLabel(userAgent, 1),
+      audioState: meta?.audioState ?? existing?.audioState ?? null,
+    });
+
+    if (!wasOnline) {
+      this.broadcastPresence(room);
+    }
+  },
+
   /**
    * Adiciona um novo cliente à sala respeitando o limite de 2 acessos para TVs
    */
@@ -130,19 +236,33 @@ export const wsManager = {
 
     const clients = roomClients.get(room)!;
 
-    // Se o mesmo aparelho (mesmo deviceId) já possuir uma conexão nesta sala (ex: recarregou ou oscilou),
+    // Se o mesmo aparelho (mesmo deviceId ou mesmo IP+UserAgent) já possuir uma conexão nesta sala (ex: recarregou ou oscilou),
     // substitui a conexão anterior para não consumir duas vagas com a mesma TV!
-    if (meta?.deviceId) {
-      for (const [existingClientId, existingClient] of Array.from(clients.entries())) {
-        if (existingClient.deviceId === meta.deviceId) {
-          console.log(`[WS] Aparelho '${meta.deviceId}' reconectou à sala '${room}'. Substituindo sessão antiga [${existingClientId}].`);
-          try {
-            existingClient.ws.close(1000, "Reconnected with new session");
-          } catch (_e) {}
-          clients.delete(existingClientId);
-          break;
-        }
+    let inheritedConnectedAt: number | undefined;
+    let inheritedAudioState: PlayerAudioState | undefined;
+    for (const [existingClientId, existingClient] of Array.from(clients.entries())) {
+      const sameDevice =
+        (meta?.deviceId && existingClient.deviceId === meta.deviceId) ||
+        (!meta?.deviceId && meta?.ip && existingClient.ip === meta.ip && existingClient.userAgent === meta?.userAgent);
+      if (sameDevice) {
+        inheritedConnectedAt = existingClient.connectedAt;
+        inheritedAudioState = existingClient.audioState;
+        console.log(`[WS] Aparelho '${meta?.deviceId || meta?.ip}' reconectou à sala '${room}'. Substituindo sessão antiga [${existingClientId}].`);
+        try {
+          existingClient.ws.close(1000, "Reconnected with new session");
+        } catch (_e) {}
+        clients.delete(existingClientId);
+        break;
       }
+    }
+
+    // Verifica se havia estado preservado no grace period recente
+    const presenceKey = getDevicePresenceKey(meta?.deviceId, meta?.ip, meta?.userAgent);
+    const recentEntry = recentRoomDevices.get(room)?.get(presenceKey);
+    if (recentEntry) {
+      if (!inheritedConnectedAt) inheritedConnectedAt = recentEntry.connectedAt;
+      if (!inheritedAudioState && recentEntry.audioState) inheritedAudioState = recentEntry.audioState;
+      recentRoomDevices.get(room)?.delete(presenceKey);
     }
 
     // 1. Limite rigoroso de 2 acessos simultâneos por sala para telas
@@ -171,14 +291,18 @@ export const wsManager = {
       id: clientId,
       room,
       ws,
-      connectedAt: Date.now(),
+      connectedAt: inheritedConnectedAt || Date.now(),
       ip,
       userAgent,
       deviceLabel,
       deviceId: meta?.deviceId,
+      audioState: inheritedAudioState,
     };
 
     clients.set(clientId, client);
+    if (meta?.deviceId) {
+      recentDeviceSeenAt.set(meta.deviceId, Date.now());
+    }
     console.log(`[WS] Dispositivo conectado à sala '${room}': ${deviceLabel} [ID: ${clientId}] (Total: ${clients.size}/${MAX_CLIENTS_PER_ROOM})`);
 
     // Se possui deviceId persistente, registra/atualiza também no mapa global de aparelhos
@@ -228,19 +352,47 @@ export const wsManager = {
     const clients = roomClients.get(room);
     if (!clients) return;
 
+    let removedClient: ConnectedClient | null = null;
     for (const [id, client] of clients) {
       if (client.ws === ws) {
+        removedClient = client;
         if (client.deviceId) {
           this.removeDeviceSession(client.deviceId, ws);
         }
         clients.delete(id);
-        console.log(`[WS] Dispositivo desconectado da sala '${room}': ${client.deviceLabel} (Restantes: ${clients.size}/${MAX_CLIENTS_PER_ROOM})`);
+        console.log(`[WS] Dispositivo desconectado da sala '${room}': ${client.deviceLabel} (Restantes WS: ${clients.size}/${MAX_CLIENTS_PER_ROOM})`);
         break;
       }
     }
 
     if (clients.size === 0) {
       roomClients.delete(room);
+    }
+
+    // Preserva presença por janela de tolerância (grace period) para evitar que oscilações rápidas
+    // de WebSocket em Smart TVs (Android TV 14 / Wi-Fi) marquem a sala como Offline indevidamente.
+    if (removedClient) {
+      if (!recentRoomDevices.has(room)) {
+        recentRoomDevices.set(room, new Map());
+      }
+      const key = getDevicePresenceKey(removedClient.deviceId, removedClient.ip, removedClient.userAgent);
+      recentRoomDevices.get(room)!.set(key, {
+        key,
+        id: removedClient.id,
+        deviceId: removedClient.deviceId,
+        room,
+        connectedAt: removedClient.connectedAt,
+        lastSeenAt: Date.now(),
+        ip: removedClient.ip,
+        userAgent: removedClient.userAgent,
+        deviceLabel: removedClient.deviceLabel,
+        audioState: removedClient.audioState || null,
+      });
+
+      setTimeout(() => {
+        pruneRecentRoomDevices(room);
+        this.broadcastPresence(room);
+      }, RECENT_PRESENCE_TTL_MS + 500);
     }
 
     this.broadcastPresence(room);
@@ -251,30 +403,46 @@ export const wsManager = {
    */
   kickClient(room: string, clientId: string, reason?: string): boolean {
     const clients = roomClients.get(room);
-    if (!clients) return false;
+    const recents = recentRoomDevices.get(room);
 
-    const client = clients.get(clientId);
-    if (!client) return false;
+    let found = false;
+    if (clients) {
+      const client = clients.get(clientId);
+      if (client) {
+        found = true;
+        console.log(`[WS] Retirando dispositivo ${client.deviceLabel} [${clientId}] da sala '${room}' para o lobby...`);
+        const key = getDevicePresenceKey(client.deviceId, client.ip, client.userAgent);
+        recents?.delete(key);
+        try {
+          client.ws.send(JSON.stringify({
+            type: "kickToLobby",
+            room,
+            reason: reason || "Você foi retirado da sala pelo administrador e enviado ao lobby.",
+          }));
+          // Código 4001: Kicked to Lobby
+          client.ws.close(4001, "Kicked to lobby");
+        } catch (_e) {}
 
-    console.log(`[WS] Retirando dispositivo ${client.deviceLabel} [${clientId}] da sala '${room}' para o lobby...`);
-
-    try {
-      client.ws.send(JSON.stringify({
-        type: "kickToLobby",
-        room,
-        reason: reason || "Você foi retirado da sala pelo administrador e enviado ao lobby.",
-      }));
-      // Código 4001: Kicked to Lobby
-      client.ws.close(4001, "Kicked to lobby");
-    } catch (_e) {}
-
-    clients.delete(clientId);
-    if (clients.size === 0) {
-      roomClients.delete(room);
+        clients.delete(clientId);
+        if (clients.size === 0) {
+          roomClients.delete(room);
+        }
+      }
     }
 
-    this.broadcastPresence(room);
-    return true;
+    if (recents) {
+      for (const [k, item] of Array.from(recents.entries())) {
+        if (item.id === clientId) {
+          recents.delete(k);
+          found = true;
+        }
+      }
+    }
+
+    if (found) {
+      this.broadcastPresence(room);
+    }
+    return found;
   },
 
   /**
@@ -282,7 +450,11 @@ export const wsManager = {
    */
   kickAll(room: string, reason?: string): number {
     const clients = roomClients.get(room);
-    if (!clients) return 0;
+    recentRoomDevices.delete(room);
+    if (!clients) {
+      this.broadcastPresence(room);
+      return 0;
+    }
 
     const count = clients.size;
     console.log(`[WS] Retirando TODOS os ${count} dispositivos da sala '${room}' para o lobby...`);
@@ -304,23 +476,48 @@ export const wsManager = {
   },
 
   /**
-   * Retorna os metadados de todos os dispositivos conectados na sala
+   * Retorna os metadados de todos os dispositivos conectados na sala (WebSocket ativo + Presença HTTP recente)
    */
   getDevices(room: string): DeviceInfo[] {
+    pruneRecentRoomDevices(room);
     const clients = roomClients.get(room);
-    if (!clients) return [];
+    const recents = recentRoomDevices.get(room);
     const list: DeviceInfo[] = [];
-    for (const client of clients.values()) {
-      list.push({
-        id: client.id,
-        room: client.room,
-        connectedAt: client.connectedAt,
-        ip: client.ip,
-        userAgent: client.userAgent,
-        deviceLabel: client.deviceLabel,
-        audioState: client.audioState || null,
-      });
+    const seenKeys = new Set<string>();
+
+    if (clients) {
+      for (const client of clients.values()) {
+        const key = getDevicePresenceKey(client.deviceId, client.ip, client.userAgent);
+        seenKeys.add(key);
+        list.push({
+          id: client.id,
+          room: client.room,
+          connectedAt: client.connectedAt,
+          ip: client.ip,
+          userAgent: client.userAgent,
+          deviceLabel: client.deviceLabel,
+          audioState: client.audioState || null,
+        });
+      }
     }
+
+    if (recents) {
+      for (const [key, item] of recents.entries()) {
+        if (seenKeys.has(key)) continue;
+        if (list.length >= MAX_CLIENTS_PER_ROOM) break;
+        seenKeys.add(key);
+        list.push({
+          id: item.id,
+          room: item.room,
+          connectedAt: item.connectedAt,
+          ip: item.ip,
+          userAgent: item.userAgent,
+          deviceLabel: item.deviceLabel,
+          audioState: item.audioState || null,
+        });
+      }
+    }
+
     return list;
   },
 
@@ -339,6 +536,9 @@ export const wsManager = {
       if (!sameSocket) continue;
       const prev = client.audioState;
       client.audioState = { state: info.state, detail: info.detail || "", track: info.track ?? null, at: Date.now() };
+      if (client.deviceId) {
+        recentDeviceSeenAt.set(client.deviceId, Date.now());
+      }
       if (!prev || prev.state !== info.state || prev.track !== client.audioState.track || prev.detail !== client.audioState.detail) {
         console.log(`[WS][Áudio] ${client.deviceLabel} @ ${room}: ${info.state}${info.detail ? " (" + info.detail + ")" : ""}`);
         this.broadcastPresence(room);
@@ -348,12 +548,11 @@ export const wsManager = {
   },
 
   isOnline(room: string): boolean {
-    const clients = roomClients.get(room);
-    return Boolean(clients && clients.size > 0);
+    return this.getDevices(room).length > 0;
   },
 
   getClientCount(room: string): number {
-    return roomClients.get(room)?.size ?? 0;
+    return this.getDevices(room).length;
   },
 
   getMaxClients(): number {
@@ -419,6 +618,26 @@ export const wsManager = {
     }
   },
 
+  /**
+   * Envia mensagem para todos os dispositivos e observadores Admin conectados
+   * (inclui observadores de salas e ouvintes de dispositivos)
+   */
+  broadcastAdmins(message: string) {
+    for (const admins of roomAdmins.values()) {
+      for (const adminWs of admins) {
+        try {
+          adminWs.send(message);
+        } catch (_e) {}
+      }
+    }
+    for (const adminWs of adminDevicesListeners) {
+      try {
+        adminWs.send(message);
+      } catch (_e) {}
+    }
+    console.log(`[WS] BroadcastAdmins disparado: ${message.substring(0, 100)}...`);
+  },
+
   // ==========================================
   // GESTÃO GLOBAL DE APARELHOS (DEVICES HUB)
   // ==========================================
@@ -443,6 +662,8 @@ export const wsManager = {
     const detectedLabel = detectDeviceType(userAgent);
     const room = meta?.room || null;
     const path = meta?.path || "/";
+
+    recentDeviceSeenAt.set(deviceId, Date.now());
 
     const session: DeviceSession = {
       deviceId,
@@ -504,14 +725,22 @@ export const wsManager = {
   removeDeviceSession(deviceId: string, ws: WSContext) {
     const existing = deviceSessions.get(deviceId);
     if (existing && existing.ws === ws) {
+      recentDeviceSeenAt.set(deviceId, Date.now());
       deviceSessions.delete(deviceId);
       console.log(`[WS] Aparelho [${deviceId}] desconectou do hub global.`);
-      this.broadcastDevicesUpdate();
+      setTimeout(() => {
+        this.broadcastDevicesUpdate();
+      }, RECENT_PRESENCE_TTL_MS + 500);
     }
   },
 
   isDeviceOnline(deviceId: string): boolean {
-    return deviceSessions.has(deviceId);
+    if (deviceSessions.has(deviceId)) return true;
+    const lastSeen = recentDeviceSeenAt.get(deviceId);
+    if (lastSeen && Date.now() - lastSeen <= RECENT_PRESENCE_TTL_MS) {
+      return true;
+    }
+    return false;
   },
 
   sendToDevice(deviceId: string, message: any): boolean {
@@ -608,7 +837,7 @@ export const wsManager = {
       const dbDevices = await db.getDevices();
       const enriched = dbDevices.map((d: any) => ({
         ...d,
-        online: deviceSessions.has(d.id),
+        online: this.isDeviceOnline(d.id),
       }));
       ws.send(JSON.stringify({
         type: "devicesList",
@@ -627,7 +856,7 @@ export const wsManager = {
       const dbDevices = await db.getDevices();
       const enriched = dbDevices.map((d: any) => ({
         ...d,
-        online: deviceSessions.has(d.id),
+        online: this.isDeviceOnline(d.id),
       }));
       const payload = JSON.stringify({
         type: "devicesUpdate",

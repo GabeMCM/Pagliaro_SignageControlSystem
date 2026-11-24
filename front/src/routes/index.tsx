@@ -12,6 +12,25 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+function generateRandomSuffix(len: number = 6): string {
+  const chars = "0123456789abcdefghijklmnopqrstuvwxyz";
+  let res = "";
+  try {
+    if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+      const bytes = new Uint8Array(len);
+      crypto.getRandomValues(bytes);
+      for (let i = 0; i < len; i++) {
+        res += chars[bytes[i] % chars.length];
+      }
+      return res;
+    }
+  } catch (_e) {}
+  for (let j = 0; j < len; j++) {
+    res += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return res;
+}
+
 function generateHardwareFingerprint(): string {
   try {
     const components: string[] = [];
@@ -53,12 +72,13 @@ function generateHardwareFingerprint(): string {
     const ua = (typeof navigator !== "undefined" ? (navigator.userAgent || "") : "").toLowerCase();
     if (ua.includes("tizen")) prefix = "samsung_";
     else if (ua.includes("webos") || ua.includes("netcast")) prefix = "lg_";
+    else if (ua.includes("vidaa") || ua.includes("hisense") || (ua.includes("linux") && (ua.includes("aarch64") || ua.includes("arm")))) prefix = "hisense_";
     else if (ua.includes("android") && ua.includes("tv")) prefix = "androidtv_";
     else if (ua.includes("windows")) prefix = "pc_";
     else if (ua.includes("macintosh") || ua.includes("mac os")) prefix = "mac_";
     else if (ua.includes("linux")) prefix = "linux_";
 
-    return prefix + hex;
+    return `${prefix}${hex}_${generateRandomSuffix(6)}`;
   } catch (_e) {
     return "dev_" + Math.random().toString(36).substring(2, 10);
   }
@@ -70,6 +90,11 @@ function getPersistentDeviceId(): string {
     if (!id) {
       const match = document.cookie.match(/(?:^|; )signage_device_id=([^;]*)/);
       if (match && match[1]) id = decodeURIComponent(match[1]);
+    }
+    // Auto-migração para TVs com ID colidido
+    if (id === "linux_6311ed95") {
+      id = `hisense_6311ed95_${generateRandomSuffix(6)}`;
+      localStorage.removeItem("signage_last_room");
     }
     if (!id) {
       id = generateHardwareFingerprint();

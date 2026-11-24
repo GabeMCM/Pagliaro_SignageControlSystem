@@ -147,6 +147,26 @@ function detectSmartTvBrowser() {
   );
 }
 
+function generateRandomSuffix(len) {
+  len = len || 6;
+  var chars = '0123456789abcdefghijklmnopqrstuvwxyz';
+  var res = '';
+  try {
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      var bytes = new Uint8Array(len);
+      crypto.getRandomValues(bytes);
+      for (var i = 0; i < len; i++) {
+        res += chars[bytes[i] % chars.length];
+      }
+      return res;
+    }
+  } catch (e) {}
+  for (var j = 0; j < len; j++) {
+    res += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return res;
+}
+
 function generateHardwareFingerprint() {
   try {
     var components = [];
@@ -171,14 +191,16 @@ function generateHardwareFingerprint() {
     var ua = (typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '').toLowerCase();
     if (ua.indexOf('tizen') !== -1) prefix = 'samsung_';
     else if (ua.indexOf('webos') !== -1 || ua.indexOf('netcast') !== -1) prefix = 'lg_';
-    else if (ua.indexOf('vidaa') !== -1 || ua.indexOf('hisense') !== -1) prefix = 'hisense_';
+    else if (ua.indexOf('vidaa') !== -1 || ua.indexOf('hisense') !== -1 || (ua.indexOf('linux') !== -1 && (ua.indexOf('aarch64') !== -1 || ua.indexOf('arm') !== -1))) prefix = 'hisense_';
     else if (ua.indexOf('aft') !== -1 || ua.indexOf('silk') !== -1 || ua.indexOf('vega') !== -1 || ua.indexOf('amazon') !== -1) prefix = 'firestick_';
     else if (ua.indexOf('android') !== -1 && ua.indexOf('tv') !== -1) prefix = 'androidtv_';
     else if (ua.indexOf('windows') !== -1) prefix = 'pc_';
     else if (ua.indexOf('macintosh') !== -1 || ua.indexOf('mac os') !== -1) prefix = 'mac_';
     else if (ua.indexOf('linux') !== -1) prefix = 'linux_';
 
-    return prefix + hex;
+    // Hardware Hash + Entropia Randômica Exclusiva por Aparelho
+    // Garante que TVs do mesmo lote/modelo físico recebam IDs únicos sem colisão!
+    return prefix + hex + '_' + generateRandomSuffix(6);
   } catch (e) {
     return 'tv_' + Math.random().toString(36).substring(2, 10);
   }
@@ -196,6 +218,19 @@ function getPersistentDeviceId() {
       }
     } catch (e) {}
   }
+
+  // AUTO-MIGRAÇÃO DE IDs COLIDIDOS DE TVS DO MESMO MODELO:
+  // Se o ID for o antigo 'linux_6311ed95' (colidido nas 3 TVs Hisense),
+  // ou se for ID puramente estático sem entropia de instância, migra na hora:
+  if (id === 'linux_6311ed95') {
+    id = 'hisense_6311ed95_' + generateRandomSuffix(6);
+    // Limpa a sala pré-vinculada herdada erroneamente caso a URL atual não especifique ?room=
+    var currentUrlRoom = getQueryParam('room');
+    if (!currentUrlRoom) {
+      safeRemoveStorage('signage_last_room');
+    }
+  }
+
   if (!id) {
     id = generateHardwareFingerprint();
   }
