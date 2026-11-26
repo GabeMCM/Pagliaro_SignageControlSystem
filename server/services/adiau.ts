@@ -1336,7 +1336,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       function formatDateBR(raw) {
         if (!raw) return '';
         var str = String(raw).trim();
-        var m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        var m = str.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);
         if (m) {
           return m[3] + '/' + m[2] + '/' + m[1];
         }
@@ -1346,8 +1346,10 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       function formatTimeOnly(raw) {
         if (!raw) return '';
         var str = String(raw).trim();
-        var m = str.match(/(?:\s|T)(\d{2}):(\d{2})/);
+        var m = str.match(/(?:\\s|T)(\\d{2}):(\\d{2})/);
         if (m) return m[1] + ':' + m[2];
+        var mSimple = str.match(/^(\\d{2}):(\\d{2})/);
+        if (mSimple) return mSimple[1] + ':' + mSimple[2];
         return str;
       }
 
@@ -1358,7 +1360,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       function subtractMinutesFromTime(raw, minsToSub) {
         if (!raw) return '';
         var str = String(raw).trim();
-        var mFull = str.match(/(\d{4})[-/](\d{2})[-/](\d{2})[\sT](\d{2}):(\d{2})/);
+        var mFull = str.match(/(\\d{4})[-/](\\d{2})[-/](\\d{2})[\\sT](\\d{2}):(\\d{2})/);
         if (mFull) {
           var y = parseInt(mFull[1], 10);
           var mo = parseInt(mFull[2], 10) - 1;
@@ -1369,7 +1371,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
           d.setMinutes(d.getMinutes() - minsToSub);
           return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
         }
-        var mTime = str.match(/(\d{2}):(\d{2})/);
+        var mTime = str.match(/(\\d{2}):(\\d{2})/);
         if (mTime) {
           var total = parseInt(mTime[1], 10) * 60 + parseInt(mTime[2], 10) - minsToSub;
           if (total < 0) total += 24 * 60;
