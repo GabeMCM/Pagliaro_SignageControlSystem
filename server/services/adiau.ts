@@ -408,9 +408,63 @@ export function warmAdiauUrl(rawUrl: string | null | undefined): void {
   getAdiauData(params, 0).catch(() => {});
 }
 
-/**
- * Gera a página HTML 100% compatível com ES5 (Fire Stick Vega OS, Hisense VIDAA, Tizen, webOS)
- */
+function ssrEscapeHtml(str: string): string {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function ssrFormatDateBR(raw?: string | null): string {
+  if (!raw) return "";
+  const m = String(raw).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(raw);
+}
+
+function ssrFormatTime(raw?: string | null): string {
+  if (!raw) return "";
+  const m = String(raw).trim().match(/(?:\s|T)(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : String(raw);
+}
+
+function ssrSubtractMinutes(raw: string | null | undefined, mins: number): string {
+  if (!raw) return "";
+  const str = String(raw).trim();
+  const mFull = str.match(/(\d{4})[-/](\d{2})[-/](\d{2})[\sT](\d{2}):(\d{2})/);
+  if (mFull) {
+    const [, y, mo, d, h, mi] = mFull;
+    const date = new Date(parseInt(y, 10), parseInt(mo, 10) - 1, parseInt(d, 10), parseInt(h, 10), parseInt(mi, 10));
+    date.setMinutes(date.getMinutes() - mins);
+    const rh = String(date.getHours()).padStart(2, "0");
+    const rm = String(date.getMinutes()).padStart(2, "0");
+    return `${rh}:${rm}`;
+  }
+  const mTime = str.match(/(\d{2}):(\d{2})/);
+  if (mTime) {
+    let total = parseInt(mTime[1], 10) * 60 + parseInt(mTime[2], 10) - mins;
+    if (total < 0) total += 24 * 60;
+    const rh = String(Math.floor(total / 60) % 24).padStart(2, "0");
+    const rm = String(total % 60).padStart(2, "0");
+    return `${rh}:${rm}`;
+  }
+  return str;
+}
+
+function ssrCalculateYears(birthStr?: string | null, deathStr?: string | null): number | null {
+  if (!birthStr || !deathStr) return null;
+  const b = new Date(birthStr);
+  const d = new Date(deathStr);
+  if (isNaN(b.getTime()) || isNaN(d.getTime())) return null;
+  let diff = d.getFullYear() - b.getFullYear();
+  const mDiff = d.getMonth() - b.getMonth();
+  if (mDiff < 0 || (mDiff === 0 && d.getDate() < b.getDate())) {
+    diff--;
+  }
+  return diff > 0 ? diff : null;
+}
+
 /**
  * Gera a nova tela nativa de informação (ultra-leve, vertical nativa, responsiva,
  * com animação contínua acelerada por GPU para prevenir modo repouso/sleep da TV)
@@ -418,6 +472,61 @@ export function warmAdiauUrl(rawUrl: string | null | undefined): void {
 export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any | null): string {
   const serializedParams = JSON.stringify(params);
   const serializedInitialData = initialData ? JSON.stringify(initialData) : "null";
+
+  // Extração SSR dos dados da cerimônia para entrega instantânea no HTML
+  let ssrItem: any = null;
+  if (initialData && !initialData.pending) {
+    const svc = initialData.services || initialData;
+    if (svc.attendances && Array.isArray(svc.attendances)) {
+      if (params.transmission) {
+        ssrItem = svc.attendances.find((a: any) => String(a.id) === String(params.transmission));
+      }
+      if (!ssrItem) ssrItem = svc.attendances[0] || null;
+    } else if (svc.deceasedName || svc.id || svc.burialDate) {
+      ssrItem = svc;
+    }
+  }
+
+  const ssrDeceasedName = ssrItem?.deceasedName || ssrItem?.name || "HOMENAGEM PÓSTUMA";
+  const ssrBirthDate = ssrItem?.deceasedBirthDate ? ssrFormatDateBR(ssrItem.deceasedBirthDate) : "";
+  const ssrDeathDate = ssrItem?.deceasedDeathDate ? ssrFormatDateBR(ssrItem.deceasedDeathDate) : "";
+  const ssrYears = (ssrItem?.deceasedBirthDate && ssrItem?.deceasedDeathDate)
+    ? ssrCalculateYears(ssrItem.deceasedBirthDate, ssrItem.deceasedDeathDate)
+    : null;
+
+  const ssrIsCremation = (ssrItem?.eventType === "CREMATION");
+  const ssrBurialTitle = ssrIsCremation ? "CREMAÇÃO" : "SEPULTAMENTO";
+  const ssrBurialTimeLabel = ssrIsCremation ? "Horário da Cremação:" : "Horário do Sepultamento:";
+  const ssrBurialPlace = ssrItem?.burialPlace || (ssrIsCremation ? "Crematório" : (ssrItem ? "A definir" : "A definir"));
+
+  const ssrBurialRaw = ssrItem?.burialDate || ssrItem?.attendanceEndDate || "";
+  let ssrBurialTimeVal = "Horário a definir";
+  let ssrDepartureTimeVal = "—";
+  let ssrDepartureTimeStr = "";
+
+  if (ssrItem?.toBeDefined || (!ssrBurialRaw && !ssrItem?.burialDate)) {
+    ssrBurialTimeVal = "Horário a definir pela família";
+    ssrDepartureTimeVal = "Horário a definir";
+  } else if (ssrBurialRaw) {
+    const bTime = ssrFormatTime(ssrBurialRaw);
+    ssrDepartureTimeStr = ssrSubtractMinutes(ssrBurialRaw, 40);
+    ssrBurialTimeVal = bTime ? `Às ${bTime}` : "Horário a confirmar";
+    ssrDepartureTimeVal = ssrDepartureTimeStr ? `Às ${ssrDepartureTimeStr}` : (bTime ? `Às ${bTime}` : "—");
+  }
+
+  const ssrWakeStart = ssrFormatTime(ssrItem?.attendanceStartDate);
+  const ssrWakeEnd = ssrDepartureTimeStr || ssrFormatTime(ssrItem?.attendanceEndDate);
+  let ssrWakeSched = "—";
+  if (ssrWakeStart && ssrWakeEnd) {
+    ssrWakeSched = `${ssrWakeStart} às ${ssrWakeEnd}`;
+  } else if (ssrWakeEnd) {
+    ssrWakeSched = `Até às ${ssrWakeEnd}`;
+  } else if (ssrWakeStart) {
+    ssrWakeSched = `A partir das ${ssrWakeStart}`;
+  }
+
+  const ssrWakeLocation = (ssrItem?.location && ssrItem.location.name) || "Pagliaro Serviços Sociais";
+  const ssrRoomBadge = (ssrItem?.location && ssrItem.location.name) || (ssrItem?.burialPlace) || "CERIMONIAL PAGLIARO";
 
   return `<!DOCTYPE html>
 <html lang="${params.code || "pt-br"}">
@@ -942,7 +1051,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       <div class="brand-wrap">
         <div class="brand-name">PAGLIARO</div>
         <div id="roomBadge" class="room-badge">
-          CERIMONIAL PAGLIARO
+          ${ssrEscapeHtml(ssrRoomBadge.toUpperCase())}
         </div>
       </div>
 
@@ -980,18 +1089,18 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
         </svg>
 
         <h1 id="deceasedName" class="deceased-name">
-          HOMENAGEM PÓSTUMA
+          ${ssrEscapeHtml(ssrDeceasedName)}
         </h1>
 
-        <div id="lifeDatesBlock" class="life-dates" style="display: none;">
-          <span id="birthDateSpan" style="display: none;">
-            <span class="symbol">★</span><span id="birthDateVal"></span>
+        <div id="lifeDatesBlock" class="life-dates" style="${(ssrBirthDate || ssrDeathDate) ? 'display: inline-flex;' : 'display: none;'}">
+          <span id="birthDateSpan" style="${ssrBirthDate ? 'display: inline;' : 'display: none;'}">
+            <span class="symbol">★</span><span id="birthDateVal">${ssrEscapeHtml(ssrBirthDate)}</span>
           </span>
-          <span id="dateSep" class="date-sep" style="display: none;">•</span>
-          <span id="deathDateSpan" style="display: none;">
-            <span class="symbol">✝</span><span id="deathDateVal"></span>
+          <span id="dateSep" class="date-sep" style="${(ssrBirthDate && ssrDeathDate) ? 'display: inline;' : 'display: none;'}">•</span>
+          <span id="deathDateSpan" style="${ssrDeathDate ? 'display: inline;' : 'display: none;'}">
+            <span class="symbol">✝</span><span id="deathDateVal">${ssrEscapeHtml(ssrDeathDate)}</span>
           </span>
-          <span id="ageSpan" class="age-badge" style="display: none;"></span>
+          <span id="ageSpan" class="age-badge" style="${ssrYears ? 'display: inline;' : 'display: none;'}">${ssrYears ? `(${ssrYears} anos)` : ''}</span>
         </div>
       </section>
 
@@ -1012,11 +1121,11 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
           <div class="card-body">
             <div class="card-row">
               <span class="card-label">Período de Despedida:</span>
-              <span id="wakeScheduleVal" class="card-val highlight">—</span>
+              <span id="wakeScheduleVal" class="card-val highlight">${ssrEscapeHtml(ssrWakeSched)}</span>
             </div>
             <div class="card-row">
               <span class="card-label">Local:</span>
-              <span id="wakeLocationVal" class="card-val">Pagliaro Serviços Sociais</span>
+              <span id="wakeLocationVal" class="card-val">${ssrEscapeHtml(ssrWakeLocation)}</span>
             </div>
           </div>
         </article>
@@ -1026,28 +1135,28 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
           <div class="card-header">
             <h2 class="card-title">
               <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" /></svg>
-              <span id="burialCardTitle">SEPULTAMENTO</span>
+              <span id="burialCardTitle">${ssrEscapeHtml(ssrBurialTitle)}</span>
             </h2>
           </div>
           <div class="card-body">
             <div class="card-row">
               <span class="card-label">Destino / Local:</span>
-              <span id="burialPlaceVal" class="card-val highlight">A definir</span>
+              <span id="burialPlaceVal" class="card-val highlight">${ssrEscapeHtml(ssrBurialPlace)}</span>
             </div>
             <div class="card-row">
-              <span class="card-label" id="burialTimeLabel">Horário do Sepultamento:</span>
-              <span id="burialTimeVal" class="card-val">Horário a definir</span>
+              <span class="card-label" id="burialTimeLabel">${ssrEscapeHtml(ssrBurialTimeLabel)}</span>
+              <span id="burialTimeVal" class="card-val">${ssrEscapeHtml(ssrBurialTimeVal)}</span>
             </div>
 
             <!-- Caixa de Destaque Acolhedor: Saída Prevista (~40 min antes) -->
-            <div id="departureBox" class="departure-highlight-box">
+            <div id="departureBox" class="departure-highlight-box" style="${ssrItem ? 'opacity: 1;' : 'opacity: 0.75;'}">
               <div class="departure-label">
                 <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
                 <span>Saída Prevista</span>
                 <span class="departure-badge-tag">(Cortejo)</span>
               </div>
               <div id="departureTimeVal" class="departure-time">
-                —
+                ${ssrEscapeHtml(ssrDepartureTimeVal)}
               </div>
             </div>
           </div>
@@ -1207,16 +1316,20 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
             try { document.addEventListener(gestures[i], onG, true); } catch (e) {}
           }
         }
-        if ('wakeLock' in navigator && navigator.wakeLock.request) {
-          var lock = null;
-          function acquire() {
-            navigator.wakeLock.request('screen').then(function(l) { lock = l; }).catch(function() {});
+        try {
+          if ('wakeLock' in navigator && navigator.wakeLock.request) {
+            var lock = null;
+            function acquire() {
+              try {
+                navigator.wakeLock.request('screen').then(function(l) { lock = l; }).catch(function() {});
+              } catch (e) {}
+            }
+            acquire();
+            document.addEventListener('visibilitychange', function() {
+              if (document.visibilityState === 'visible') acquire();
+            });
           }
-          acquire();
-          document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'visible') acquire();
-          });
-        }
+        } catch (e) {}
       })();
 
       // --- MOTOR 4: UTILITÁRIOS DE HORÁRIOS & SUBTRAÇÃO DE 40 MINUTOS ---
@@ -1500,11 +1613,15 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       }
 
       // Inicia imediatamente com dados do SSR se disponíveis
-      if (INITIAL_DATA && !INITIAL_DATA.pending) {
-        applyData(INITIAL_DATA);
-      } else {
-        var overlay = document.getElementById('loadingOverlay');
-        if (overlay) overlay.style.display = 'flex';
+      try {
+        if (INITIAL_DATA && !INITIAL_DATA.pending) {
+          applyData(INITIAL_DATA);
+        } else {
+          var overlay = document.getElementById('loadingOverlay');
+          if (overlay) overlay.style.display = 'flex';
+          pollData(true);
+        }
+      } catch (e) {
         pollData(true);
       }
 

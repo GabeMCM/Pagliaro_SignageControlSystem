@@ -25,6 +25,8 @@ import {
   buildAdiauTransmissionUrl,
   formatAdiauSchedule,
   formatAdiauDateTime,
+  calculateCortegeDeparture,
+  formatTimeOnly,
   DEFAULT_ADIAU_CONFIG,
   fetchAdiauServerConfig,
 } from "../lib/adiau";
@@ -406,7 +408,12 @@ export function AdiauSection({
                           {att.burialPlace || att.location?.name}
                           {att.burialDate && !att.toBeDefined && (
                             <span className="text-neutral-400 font-mono ml-1">
-                              ({formatAdiauDateTime(att.burialDate)})
+                              (Sepultamento: {formatAdiauDateTime(att.burialDate)}
+                              {calculateCortegeDeparture(att.burialDate, 40) && (
+                                <span className="text-amber-300 ml-1.5 font-semibold">
+                                  • Saída Prevista: Às {calculateCortegeDeparture(att.burialDate, 40)}
+                                </span>
+                              )})
                             </span>
                           )}
                         </span>
@@ -422,11 +429,11 @@ export function AdiauSection({
                 {/* Botões de Ação */}
                 <div className="flex items-center gap-1.5 flex-shrink-0 self-end sm:self-auto w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-neutral-900">
                   <a
-                    href={transmissionUrl}
+                    href={activeType === "informacao" ? `/api/adiau/render?url=${encodeURIComponent(transmissionUrl)}` : transmissionUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="min-h-[30px] px-2 py-1 bg-neutral-900 border border-neutral-900 hover:border-neutral-700 text-neutral-300 hover:text-white text-xs font-mono transition flex items-center justify-center gap-1"
-                    title="Conferir página da Adiaŭ em nova aba"
+                    title={activeType === "informacao" ? "Pré-visualizar tela de informação no design memorial" : "Conferir página da Adiaŭ em nova aba"}
                   >
                     <ExternalLink className="h-3 w-3" />
                     <span className="hidden sm:inline">Visualizar</span>

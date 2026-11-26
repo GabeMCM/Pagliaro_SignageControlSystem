@@ -335,3 +335,36 @@ export function parseAdiauEndTimestamp(dateStr?: string | null): number | null {
   const fallback = new Date(clean).getTime();
   return isNaN(fallback) ? null : fallback;
 }
+
+/**
+ * Subtrai minutos de uma data/hora no formato 'YYYY-MM-DD HH:mm' ou 'HH:mm'
+ * Regra funerária: a saída para o sepultamento (cortejo) ocorre ~40 min antes do sepultamento!
+ */
+export function calculateCortegeDeparture(raw?: string | null, mins = 40): string {
+  if (!raw) return "";
+  const str = String(raw).trim();
+  const mFull = str.match(/(\d{4})[-/](\d{2})[-/](\d{2})[\sT](\d{2}):(\d{2})/);
+  if (mFull) {
+    const [, y, mo, d, h, mi] = mFull;
+    const date = new Date(parseInt(y, 10), parseInt(mo, 10) - 1, parseInt(d, 10), parseInt(h, 10), parseInt(mi, 10));
+    date.setMinutes(date.getMinutes() - mins);
+    const rh = String(date.getHours()).padStart(2, "0");
+    const rm = String(date.getMinutes()).padStart(2, "0");
+    return `${rh}:${rm}`;
+  }
+  const mTime = str.match(/(\d{2}):(\d{2})/);
+  if (mTime) {
+    let total = parseInt(mTime[1], 10) * 60 + parseInt(mTime[2], 10) - mins;
+    if (total < 0) total += 24 * 60;
+    const rh = String(Math.floor(total / 60) % 24).padStart(2, "0");
+    const rm = String(total % 60).padStart(2, "0");
+    return `${rh}:${rm}`;
+  }
+  return "";
+}
+
+export function formatTimeOnly(raw?: string | null): string {
+  if (!raw) return "";
+  const m = String(raw).trim().match(/(?:\s|T)(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : String(raw);
+}
