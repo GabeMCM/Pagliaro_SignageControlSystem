@@ -41,6 +41,9 @@ class RoomEventQueueManager {
       audioShuffle: false,
       currentAudioIndex: 0,
       standby: false,
+      rotation: 0,
+      ceremonyEndAt: null,
+      ceremonyTitle: null,
       version: this.versions.get(roomSlug) || 1,
       updatedAt: Date.now(),
     };
@@ -110,6 +113,9 @@ class RoomEventQueueManager {
       if (body.audioStreamUrl !== undefined) {
         current.audioStreamUrl = body.audioStreamUrl ? String(body.audioStreamUrl).trim() : null;
         if (current.audioStreamUrl) {
+          if (body.audioPlaylist === undefined) {
+            current.audioPlaylist = null;
+          }
           current.audioStatus = "playing";
         } else if (!current.audioPlaylist) {
           current.audioStatus = "idle";
@@ -119,7 +125,7 @@ class RoomEventQueueManager {
       // Atualização de Playlist Visual
       if (body.playlist !== undefined) {
         current.playlist = body.playlist;
-        if (body.playlist) {
+        if (current.playlist) {
           current.visualStatus = "playing";
           if (body.mode === undefined && !body.siteUrl) {
             current.mode = "playlist";
@@ -132,7 +138,10 @@ class RoomEventQueueManager {
       // Atualização de Playlist de Áudio
       if (body.audioPlaylist !== undefined) {
         current.audioPlaylist = body.audioPlaylist;
-        if (body.audioPlaylist) {
+        if (current.audioPlaylist) {
+          if (body.audioStreamUrl === undefined) {
+            current.audioStreamUrl = null;
+          }
           current.audioStatus = "playing";
         } else if (!current.audioStreamUrl) {
           current.audioStatus = "idle";
@@ -152,6 +161,29 @@ class RoomEventQueueManager {
       // Standby / Blackout Virtual
       if (body.standby !== undefined) {
         current.standby = Boolean(body.standby);
+      }
+
+      // Homenagem / Cerimônia Adiaŭ (Horário de Encerramento Automático para Standby)
+      if (body.ceremonyEndAt !== undefined) {
+        current.ceremonyEndAt = body.ceremonyEndAt ? Number(body.ceremonyEndAt) : null;
+      }
+      if (body.ceremonyTitle !== undefined) {
+        current.ceremonyTitle = body.ceremonyTitle ? String(body.ceremonyTitle).trim() : null;
+      }
+      if (body.siteUrl === null) {
+        current.ceremonyEndAt = null;
+        current.ceremonyTitle = null;
+      }
+
+      // Rotação de Tela / Orientação TV (0=Horizontal, 90=Vertical, 180=Invertido, 270=Vertical 270°)
+      if (body.rotation !== undefined) {
+        const rot = Number(body.rotation);
+        current.rotation = [0, 90, 180, 270].includes(rot) ? rot : 0;
+      }
+
+      // Controle de rotina aplicada
+      if (body.lastAppliedRoutineId !== undefined) {
+        current.lastAppliedRoutineId = body.lastAppliedRoutineId;
       }
 
       // Atualização manual de status
@@ -267,9 +299,13 @@ class RoomEventQueueManager {
           current.audioStatus = "playing";
         }
         current.audioTitle = await this.resolveAudioTitle(current);
-      } else if (body.target === "room") {
+      } else if (body.target === "room" || body.target === "screen") {
         if (body.command === "setStandby") {
           current.standby = Boolean(body.value);
+        } else if (body.command === "setRotation") {
+          const validRotations = [0, 90, 180, 270];
+          const r = Number(body.value);
+          current.rotation = validRotations.includes(r) ? r : 0;
         }
       }
 

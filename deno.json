@@ -3,8 +3,12 @@
     "dev:server": "deno run --allow-net --allow-read --allow-write --allow-sys --allow-env --watch server/main.ts",
     "dev:front": "cd front && deno task dev",
     "dev": "deno run -A dev.ts",
+    "dev:isolated": "SIGNAGE_ENV=dev deno run -A dev.ts",
+    "db:sync-dev": "deno run -A scripts/sync-dev-db.ts",
     "build:front": "cd front && deno install && deno task build",
     "start": "deno run --allow-net --allow-read --allow-write --allow-sys --allow-env server/main.ts",
+    "prod": "deno task build:front && deno task start",
+    "docker:up": "bash scripts/setup-docker-service.sh",
     "dropbox:token": "deno run -A scripts/dropbox-token.ts"
   },
   "imports": {

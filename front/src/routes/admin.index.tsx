@@ -38,11 +38,33 @@ export const Route = createFileRoute("/admin/")({
 });
 
 function AdminHome() {
+  const qc = useQueryClient();
   const { data: rooms = [], isLoading } = useQuery({
     queryKey: ["rooms"],
     queryFn: signageApi.listRooms,
     refetchInterval: 3000,
   });
+
+  // Ordenação: Online -> Ativa (fora do standby) -> Alfabética (ou Alfabética dentro de cada grupo)
+  const sortedRooms = useMemo(() => {
+    return [...rooms].sort((a, b) => {
+      const aOnline = Boolean(a.online);
+      const bOnline = Boolean(b.online);
+      if (aOnline !== bOnline) return aOnline ? -1 : 1;
+
+      const aState = qc.getQueryData<RoomState>(["state", a.slug]);
+      const bState = qc.getQueryData<RoomState>(["state", b.slug]);
+      const aActive = aState !== undefined ? !Boolean(aState.standby) : (a.active !== undefined ? Boolean(a.active) : !Boolean(a.standby));
+      const bActive = bState !== undefined ? !Boolean(bState.standby) : (b.active !== undefined ? Boolean(b.active) : !Boolean(b.standby));
+
+      if (aActive !== bActive) return aActive ? -1 : 1;
+
+      return String(a.name || "").localeCompare(String(b.name || ""), "pt-BR", {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+  }, [rooms, qc]);
 
   const config = useMemo(() => getAdiauConfig(), []);
   const attendancesQ = useQuery({
@@ -91,9 +113,9 @@ function AdminHome() {
           <div className="py-12 text-center text-xs text-neutral-400 font-mono">
             Carregando status das salas...
           </div>
-        ) : rooms.length > 0 ? (
+        ) : sortedRooms.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {rooms.map((room) => (
+            {sortedRooms.map((room) => (
               <RoomDashboardCard
                 key={room.slug}
                 room={room}
@@ -155,6 +177,7 @@ function RoomDashboardCard({
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["state", room.slug] });
+      qc.invalidateQueries({ queryKey: ["rooms"] });
       setOptimisticStandby(null);
     },
     onError: () => {

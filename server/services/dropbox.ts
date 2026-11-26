@@ -302,14 +302,11 @@ class DropboxService {
   }
 
   /**
-   * Lista todas as faixas de áudio na pasta do Dropbox com cache em memória
+   * Lista todas as faixas de áudio na pasta base do Dropbox com cache em memória
    */
-  async listTracks(folderOverride?: string, forceRefresh = false): Promise<DropboxTrack[]> {
+  async listAllTracks(forceRefresh = false): Promise<DropboxTrack[]> {
     const cfg = await this.getConfig();
-    const targetFolder =
-      folderOverride !== undefined
-        ? normalizeDropboxPath(folderOverride)
-        : cfg.musicFolder || "";
+    const targetFolder = cfg.musicFolder || "";
 
     const now = Date.now();
     if (
@@ -416,19 +413,51 @@ class DropboxService {
   }
 
   /**
+   * Lista faixas de áudio, opcionalmente filtrando por pasta/categoria selecionada
+   */
+  async listTracks(folderFilter?: string, forceRefresh = false): Promise<DropboxTrack[]> {
+    const allTracks = await this.listAllTracks(forceRefresh);
+    const filter = folderFilter?.trim();
+
+    if (!filter) {
+      return allTracks;
+    }
+
+    const filterLower = filter.toLowerCase();
+    const filterClean = filterLower.replace(/^\/+|\/+$/g, "");
+
+    return allTracks.filter((t) => {
+      // 1. Casa direto com o nome da pasta (ex: "Marcelo Rossi", "Harpa Cristã")
+      if (t.folder && t.folder.toLowerCase() === filterLower) {
+        return true;
+      }
+      // 2. Casa se o caminho do arquivo contiver a pasta indicada (ex: "/Músicas/Marcelo Rossi/...")
+      const pathLower = t.path.toLowerCase();
+      if (
+        pathLower.includes("/" + filterClean + "/") ||
+        pathLower.includes("/" + filterLower + "/") ||
+        pathLower.startsWith("/" + filterClean + "/")
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }
+
+  /**
    * Pesquisa faixas por nome, artista, título ou subpasta
    */
-  async searchTracks(query: string, folder?: string): Promise<DropboxTrack[]> {
+  async searchTracks(query: string, folderFilter?: string): Promise<DropboxTrack[]> {
     const q = query.trim().toLowerCase();
-    const allTracks = await this.listTracks(folder);
+    const tracksToSearch = await this.listTracks(folderFilter);
 
     if (!q) {
-      return allTracks;
+      return tracksToSearch;
     }
 
     const qNormalized = q.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-    return allTracks.filter((t) => {
+    return tracksToSearch.filter((t) => {
       const titleNorm = t.title.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const nameNorm = t.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const folderNorm = t.folder.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -445,7 +474,7 @@ class DropboxService {
    * Obtém as subpastas encontradas dentro da pasta de músicas para filtro
    */
   async getFolders(): Promise<string[]> {
-    const tracks = await this.listTracks();
+    const tracks = await this.listAllTracks();
     const set = new Set<string>();
     for (const t of tracks) {
       if (t.folder) set.add(t.folder);
@@ -493,6 +522,67 @@ class DropboxService {
     });
 
     return directLink;
+  }
+
+  /**
+   * Faz o streaming proxy direto de um arquivo do Dropbox com suporte a Range requests (HTTP 206),
+   * garantindo reprodução instantânea em Smart TVs na rede local sem problemas de CORS, 302 ou certificados.
+   */
+  async proxyStream(pathOrId: string, rangeHeader?: string | null): Promise<Response> {
+    let directUrl = await this.getStreamUrl(pathOrId);
+
+    const extMatch = pathOrId.match(/\.([a-zA-Z0-9]+)(\?|$)/);
+    const ext = extMatch ? extMatch[1].toLowerCase() : "";
+    let mime = "audio/mpeg";
+    if (ext === "m4a" || ext === "mp4") mime = "audio/mp4";
+    else if (ext === "aac") mime = "audio/aac";
+    else if (ext === "ogg") mime = "audio/ogg";
+    else if (ext === "wav") mime = "audio/wav";
+    else if (ext === "flac") mime = "audio/flac";
+
+    const fetchHeaders: Record<string, string> = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PagliaroSignage/1.0",
+    };
+    if (rangeHeader) {
+      fetchHeaders["Range"] = rangeHeader;
+    }
+
+    let upstreamRes = await fetch(directUrl, {
+      headers: fetchHeaders,
+    });
+
+    // Se o link temporário em cache expirou ou a CDN do Dropbox falhou,
+    // invalida o cache e solicita um link novo imediatamente
+    if (!upstreamRes.ok && upstreamRes.status !== 416) {
+      this.linkCache.delete(pathOrId);
+      try {
+        directUrl = await this.getStreamUrl(pathOrId);
+        upstreamRes = await fetch(directUrl, {
+          headers: fetchHeaders,
+        });
+      } catch (retryErr) {
+        console.error("[Dropbox Stream] Falha ao renovar link após erro upstream:", retryErr);
+      }
+    }
+
+    const responseHeaders = new Headers();
+    responseHeaders.set("Content-Type", mime);
+    responseHeaders.set("Accept-Ranges", "bytes");
+    responseHeaders.set("Access-Control-Allow-Origin", "*");
+    responseHeaders.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    responseHeaders.set("Cache-Control", "public, max-age=3600");
+
+    if (upstreamRes.headers.has("content-range")) {
+      responseHeaders.set("Content-Range", upstreamRes.headers.get("content-range")!);
+    }
+    if (upstreamRes.headers.has("content-length")) {
+      responseHeaders.set("Content-Length", upstreamRes.headers.get("content-length")!);
+    }
+
+    return new Response(upstreamRes.body, {
+      status: upstreamRes.status,
+      headers: responseHeaders,
+    });
   }
 }
 

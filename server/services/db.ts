@@ -2,28 +2,34 @@ import { join } from "@std/path";
 import { MongoClient, type Db } from "npm:mongodb";
 import { createDefaultUsers } from "./auth.ts";
 
-// Carrega arquivo .env local caso exista
-try {
-  const envContent = await Deno.readTextFile(".env");
-  for (const line of envContent.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx !== -1) {
-      const key = trimmed.slice(0, eqIdx).trim();
-      const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
-      if (!Deno.env.get(key)) {
-        Deno.env.set(key, val);
+// Carrega arquivo .env (.env.development se SIGNAGE_ENV=dev, senão .env padrão)
+const envFileToLoad = Deno.env.get("SIGNAGE_ENV") === "dev" ? ".env.development" : ".env";
+for (const candidateEnv of [envFileToLoad, ".env"]) {
+  try {
+    const envContent = await Deno.readTextFile(candidateEnv);
+    for (const line of envContent.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx !== -1) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
+        if (!Deno.env.get(key) || (key === "AUTH_SECRET" && Deno.env.get(key) === "8001")) {
+          Deno.env.set(key, val);
+        }
       }
     }
+    break;
+  } catch {
+    // Ignora se o arquivo não existir
   }
-} catch {
-  // Ignora se o arquivo .env não existir (comum em produção no Render onde as vars vêm do painel)
 }
 
-const CONFIG_DIR = "./config";
-const MONGODB_URI = Deno.env.get("MONGODB_URI");
-const MONGODB_DB_NAME = Deno.env.get("MONGODB_DB_NAME") || "signage_control";
+const IS_DEV_MODE = Deno.env.get("SIGNAGE_ENV") === "dev";
+const USE_LOCAL_DB = Deno.env.get("USE_LOCAL_DB") === "true" || IS_DEV_MODE;
+const CONFIG_DIR = Deno.env.get("CONFIG_DIR") || (USE_LOCAL_DB ? "./config-dev" : "./config");
+const MONGODB_URI = USE_LOCAL_DB ? undefined : Deno.env.get("MONGODB_URI");
+const MONGODB_DB_NAME = Deno.env.get("MONGODB_DB_NAME") || "cap-signage";
 
 let mongoClient: MongoClient | null = null;
 let mongoDb: Db | null = null;
@@ -157,6 +163,10 @@ let mongoConnectionError: string | null = null;
 let connectPromise: Promise<boolean> | null = null;
 
 export async function tryConnectMongo(): Promise<boolean> {
+  if (USE_LOCAL_DB) {
+    mongoConnectionError = null;
+    return false;
+  }
   const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
   if (!currentUri) {
     mongoConnectionError = "Variável MONGODB_URI não configurada no servidor (Render).";
@@ -175,6 +185,10 @@ export async function tryConnectMongo(): Promise<boolean> {
       await mongoClient.connect();
       const currentDbName = Deno.env.get("MONGODB_DB_NAME") || MONGODB_DB_NAME;
       mongoDb = mongoClient.db(currentDbName);
+      
+      // Valida que o cluster realmente respondeu (ping) antes de considerar conectado
+      await mongoDb.command({ ping: 1 });
+      
       isConnectedToMongo = true;
       mongoConnectionError = null;
       console.log(`[MongoDB Atlas] Conectado com sucesso ao banco '${currentDbName}'!`);
@@ -200,18 +214,38 @@ export async function tryConnectMongo(): Promise<boolean> {
   return connectPromise;
 }
 
-// Inicializa a conexão com o MongoDB Atlas na inicialização
-if (MONGODB_URI) {
+// Inicializa a conexão com o MongoDB Atlas na inicialização (exceto em modo Dev local)
+if (MONGODB_URI && !USE_LOCAL_DB) {
   tryConnectMongo().catch(() => {});
 } else {
-  mongoConnectionError = "Variável MONGODB_URI não configurada no servidor (Render).";
-  console.log("ℹ️ [Database] MONGODB_URI não configurada. Usando armazenamento local em arquivos JSON (./config/).");
+  mongoConnectionError = null;
+  console.log(`ℹ️ [Database] Modo Local ativado (USE_LOCAL_DB). Usando armazenamento local em arquivos JSON (${CONFIG_DIR}/).`);
 }
 
 async function ensureMongoConnected() {
+  if (USE_LOCAL_DB) return;
   const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
   if (currentUri && (!isConnectedToMongo || !mongoDb)) {
     await tryConnectMongo();
+  }
+}
+
+function handleMongoError(e: any) {
+  const msg = String(e?.name || "") + " " + String(e?.message || "");
+  if (
+    msg.includes("Timeout") ||
+    msg.includes("Network") ||
+    msg.includes("ServerSelection") ||
+    msg.includes("ENETUNREACH") ||
+    msg.includes("topology was destroyed") ||
+    msg.includes("connection closed")
+  ) {
+    console.warn("⚠️ [MongoDB Atlas] Conexão instável detectada. Resetando estado para reconectar no próximo ciclo:", e?.message || e);
+    isConnectedToMongo = false;
+    mongoDb = null;
+    mongoClient = null;
+    connectPromise = null;
+    usersCache = null;
   }
 }
 
@@ -220,6 +254,7 @@ let roomsCache: any[] | null = null;
 let playlistsCache: any[] | null = null;
 let stateCache: Record<string, any> | null = null;
 let usersCache: any[] | null = null;
+let isUsersCacheFallback = false;
 
 export const db = {
   /**
@@ -237,7 +272,7 @@ export const db = {
         console.error("[MongoDB] Erro ao buscar salas:", e);
       }
     }
-    const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
+    const currentUri = USE_LOCAL_DB ? undefined : (Deno.env.get("MONGODB_URI") || MONGODB_URI);
     if (!currentUri) {
       const local = (await readJson("rooms.json")) || [];
       roomsCache = local;
@@ -286,7 +321,7 @@ export const db = {
         console.error("[MongoDB] Erro ao buscar playlists:", e);
       }
     }
-    const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
+    const currentUri = USE_LOCAL_DB ? undefined : (Deno.env.get("MONGODB_URI") || MONGODB_URI);
     if (!currentUri) {
       const local = (await readJson("playlists.json")) || [];
       playlistsCache = local;
@@ -327,27 +362,36 @@ export const db = {
   getState: async (): Promise<Record<string, any>> => {
     await ensureMongoConnected();
     if (stateCache) return { ...stateCache };
+    const localState: Record<string, any> = (await readJson("state.json")) || {};
     if (isConnectedToMongo && mongoDb) {
       try {
         const docs = await mongoDb.collection("state").find({}).toArray();
-        const stateObj: Record<string, any> = {};
+        const stateObj: Record<string, any> = { ...localState };
         for (const doc of docs) {
           const { _id, slug, ...roomState } = doc;
-          stateObj[slug || _id] = roomState;
+          const roomKey = String(slug || _id);
+          const localRoom = localState[roomKey];
+          if (localRoom && typeof localRoom === "object" && typeof roomState === "object") {
+            const localUpdated = Number(localRoom.updatedAt || 0);
+            const remoteUpdated = Number(roomState.updatedAt || 0);
+            const localVer = Number(localRoom.version || 0);
+            const remoteVer = Number(roomState.version || 0);
+            if (localUpdated > remoteUpdated || (localUpdated === remoteUpdated && localVer > remoteVer)) {
+              stateObj[roomKey] = localRoom;
+              continue;
+            }
+          }
+          stateObj[roomKey] = roomState;
         }
         stateCache = stateObj;
+        await writeJson("state.json", stateCache);
         return { ...stateObj };
       } catch (e) {
         console.error("[MongoDB] Erro ao buscar estado:", e);
       }
     }
-    const currentUri = Deno.env.get("MONGODB_URI") || MONGODB_URI;
-    if (!currentUri) {
-      const local = (await readJson("state.json")) || {};
-      stateCache = local;
-      return { ...local };
-    }
-    return stateCache ? { ...stateCache } : {};
+    stateCache = localState;
+    return { ...localState };
   },
 
   /**
@@ -358,6 +402,8 @@ export const db = {
       stateCache = await db.getState();
     }
     stateCache[slug] = roomState;
+    // Persiste sempre cópia espelhada em disco local para garantir restauração imediata ao reiniciar
+    await writeJson("state.json", stateCache);
 
     if (isConnectedToMongo && mongoDb) {
       try {
@@ -371,7 +417,7 @@ export const db = {
         console.error(`[MongoDB] Erro ao salvar estado da sala ${slug}:`, e);
       }
     }
-    return writeJson("state.json", stateCache);
+    return true;
   },
 
   /**
@@ -379,6 +425,7 @@ export const db = {
    */
   saveState: async (state: Record<string, any>): Promise<boolean> => {
     stateCache = { ...state };
+    await writeJson("state.json", stateCache);
     if (isConnectedToMongo && mongoDb) {
       try {
         const col = mongoDb.collection("state");
@@ -396,7 +443,7 @@ export const db = {
         return false;
       }
     }
-    return writeJson("state.json", state);
+    return true;
   },
 
   /**
@@ -646,16 +693,22 @@ export const db = {
    */
   getUsers: async (): Promise<any[]> => {
     await ensureMongoConnected();
-    if (usersCache) return usersCache;
+    if (usersCache && (!isUsersCacheFallback || !isConnectedToMongo)) return usersCache;
     let list: any[] = [];
     if (isConnectedToMongo && mongoDb) {
       try {
         list = await mongoDb.collection("users").find({}, { projection: { _id: 0 } }).toArray();
+        if (list && list.length > 0) {
+          isUsersCacheFallback = false;
+        }
       } catch (e) {
         console.error("[MongoDB] Erro ao buscar usuários:", e);
+        handleMongoError(e);
       }
-    } else {
+    }
+    if (!list || list.length === 0) {
       list = (await readJson("users.json")) || [];
+      isUsersCacheFallback = true;
     }
 
     // Se estiver vazio, popula automaticamente com usuários padrão de fábrica devidamente hasheados

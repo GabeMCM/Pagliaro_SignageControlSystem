@@ -11,7 +11,9 @@ build/
 
 # Variáveis de Ambiente
 .env
+.env.*
 .env.local
+.env.development
 .env.development.local
 .env.test.local
 .env.production.local
@@ -41,4 +43,8 @@ media/audio-cache/
 
 # Configurações com credenciais locais
 config/settings.json
+config/devices.json
+config/routines.json
+config/schedules.json
+config-dev/
 

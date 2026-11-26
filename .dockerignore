@@ -1,8 +1,6 @@
-.git
-.direnv
-.gemini
+node_modules
 front/node_modules
-front/dist
+.git
+.gitignore
+config-dev
 *.log
-.env
-.env.*

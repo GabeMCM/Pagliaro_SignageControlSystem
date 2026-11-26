@@ -30,6 +30,8 @@ export interface Room {
   defaultSiteUrl?: string;
   defaultAudioStreamUrl?: string;
   online?: boolean;
+  standby?: boolean;
+  active?: boolean;
   clientsCount?: number;
   maxClients?: number;
 }
@@ -110,6 +112,9 @@ export interface RoomState {
   audioShuffle?: boolean;
   currentAudioIndex?: number;
   standby?: boolean;
+  rotation?: number;
+  ceremonyEndAt?: number | null;
+  ceremonyTitle?: string | null;
   version?: number;
   updatedAt?: number;
 }
@@ -247,6 +252,7 @@ export const signageApi = {
       visualStatus?: "playing" | "paused" | "idle";
       audioStatus?: "playing" | "paused" | "idle";
       standby?: boolean;
+      rotation?: number;
     }
   ) =>
     request<{ success: boolean; state: RoomState; version?: number }>(`/api/state/${slug}`, {
@@ -260,13 +266,19 @@ export const signageApi = {
       body: JSON.stringify({ standby }),
     }),
 
+  setRotation: (slug: string, rotation: number) =>
+    request<{ success: boolean; state: RoomState; version?: number }>(`/api/state/${slug}`, {
+      method: "POST",
+      body: JSON.stringify({ rotation }),
+    }),
+
   reloadRoom: (slug: string) =>
     request<{ success: boolean }>(`/api/reload/${slug}`, { method: "POST" }),
     
   sendCommand: (
     slug: string,
-    target: "visual" | "audio" | "site" | "room",
-    command: "play" | "pause" | "next" | "prev" | "reload" | "setVolume" | "setLoopMode" | "setShuffle" | "setTrackIndex" | "setStandby",
+    target: "visual" | "audio" | "site" | "room" | "screen",
+    command: "play" | "pause" | "next" | "prev" | "reload" | "setVolume" | "setLoopMode" | "setShuffle" | "setTrackIndex" | "setStandby" | "setRotation",
     value?: any
   ) =>
     request<{ success: boolean; state?: RoomState; version?: number }>(`/api/control/${slug}`, {
@@ -363,6 +375,22 @@ export const signageApi = {
   getDropboxFolders: () =>
     request<{ success: boolean; folders: string[] }>("/api/dropbox/folders"),
 
+  getMusicStatus: () => request<DropboxStatus>("/api/music/status"),
+
+  getMusicTracks: (folder?: string, q?: string, refresh = false) => {
+    const params = new URLSearchParams();
+    if (folder) params.append("folder", folder);
+    if (q) params.append("q", q);
+    if (refresh) params.append("refresh", "true");
+    const queryStr = params.toString() ? `?${params.toString()}` : "";
+    return request<{ success: boolean; tracks: DropboxTrack[]; folder: string; total: number }>(
+      `/api/music/tracks${queryStr}`
+    );
+  },
+
+  getMusicFolders: () =>
+    request<{ success: boolean; folders: string[] }>("/api/music/folders"),
+
   listSchedules: (roomSlug?: string) =>
     request<ScheduleTask[]>(roomSlug ? `/api/schedules?room=${encodeURIComponent(roomSlug)}` : `/api/schedules`),
 
@@ -450,5 +478,29 @@ export const signageApi = {
   restoreRoutine: (roomSlug: string) =>
     request<{ success: boolean; message: string }>(`/api/rooms/${encodeURIComponent(roomSlug)}/restore-routine`, {
       method: "POST",
+    }),
+
+  showMusicQr: (slug: string) =>
+    request<{ success: boolean; url: string; duration: number; roomName: string; message: string }>(
+      `/api/rooms/${encodeURIComponent(slug)}/show-qr`,
+      { method: "POST" }
+    ),
+
+  getPublicMusicState: (slug: string) =>
+    request<{
+      success: boolean;
+      room: { name: string; slug: string };
+      audioStatus: "playing" | "paused" | "idle";
+      audioVolume: number;
+      currentAudioIndex: number;
+      currentTrack: { title: string; url: string; duration: number; index: number } | null;
+      queue: Array<{ index: number; title: string; url: string; duration: number; current: boolean }>;
+      folders: string[];
+    }>(`/api/public/music/${encodeURIComponent(slug)}/state`),
+
+  controlPublicMusic: (slug: string, body: any) =>
+    request<{ success: boolean; state: any }>(`/api/public/music/${encodeURIComponent(slug)}/control`, {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
 };

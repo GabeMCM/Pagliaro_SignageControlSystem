@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, Link, useParams, useRouter } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signageApi, type Room } from "@/lib/signage-api";
 import { copyToClipboard } from "@/lib/clipboard";
 import { useAuth, ROLE_LABELS } from "@/lib/auth";
@@ -31,6 +31,7 @@ import {
   ChevronRight,
   LogOut,
   CalendarClock,
+  Bell,
 } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
@@ -72,6 +73,58 @@ function AdminLayout() {
   const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [changePinModalOpen, setChangePinModalOpen] = useState(false);
+  const [adiauAlert, setAdiauAlert] = useState<{
+    title: string;
+    message: string;
+    count?: number;
+    attendances?: any[];
+  } | null>(null);
+
+  // Escuta alertas da Adiaŭ e notificações do sistema via WebSocket
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const loc = window.location;
+    const protocol = loc.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${loc.host}/ws/admin/devices`;
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
+    function connect() {
+      try {
+        ws = new WebSocket(wsUrl);
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(String(event.data));
+            if (data.type === "adiauAlert") {
+              setAdiauAlert({
+                title: data.title || "Novas Homenagens Disponíveis",
+                message: data.message || "Há novas homenagens disponíveis na Adiaŭ para abertura em salas.",
+                count: data.newCount,
+                attendances: data.attendances,
+              });
+              qc.invalidateQueries({ queryKey: ["adiau-attendances"] });
+            } else if (data.type === "notification") {
+              setAdiauAlert({
+                title: data.title || "Aviso do Sistema",
+                message: data.message || "",
+              });
+            }
+          } catch (_e) {}
+        };
+        ws.onclose = () => {
+          reconnectTimeout = setTimeout(connect, 5000);
+        };
+      } catch (_e) {
+        reconnectTimeout = setTimeout(connect, 5000);
+      }
+    }
+
+    connect();
+    return () => {
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (ws) ws.close();
+    };
+  }, [qc]);
 
   // active slug from URL
   const params = useParams({ strict: false }) as { slug?: string };
@@ -279,21 +332,6 @@ function AdminLayout() {
               </span>
             )}
           </Link>
-
-          <Link
-            to="/admin/routines"
-            className={`group flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs font-medium transition ${
-              router.state.location.pathname.startsWith("/admin/routines")
-                ? "bg-neutral-900 text-white font-semibold"
-                : "text-neutral-400 hover:bg-neutral-950 hover:text-white"
-            } ${collapsed ? "justify-center px-0" : ""}`}
-            title={collapsed ? "Rotinas Globais" : undefined}
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <CalendarClock className="h-3.5 w-3.5 flex-shrink-0 text-neutral-400 group-hover:text-white" />
-              {!collapsed && <span>Rotinas Globais</span>}
-            </div>
-          </Link>
         </div>
 
         {/* Salas Header */}
@@ -429,12 +467,43 @@ function AdminLayout() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-hidden min-w-0 w-full max-w-full pb-14 md:pb-0 bg-neutral-950">
-        <Outlet />
+      <main className="flex-1 overflow-hidden min-w-0 w-full max-w-full pb-14 md:pb-0 bg-neutral-950 flex flex-col">
+        {/* Banner de Notificação em Tempo Real (Novas Homenagens Adiaŭ / Término de Cerimônias) */}
+        {adiauAlert && (
+          <div className="bg-emerald-950/95 border-b border-emerald-500/50 px-3 py-2 sm:px-4 sm:py-2.5 flex items-center justify-between gap-2.5 text-xs font-mono text-emerald-200 z-30 shadow-md">
+            <div className="flex items-center gap-2 min-w-0">
+              <Bell className="h-4 w-4 text-emerald-400 animate-pulse flex-shrink-0" />
+              <div className="min-w-0">
+                <span className="font-bold text-white mr-1.5">{adiauAlert.title}:</span>
+                <span className="truncate">{adiauAlert.message}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <Link
+                to="/admin"
+                onClick={() => setAdiauAlert(null)}
+                className="px-2 py-0.5 bg-emerald-500 text-black font-bold text-[11px] uppercase hover:bg-emerald-400 transition"
+              >
+                Ver Salas
+              </Link>
+              <button
+                type="button"
+                onClick={() => setAdiauAlert(null)}
+                className="p-1 text-neutral-400 hover:text-white transition"
+                title="Fechar alerta"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="flex-1 overflow-hidden min-w-0 w-full">
+          <Outlet />
+        </div>
       </main>
 
       {/* Mobile Bottom Navigation Bar (High density, sharp, ergonomic) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/95 border-t border-neutral-900 backdrop-blur-md grid grid-cols-5 items-center h-13 px-1 text-[9px]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/95 border-t border-neutral-900 backdrop-blur-md grid grid-cols-4 items-center h-13 px-1 text-[9px]">
         <Link
           to="/admin"
           className={`flex flex-col items-center justify-center gap-1 py-1 transition ${
@@ -445,18 +514,6 @@ function AdminLayout() {
         >
           <LayoutGrid className="h-4 w-4" />
           <span>Salas</span>
-        </Link>
-
-        <Link
-          to="/admin/routines"
-          className={`flex flex-col items-center justify-center gap-1 py-1 transition ${
-            router.state.location.pathname.startsWith("/admin/routines")
-              ? "text-white font-bold"
-              : "text-neutral-400 hover:text-white"
-          }`}
-        >
-          <CalendarClock className="h-4 w-4" />
-          <span>Rotinas</span>
         </Link>
 
         <Link

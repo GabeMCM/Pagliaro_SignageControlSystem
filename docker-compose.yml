@@ -1,0 +1,29 @@
+services:
+  pagliaro-signage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pagliaro-signage
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    ports:
+      - "127.0.0.1:3001:8001"
+    env_file:
+      - .env
+    environment:
+      - PORT=8001
+      - NODE_ENV=production
+      - TZ=America/Sao_Paulo
+    volumes:
+      - ./config:/app/config
+      - ./public:/app/public
+      - ./front/dist:/app/front/dist
+      - ./server:/app/server
+      - /home/capgestec/Músicas/signage:/app/musicas:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

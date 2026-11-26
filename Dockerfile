@@ -2,11 +2,8 @@ FROM docker.io/denoland/deno:latest
 
 WORKDIR /app
 
-# Copia todos os arquivos do projeto para o container
+# Copia todos os arquivos do projeto (com front/dist já compilado)
 COPY . .
-
-# Compila o frontend em React/Vite gerando front/dist
-RUN deno task build:front
 
 # Expõe a porta padrão da aplicação
 EXPOSE 8001

@@ -32,12 +32,28 @@ export interface ServerUser {
 
 export type SafeUser = Omit<ServerUser, "salt" | "passwordHash" | "pinHash">;
 
+const FALLBACK_MASTER_PEPPER = "pagliaro_signage_master_pepper_secret_2026";
+
 /**
  * Chave mestra obtida das variáveis de ambiente (.env no Render ou local).
  * Serve como Pepper de senhas e chave de assinatura de tokens HMAC.
  */
 export function getAuthSecret(): string {
-  return Deno.env.get("AUTH_SECRET") || "pagliaro_signage_master_pepper_secret_2026";
+  const envVal = Deno.env.get("AUTH_SECRET")?.trim();
+  // Ignora valores acidentais de porta (ex: "8001") e usa a chave oficial
+  if (!envVal || envVal === "8001") {
+    return FALLBACK_MASTER_PEPPER;
+  }
+  return envVal;
+}
+
+async function hashSecretWithPepper(secret: string, salt: string, pepper: string): Promise<string> {
+  const enc = new TextEncoder();
+  const data = enc.encode(`${pepper}:${salt}:${secret}`);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /**
@@ -45,13 +61,7 @@ export function getAuthSecret(): string {
  * Isso garante que mesmo se o banco de dados for vazado, as senhas não podem ser quebradas sem o .env.
  */
 export async function hashSecret(secret: string, salt: string): Promise<string> {
-  const enc = new TextEncoder();
-  const secretKey = getAuthSecret();
-  const data = enc.encode(`${secretKey}:${salt}:${secret}`);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return await hashSecretWithPepper(secret, salt, getAuthSecret());
 }
 
 /**
@@ -110,20 +120,31 @@ export async function verifySessionToken(token: string): Promise<{ valid: boolea
     if (!payloadB64 || !sigHex) return { valid: false };
 
     const enc = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      "raw",
-      enc.encode(getAuthSecret()),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"]
-    );
-
     const sigBytes = new Uint8Array(
       sigHex.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
     );
 
-    const valid = await crypto.subtle.verify("HMAC", key, sigBytes, enc.encode(payloadB64));
-    if (!valid) return { valid: false };
+    const candidateSecrets = Array.from(new Set([
+      getAuthSecret(),
+      FALLBACK_MASTER_PEPPER,
+    ]));
+
+    let verified = false;
+    for (const secretStr of candidateSecrets) {
+      const key = await crypto.subtle.importKey(
+        "raw",
+        enc.encode(secretStr),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["verify"]
+      );
+      if (await crypto.subtle.verify("HMAC", key, sigBytes, enc.encode(payloadB64))) {
+        verified = true;
+        break;
+      }
+    }
+
+    if (!verified) return { valid: false };
 
     const payload = JSON.parse(atob(payloadB64));
     if (payload.exp && Date.now() > payload.exp) {
@@ -220,25 +241,25 @@ export async function verifyUserCredentials(user: any, secret: string): Promise<
   const cleanSecret = secret.trim();
   const salt = user.salt || "pagliaro_default_salt";
 
-  // 1. Confere contra hash com Pepper do .env
-  const computedPepperHash = await hashSecret(cleanSecret, salt);
-  if (user.passwordHash && computedPepperHash === user.passwordHash) return true;
-  if (user.pinHash && computedPepperHash === user.pinHash) return true;
+  // 1. Confere contra todos os peppers conhecidos (atual do .env e fallback)
+  const candidatePeppers = Array.from(new Set([
+    getAuthSecret(),
+    FALLBACK_MASTER_PEPPER,
+    "8001",
+  ]));
+
+  for (const pepper of candidatePeppers) {
+    const computedHash = await hashSecretWithPepper(cleanSecret, salt, pepper);
+    if (user.passwordHash && computedHash === user.passwordHash) return true;
+    if (user.pinHash && computedHash === user.pinHash) return true;
+  }
 
   // 2. Confere contra hash legado (sem pepper) para migração automática
   const computedLegacyHash = await hashSecretLegacy(cleanSecret, salt);
   if (user.passwordHash && computedLegacyHash === user.passwordHash) return true;
   if (user.pinHash && computedLegacyHash === user.pinHash) return true;
 
-  // 3. Se forneceu PIN de 4 dígitos correspondente
-  if (cleanSecret.length === 4) {
-    const hash4 = await hashSecret(cleanSecret, salt);
-    if (user.pinHash && hash4 === user.pinHash) return true;
-    const legacyHash4 = await hashSecretLegacy(cleanSecret, salt);
-    if (user.pinHash && legacyHash4 === user.pinHash) return true;
-  }
-
-  // 4. Fallback padrão para perfis padrão de fábrica
+  // 3. Fallback padrão para perfis padrão de fábrica
   const uName = (user.username || "").toLowerCase();
   if (uName === "admin" && (cleanSecret === "123456" || cleanSecret === "1234" || cleanSecret.toLowerCase() === "admin")) {
     return true;
@@ -250,7 +271,7 @@ export async function verifyUserCredentials(user: any, secret: string): Promise<
     return true;
   }
 
-  // 5. Fallback legado para registros sem hash
+  // 4. Fallback legado para registros sem hash
   if (user.pin && (user.pin === cleanSecret || (cleanSecret.length === 4 && user.pin.startsWith(cleanSecret)))) {
     return true;
   }

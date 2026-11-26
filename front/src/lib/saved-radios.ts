@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { VERIFIED_GOSPEL_PRESETS } from "./constants";
+import { API_BASE } from "./signage-api";
 
 export interface SavedRadio {
   id: string;
@@ -13,51 +14,92 @@ export interface SavedRadio {
 const STORAGE_KEY = "pagliaro_saved_radios_v1";
 const CHANGE_EVENT = "pagliaro:saved-radios-changed";
 
+let serverSyncInitialized = false;
+let isFetchingFromServer = false;
+
 function getInitialPresets(): SavedRadio[] {
-  return VERIFIED_GOSPEL_PRESETS.map((p, idx) => ({
-    id: `preset-${idx}-${p.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`,
-    name: p.name,
-    url: p.url,
-    desc: p.desc,
-    isCustom: false,
-    createdAt: 1700000000000 + idx,
-  }));
+  return [];
 }
 
 export function getSavedRadios(): SavedRadio[] {
-  if (typeof window === "undefined") return getInitialPresets();
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw === null) {
-      const presets = getInitialPresets();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
-      return presets;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      return [];
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed;
+      // Remove presets antigos pré-carregados (apenas rádios salvas pelo operador devem permanecer)
+      const cleaned = parsed.filter(
+        (r) => r && !String(r.id || "").startsWith("preset-") && r.isCustom !== false
+      );
+      if (cleaned.length !== parsed.length) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+      }
+      return cleaned;
     }
-    const presets = getInitialPresets();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
-    return presets;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+    return [];
   } catch (err) {
     console.error("Erro ao carregar rádios salvas:", err);
-    return getInitialPresets();
+    return [];
   }
+}
+
+async function syncRadiosToServer(radios: SavedRadio[]) {
+  try {
+    await fetch(`${API_BASE}/api/radio/saved`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ radios }),
+    });
+  } catch (err) {
+    console.warn("Aviso ao sincronizar rádios salvas com o servidor:", err);
+  }
+}
+
+export async function fetchSavedRadiosFromServer(): Promise<SavedRadio[] | null> {
+  if (typeof window === "undefined" || isFetchingFromServer) return null;
+  isFetchingFromServer = true;
+  try {
+    const res = await fetch(`${API_BASE}/api/radio/saved?_t=${Date.now()}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && Array.isArray(data.radios)) {
+      const cleaned = data.radios.filter(
+        (r: any) => r && !String(r.id || "").startsWith("preset-") && r.isCustom !== false
+      );
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+      window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+      return cleaned;
+    }
+  } catch {
+    // fallback para localStorage
+  } finally {
+    isFetchingFromServer = false;
+  }
+  return null;
 }
 
 export function resetSavedRadiosToDefaults(): SavedRadio[] {
   const presets = getInitialPresets();
-  persistSavedRadios(presets);
+  persistSavedRadios(presets, true);
   return presets;
 }
 
-function persistSavedRadios(radios: SavedRadio[]) {
+function persistSavedRadios(radios: SavedRadio[], syncServer = true) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(radios));
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+    if (syncServer) {
+      syncRadiosToServer(radios);
+    }
   } catch (err) {
-    console.error("Erro ao salvar rádios no localStorage:", err);
+    console.error("Erro ao salvar rádios:", err);
   }
 }
 
@@ -74,7 +116,7 @@ export function saveRadio(item: { name: string; url: string; desc?: string; isCu
       name: cleanName,
       desc: item.desc ?? radios[existingIdx].desc,
     };
-    persistSavedRadios(radios);
+    persistSavedRadios(radios, true);
     return radios[existingIdx];
   }
 
@@ -88,17 +130,20 @@ export function saveRadio(item: { name: string; url: string; desc?: string; isCu
   };
 
   const updated = [newRadio, ...radios];
-  persistSavedRadios(updated);
+  persistSavedRadios(updated, true);
   return newRadio;
 }
 
 export function deleteSavedRadio(idOrUrl: string): boolean {
   const radios = getSavedRadios();
+  const target = (idOrUrl || "").trim().toLowerCase();
   const filtered = radios.filter(
-    (r) => r.id !== idOrUrl && r.url.trim().toLowerCase() !== idOrUrl.trim().toLowerCase()
+    (r) =>
+      String(r.id || "").trim().toLowerCase() !== target &&
+      String(r.url || "").trim().toLowerCase() !== target
   );
   if (filtered.length !== radios.length) {
-    persistSavedRadios(filtered);
+    persistSavedRadios(filtered, true);
     return true;
   }
   return false;
@@ -126,6 +171,15 @@ export function useSavedRadios() {
 
     window.addEventListener(CHANGE_EVENT, handleCustomChange);
     window.addEventListener("storage", handleStorageChange);
+
+    // Sincroniza sempre com o banco do servidor ao abrir ou trocar de sala
+    if (!serverSyncInitialized) {
+      serverSyncInitialized = true;
+      fetchSavedRadiosFromServer();
+    } else {
+      fetchSavedRadiosFromServer();
+    }
+
     return () => {
       window.removeEventListener(CHANGE_EVENT, handleCustomChange);
       window.removeEventListener("storage", handleStorageChange);

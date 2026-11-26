@@ -427,19 +427,23 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
   <title>Informações da Cerimônia • Pagliaro Serviços Sociais</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&family=Inter:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400;1,600&family=Inter:wght@300;400;500;600;700&display=swap">
   <style>
     :root {
-      --bg-deep: #05070a;
-      --bg-panel: rgba(13, 17, 26, 0.78);
-      --border-gold: rgba(226, 186, 98, 0.32);
-      --gold-primary: #e2ba62;
-      --gold-light: #f7ebc6;
-      --gold-dark: #b8913b;
-      --text-white: #ffffff;
-      --text-secondary: #cbd5e1;
+      --bg-base: #090a0d;
+      --bg-radial: radial-gradient(ellipse at 50% 22%, #141722 0%, #090a0d 68%, #050608 100%);
+      --panel-bg: rgba(16, 19, 26, 0.78);
+      --panel-border: rgba(197, 160, 89, 0.22);
+      --panel-border-soft: rgba(255, 255, 255, 0.08);
+      --panel-shadow: 0 16px 36px rgba(0, 0, 0, 0.55);
+      --gold-noble: #c5a059;
+      --gold-champagne: #ecdcb9;
+      --gold-subtle: rgba(197, 160, 89, 0.35);
+      --gold-tint: rgba(197, 160, 89, 0.08);
+      --text-pure: #ffffff;
+      --text-secondary: #e2e8f0;
       --text-muted: #94a3b8;
-      --live-green: #34d399;
+      --text-dim: #64748b;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -448,14 +452,15 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background-color: var(--bg-deep);
-      color: var(--text-white);
+      background-color: var(--bg-base);
+      background-image: var(--bg-radial);
+      color: var(--text-pure);
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       -webkit-font-smoothing: antialiased;
       user-select: none;
     }
 
-    /* Canvas animado para GPU manter o Fire Stick 100% acordado */
+    /* Partículas sutis estilo poeira de luz dourada (mantém GPU e painel acordados sem distração) */
     #ambientCanvas {
       position: fixed;
       top: 0;
@@ -466,22 +471,32 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       z-index: 1;
     }
 
-    .bg-glow-radial {
+    /* Moldura memorial clássica e discreta */
+    .memorial-frame {
       position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: radial-gradient(circle at 50% 28%, rgba(28, 40, 62, 0.5) 0%, rgba(8, 11, 16, 0.88) 65%, #030407 100%);
-      z-index: 2;
+      top: 1.8vh;
+      left: 2.2vw;
+      right: 2.2vw;
+      bottom: 1.8vh;
+      border: 1px solid rgba(197, 160, 89, 0.16);
       pointer-events: none;
-      -webkit-animation: ambientGlowPulse 14s ease-in-out infinite alternate;
-      animation: ambientGlowPulse 14s ease-in-out infinite alternate;
+      z-index: 5;
     }
-    @-webkit-keyframes ambientGlowPulse {
-      0% { opacity: 0.82; -webkit-transform: scale(1.0); }
-      100% { opacity: 1.0; -webkit-transform: scale(1.03); }
+    .memorial-frame::before, .memorial-frame::after {
+      content: "";
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-color: rgba(197, 160, 89, 0.45);
+      pointer-events: none;
     }
-    @keyframes ambientGlowPulse {
-      0% { opacity: 0.82; transform: scale(1.0); }
-      100% { opacity: 1.0; transform: scale(1.03); }
+    .memorial-frame::before {
+      top: -1px; left: -1px;
+      border-top: 2px solid; border-left: 2px solid;
+    }
+    .memorial-frame::after {
+      bottom: -1px; right: -1px;
+      border-bottom: 2px solid; border-right: 2px solid;
     }
 
     /* Container mestre */
@@ -493,12 +508,12 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      padding: 3.5vh 4.5vw;
+      padding: 3.8vh 4.5vw;
       box-sizing: border-box;
       transition: transform 0.3s ease;
     }
 
-    /* Rotações via query param para TVs montadas em suportes especiais */
+    /* Rotações via query param caso a TV esteja montada em suporte rotacionado */
     .rot-90 {
       transform: rotate(90deg);
       transform-origin: center center;
@@ -529,7 +544,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       justify-content: space-between;
       width: 100%;
       padding-bottom: 2vh;
-      border-bottom: 1px solid rgba(226, 186, 98, 0.22);
+      border-bottom: 1px solid rgba(197, 160, 89, 0.18);
       gap: 16px;
     }
     .brand-wrap {
@@ -540,26 +555,25 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
     }
     .brand-name {
       font-family: 'Cinzel', serif;
-      font-size: clamp(18px, 2.5vw, 26px);
-      font-weight: 800;
-      letter-spacing: 0.22em;
-      color: var(--gold-primary);
+      font-size: clamp(20px, 2.6vw, 28px);
+      font-weight: 700;
+      letter-spacing: 0.24em;
+      color: var(--gold-noble);
       text-transform: uppercase;
-      text-shadow: 0 2px 12px rgba(226, 186, 98, 0.3);
     }
     .room-badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 18px;
-      border-radius: 9999px;
-      background: rgba(226, 186, 98, 0.12);
-      border: 1px solid rgba(226, 186, 98, 0.38);
-      color: var(--gold-light);
+      padding: 5px 16px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(197, 160, 89, 0.28);
+      color: var(--gold-champagne);
       font-family: 'Cinzel', serif;
-      font-size: clamp(11px, 1.3vw, 14px);
-      font-weight: 700;
-      letter-spacing: 0.15em;
+      font-size: clamp(11px, 1.3vw, 13px);
+      font-weight: 600;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
       white-space: nowrap;
     }
@@ -569,24 +583,28 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       flex-shrink: 0;
     }
     .clock-time {
+      font-family: 'Cinzel', 'Inter', serif;
       font-size: clamp(22px, 3.2vw, 34px);
       font-weight: 700;
       color: #ffffff;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
     }
     .clock-colon {
-      color: var(--gold-primary);
+      color: var(--gold-noble);
+      opacity: 0.85;
     }
     .clock-secs {
-      font-size: 0.7em;
-      color: var(--gold-light);
-      opacity: 0.9;
+      font-size: 0.65em;
+      color: var(--gold-champagne);
+      opacity: 0.8;
+      font-weight: 500;
     }
     .clock-date {
       font-size: clamp(11px, 1.2vw, 13px);
       color: var(--text-muted);
       text-transform: capitalize;
       margin-top: 2px;
+      letter-spacing: 0.02em;
     }
 
     /* CORPO PRINCIPAL */
@@ -595,18 +613,19 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       flex-direction: column;
       justify-content: flex-start;
       flex: 1;
-      margin: 1vh 0;
-      gap: 2vh;
+      margin: 1.5vh 0;
+      gap: 2.5vh;
       overflow-y: auto;
     }
 
+    /* SEÇÃO DO FALECIDO (HERO MEMORIAL) */
     .hero-section {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       text-align: center;
-      padding: 3vh 1vw 2vh;
+      padding: 2.5vh 1vw 1.5vh;
       flex-shrink: 0;
     }
 
@@ -614,44 +633,44 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       display: inline-flex;
       align-items: center;
       gap: 14px;
-      margin-bottom: 1.8vh;
+      margin-bottom: 1.6vh;
     }
     .solene-line {
-      width: clamp(28px, 4vw, 54px);
+      width: clamp(28px, 4.5vw, 60px);
       height: 1px;
-      background: linear-gradient(90deg, transparent, var(--gold-primary));
+      background: linear-gradient(90deg, transparent, var(--gold-noble));
     }
     .solene-line.right {
-      background: linear-gradient(90deg, var(--gold-primary), transparent);
+      background: linear-gradient(90deg, var(--gold-noble), transparent);
     }
     .solene-text {
       font-family: 'Cinzel', serif;
-      font-size: clamp(11px, 1.4vw, 14px);
-      letter-spacing: 0.28em;
-      color: var(--gold-primary);
+      font-size: clamp(11px, 1.3vw, 13px);
+      letter-spacing: 0.26em;
+      color: var(--gold-noble);
       text-transform: uppercase;
       font-weight: 600;
     }
 
-    .memorial-flame {
-      width: clamp(34px, 4.5vh, 48px);
-      height: clamp(34px, 4.5vh, 48px);
-      margin-bottom: 1.4vh;
-      animation: flamePulse 3.5s ease-in-out infinite;
+    .memorial-symbol {
+      width: clamp(30px, 4.2vh, 42px);
+      height: clamp(30px, 4.2vh, 42px);
+      margin-bottom: 1.2vh;
+      opacity: 0.92;
     }
 
     .deceased-name {
-      font-family: 'Cormorant Garamond', 'Cinzel', Georgia, serif;
-      font-size: clamp(2.2rem, 5.8vw, 4.2rem);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: clamp(2.4rem, 6.2vw, 4.5rem);
       font-weight: 700;
-      line-height: 1.15;
+      line-height: 1.14;
       letter-spacing: 0.02em;
       color: #ffffff;
       text-transform: uppercase;
-      text-shadow: 0 4px 24px rgba(0,0,0,0.85), 0 0 35px rgba(226, 186, 98, 0.25);
+      text-shadow: 0 2px 14px rgba(0, 0, 0, 0.85);
       max-width: 95%;
       word-break: break-word;
-      margin-bottom: 1.6vh;
+      margin-bottom: 1.4vh;
     }
 
     .life-dates {
@@ -659,128 +678,176 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       align-items: center;
       justify-content: center;
       flex-wrap: wrap;
-      gap: 14px;
-      padding: 8px 22px;
-      border-radius: 9999px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      font-size: clamp(14px, 2vw, 19px);
+      gap: 12px;
+      padding: 6px 20px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      font-size: clamp(14px, 1.8vw, 18px);
       color: var(--text-secondary);
+      letter-spacing: 0.03em;
     }
     .life-dates .symbol {
-      color: var(--gold-primary);
-      margin-right: 4px;
-      font-size: 1.1em;
+      color: var(--gold-noble);
+      margin-right: 5px;
+      font-size: 0.95em;
     }
     .life-dates .date-sep {
-      color: rgba(226, 186, 98, 0.45);
+      color: rgba(197, 160, 89, 0.45);
     }
     .age-badge {
-      color: var(--gold-light);
-      font-size: clamp(12px, 1.4vw, 14px);
+      color: var(--gold-champagne);
+      font-size: clamp(12px, 1.3vw, 14px);
       font-weight: 500;
       margin-left: 4px;
     }
 
-    /* CARDS DA CERIMÔNIA */
+    /* PAINÉIS DE INFORMAÇÕES DA CERIMÔNIA (CARDS SÓBRIOS) */
     .cards-grid {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 1.8vh;
+      gap: 2vh;
       width: 100%;
-      max-width: 860px;
+      max-width: 880px;
       margin: 0 auto;
     }
 
     .ceremony-card {
-      background: var(--bg-panel);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid var(--border-gold);
-      border-radius: 16px;
-      padding: 2vh 2.5vw;
-      box-shadow: 0 16px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06);
-      animation: cardBreathe 8s ease-in-out infinite;
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 2.2vh 2.6vw;
+      box-shadow: var(--panel-shadow);
     }
 
     .card-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 1.2vh;
+      margin-bottom: 1.4vh;
       padding-bottom: 1vh;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid var(--panel-border-soft);
     }
     .card-title {
       display: flex;
       align-items: center;
       gap: 10px;
       font-family: 'Cinzel', serif;
-      font-size: clamp(13px, 1.6vw, 16px);
-      font-weight: 700;
-      letter-spacing: 0.15em;
-      color: var(--gold-primary);
+      font-size: clamp(13px, 1.5vw, 16px);
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      color: var(--gold-noble);
       text-transform: uppercase;
     }
     .card-title svg {
       width: 18px;
       height: 18px;
       fill: none;
-      stroke: var(--gold-primary);
-      stroke-width: 2;
+      stroke: var(--gold-noble);
+      stroke-width: 1.8;
       stroke-linecap: round;
       stroke-linejoin: round;
+      opacity: 0.95;
     }
 
     .status-pill {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 4px 10px;
-      border-radius: 9999px;
-      background: rgba(52, 211, 153, 0.12);
-      border: 1px solid rgba(52, 211, 153, 0.35);
-      color: var(--live-green);
+      padding: 3px 10px;
+      border-radius: 4px;
+      background: rgba(197, 160, 89, 0.08);
+      border: 1px solid rgba(197, 160, 89, 0.28);
+      color: var(--gold-champagne);
       font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
+      font-weight: 600;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
     }
     .status-dot {
-      width: 7px;
-      height: 7px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
-      background-color: var(--live-green);
-      box-shadow: 0 0 8px var(--live-green);
-      animation: dotPulse 2s infinite;
+      background-color: var(--gold-noble);
+      opacity: 0.9;
     }
 
     .card-body {
       display: flex;
       flex-direction: column;
-      gap: 0.9vh;
+      gap: 1.1vh;
     }
     .card-row {
       display: flex;
       align-items: baseline;
       justify-content: space-between;
-      gap: 12px;
-      font-size: clamp(14px, 1.8vw, 18px);
+      gap: 14px;
+      font-size: clamp(14px, 1.7vw, 18px);
     }
     .card-label {
       color: var(--text-muted);
-      font-size: clamp(12px, 1.4vw, 14px);
-      font-weight: 500;
+      font-size: clamp(12px, 1.3vw, 14px);
+      font-weight: 400;
+      letter-spacing: 0.02em;
       flex-shrink: 0;
     }
     .card-val {
       color: #ffffff;
-      font-weight: 600;
+      font-weight: 500;
       text-align: right;
     }
     .card-val.highlight {
-      color: var(--gold-light);
+      color: var(--gold-champagne);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    /* DESTAQUE DE SAÍDA PREVISTA (~40 min antes) */
+    .departure-highlight-box {
+      margin-top: 0.6vh;
+      padding: 1vh 1.4vw;
+      background: rgba(197, 160, 89, 0.07);
+      border: 1px solid rgba(197, 160, 89, 0.26);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .departure-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Cinzel', serif;
+      font-size: clamp(11px, 1.25vw, 13px);
+      letter-spacing: 0.14em;
+      color: var(--gold-noble);
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .departure-label svg {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: var(--gold-noble);
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .departure-time {
+      font-family: 'Inter', sans-serif;
+      font-size: clamp(16px, 2.1vw, 22px);
       font-weight: 700;
+      color: #ffffff;
+      letter-spacing: 0.04em;
+    }
+    .departure-badge-tag {
+      font-size: clamp(10px, 1.1vw, 12px);
+      color: var(--gold-champagne);
+      opacity: 0.85;
+      font-weight: 400;
     }
 
     /* RODAPÉ */
@@ -790,83 +857,60 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       align-items: center;
       text-align: center;
       gap: 0.6vh;
-      padding-top: 1.8vh;
-      border-top: 1px solid rgba(226, 186, 98, 0.18);
+      padding-top: 2vh;
+      border-top: 1px solid rgba(197, 160, 89, 0.16);
       color: var(--text-muted);
     }
     .condolence-msg {
       font-family: 'Cormorant Garamond', Georgia, serif;
       font-style: italic;
-      font-size: clamp(14px, 1.8vw, 19px);
+      font-size: clamp(15px, 1.9vw, 20px);
       color: var(--text-secondary);
-      max-width: 800px;
+      max-width: 820px;
+      line-height: 1.35;
     }
     .support-info {
-      font-size: clamp(11px, 1.3vw, 13px);
-      letter-spacing: 0.08em;
-      color: rgba(226, 186, 98, 0.88);
+      font-size: clamp(11px, 1.2vw, 12px);
+      letter-spacing: 0.12em;
+      color: var(--gold-noble);
       font-weight: 500;
+      opacity: 0.9;
+      text-transform: uppercase;
+      margin-top: 2px;
     }
 
-    /* ESTADO DE ESPERA / CARREGAMENTO */
+    /* OVERLAY DE CARREGAMENTO */
     .loading-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: var(--bg-deep);
+      background: var(--bg-base);
       z-index: 100;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 20px;
+      gap: 18px;
       transition: opacity 0.4s ease;
     }
     .loading-spinner {
-      width: 48px;
-      height: 48px;
-      border: 3px solid rgba(226, 186, 98, 0.2);
-      border-top-color: var(--gold-primary);
+      width: 44px;
+      height: 44px;
+      border: 2px solid rgba(197, 160, 89, 0.2);
+      border-top-color: var(--gold-noble);
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
 
-    /* MODO HORIZONTAL (LANDSCAPE) — mantém layout vertical centralizado */
+    /* MODO HORIZONTAL (LANDSCAPE) — mantém centralização nobre */
     @media (min-width: 1024px) and (orientation: landscape) {
       .hero-section {
-        padding: 2vh 1vw 1.5vh;
+        padding: 1.5vh 1vw 1.2vh;
       }
       .cards-grid {
         grid-template-columns: 1fr 1fr;
         max-width: 100%;
+        gap: 2.2vw;
       }
-    }
-
-    /* ANIMAÇÕES LEVES */
-    @keyframes flamePulse {
-      0%, 100% {
-        transform: scale(1);
-        filter: drop-shadow(0 0 10px rgba(226, 186, 98, 0.55));
-      }
-      50% {
-        transform: scale(1.08);
-        filter: drop-shadow(0 0 22px rgba(247, 235, 198, 0.85));
-      }
-    }
-
-    @keyframes cardBreathe {
-      0%, 100% {
-        border-color: rgba(226, 186, 98, 0.28);
-        box-shadow: 0 16px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(226,186,98,0.06);
-      }
-      50% {
-        border-color: rgba(226, 186, 98, 0.48);
-        box-shadow: 0 20px 48px rgba(0,0,0,0.7), 0 0 18px rgba(226,186,98,0.18);
-      }
-    }
-
-    @keyframes dotPulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.5; transform: scale(0.85); }
     }
 
     @keyframes spin {
@@ -877,15 +921,18 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
 <body>
   <!-- Canvas de partículas leves animadas para GPU manter a TV 100% acordada -->
   <canvas id="ambientCanvas"></canvas>
-  <!-- Vídeo invisível em loop contínuo garantindo FLAG_KEEP_SCREEN_ON no Fire OS / Silk Browser -->
+
+  <!-- Moldura memorial clássica de respeito -->
+  <div class="memorial-frame"></div>
+
+  <!-- Vídeo invisível garantindo FLAG_KEEP_SCREEN_ON no Fire OS / Silk Browser / Hisense -->
   <video id="adiau-keep-awake-video" src="/player/keep-awake.mp4" autoplay loop muted playsinline webkit-playsinline preload="auto" style="position:fixed;bottom:2px;right:2px;width:12px;height:12px;opacity:0.04;pointer-events:none;z-index:999999;"></video>
-  <div class="bg-glow-radial"></div>
 
   <!-- Overlay de Carregamento Suave -->
   <div id="loadingOverlay" class="loading-overlay" style="display: none;">
     <div class="loading-spinner"></div>
-    <div style="font-family:'Cinzel', serif; font-size:14px; letter-spacing:0.15em; color:var(--gold-primary);">
-      CARREGANDO CERIMÔNIA...
+    <div style="font-family:'Cinzel', serif; font-size:13px; letter-spacing:0.18em; color:var(--gold-noble);">
+      CARREGANDO INFORMAÇÕES DA CERIMÔNIA...
     </div>
   </div>
 
@@ -904,7 +951,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
           <span id="clockHours">14</span><span class="clock-colon">:</span><span id="clockMins">35</span><span id="clockSecs" class="clock-secs">:22</span>
         </div>
         <div id="clockDate" class="clock-date">
-          Sexta-feira, 13 de Novembro de 2026
+          Quinta-feira, 26 de Novembro de 2026
         </div>
       </div>
     </header>
@@ -915,19 +962,19 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       <section class="hero-section">
         <div class="solene-tag">
           <div class="solene-line"></div>
-          <span class="solene-text">HOMENAGEM PÓSTUMA</span>
+          <span class="solene-text">EM MEMÓRIA E HOMENAGEM</span>
           <div class="solene-line right"></div>
         </div>
 
-        <!-- Chama memorial sutilmente animada -->
-        <svg class="memorial-flame" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2C10 5.5 8 7.5 8 11C8 14.31 10.69 17 14 17C14.7 17 15.37 16.88 16 16.66C15.5 18.6 13.9 20 12 20C9.24 20 7 17.76 7 15C7 12.8 8.4 10.2 10.5 8.5C10.5 6 12 3 12 2Z" fill="url(#flameGrad)" />
-          <path d="M13.5 10C13.5 12.21 11.71 14 9.5 14C9.15 14 8.81 13.95 8.5 13.87C9.1 15.11 10.45 16 12 16C13.66 16 15 14.66 15 13C15 11.8 14.4 10.8 13.5 10Z" fill="#FDF3CF" opacity="0.9" />
+        <!-- Chama memorial sutil em vetor nobre -->
+        <svg class="memorial-symbol" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2.5C10.2 5.5 8.5 7.6 8.5 10.8C8.5 13.9 10.8 16.5 13.8 16.5C14.4 16.5 15 16.4 15.6 16.2C15.1 18 13.7 19.3 12 19.3C9.5 19.3 7.5 17.3 7.5 14.8C7.5 12.8 8.7 10.5 10.6 8.9C10.6 6.7 12 3.8 12 2.5Z" fill="url(#candleFlameGrad)" />
+          <path d="M13.2 9.8C13.2 11.8 11.6 13.4 9.6 13.4C9.3 13.4 9 13.35 8.7 13.28C9.2 14.4 10.4 15.2 11.8 15.2C13.3 15.2 14.5 14 14.5 12.5C14.5 11.4 14 10.5 13.2 9.8Z" fill="#FFF9EA" opacity="0.92" />
           <defs>
-            <linearGradient id="flameGrad" x1="12" y1="2" x2="12" y2="20" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#FFF3C4" />
-              <stop offset="0.4" stop-color="#E2BA62" />
-              <stop offset="1" stop-color="#B87333" />
+            <linearGradient id="candleFlameGrad" x1="12" y1="2.5" x2="12" y2="19.3" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#FFF5D6" />
+              <stop offset="0.45" stop-color="#C5A059" />
+              <stop offset="1" stop-color="#8C682A" />
             </linearGradient>
           </defs>
         </svg>
@@ -954,7 +1001,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
         <article class="ceremony-card">
           <div class="card-header">
             <h2 class="card-title">
-              <svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M5 12H1M23 12h-4M6.3 6.3l2.8 2.8M17.7 17.7l2.8 2.8M6.3 17.7l2.8-2.8M17.7 6.3l2.8 2.8" /></svg>
               <span>VELÓRIO E HOMENAGENS</span>
             </h2>
             <div id="wakeStatusBadge" class="status-pill">
@@ -964,7 +1011,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
           </div>
           <div class="card-body">
             <div class="card-row">
-              <span class="card-label">Horário de Celebração:</span>
+              <span class="card-label">Período de Despedida:</span>
               <span id="wakeScheduleVal" class="card-val highlight">—</span>
             </div>
             <div class="card-row">
@@ -978,18 +1025,30 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
         <article class="ceremony-card">
           <div class="card-header">
             <h2 class="card-title">
-              <svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L4 21l3.39-.97C8.93 20.26 10.88 21 12 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zM12 7v5l3 3" /></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" /></svg>
               <span id="burialCardTitle">SEPULTAMENTO</span>
             </h2>
           </div>
           <div class="card-body">
             <div class="card-row">
-              <span class="card-label">Destino:</span>
-              <span id="burialPlaceVal" class="card-val highlight">Pagliaro</span>
+              <span class="card-label">Destino / Local:</span>
+              <span id="burialPlaceVal" class="card-val highlight">A definir</span>
             </div>
             <div class="card-row">
-              <span class="card-label">Saída / Cerimônia:</span>
-              <span id="burialScheduleVal" class="card-val">Horário a definir</span>
+              <span class="card-label" id="burialTimeLabel">Horário do Sepultamento:</span>
+              <span id="burialTimeVal" class="card-val">Horário a definir</span>
+            </div>
+
+            <!-- Caixa de Destaque Acolhedor: Saída Prevista (~40 min antes) -->
+            <div id="departureBox" class="departure-highlight-box">
+              <div class="departure-label">
+                <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                <span>Saída Prevista</span>
+                <span class="departure-badge-tag">(Cortejo)</span>
+              </div>
+              <div id="departureTimeVal" class="departure-time">
+                —
+              </div>
             </div>
           </div>
         </article>
@@ -999,7 +1058,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
     <!-- Rodapé -->
     <footer class="footer-bar">
       <p class="condolence-msg">
-        “Aos familiares e amigos, nossos mais sinceros sentimentos de carinho e respeito.”
+        “Com profundo respeito e carinho, nos unimos aos familiares e amigos neste momento de despedida e homenagem.”
       </p>
       <div class="support-info">
         PAGLIARO SERVIÇOS SOCIAIS • ATENDIMENTO 24H: (34) 3334-6700
@@ -1020,21 +1079,19 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
         isInsideIframe = true;
       }
 
-      // Aplica rotação APENAS se acessado diretamente no navegador.
-      // Se estiver dentro do player da TV (iframe), a rotação já é executada pelo container pai (#player-viewport).
-      // Evita dupla rotação (540°) e esgotamento de textura GPU no Fire Stick.
+      // Aplica rotação se acessado diretamente (fora do iframe)
       var rot = Number(PARAMS.rotation) || 0;
       if (!isInsideIframe && (rot === 90 || rot === 270 || rot === 180)) {
         var container = document.getElementById('mainContainer');
         if (container) container.className += ' rot-' + rot;
       }
 
-      // --- MOTOR 1: PARTICULAS AMBIENTAIS ULTRA-LEVES (GPU & MEMORY OPTIMIZED) ---
-      var isSilkOrLowEnd = Boolean(/Silk|AFT|Tizen 5|VIDAA/i.test(navigator.userAgent));
+      // --- MOTOR 1: POEIRA DE LUZ SERENA (GPU & MEMORY OPTIMIZED) ---
+      var isLowEnd = Boolean(/Silk|AFT|Tizen 5|VIDAA/i.test(navigator.userAgent));
       var canvas = document.getElementById('ambientCanvas');
       var ctx = canvas ? canvas.getContext('2d') : null;
       var particles = [];
-      var PARTICLE_COUNT = isSilkOrLowEnd ? 8 : 16;
+      var PARTICLE_COUNT = isLowEnd ? 7 : 14;
 
       function resizeCanvas() {
         if (!canvas) return;
@@ -1052,11 +1109,11 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
           particles.push({
             x: Math.random() * w,
             y: Math.random() * h,
-            r: Math.random() * 2.0 + 0.8,
-            vx: (Math.random() - 0.5) * 0.25,
-            vy: -(Math.random() * 0.35 + 0.2),
+            r: Math.random() * 1.8 + 0.6,
+            vx: (Math.random() - 0.5) * 0.18,
+            vy: -(Math.random() * 0.25 + 0.12),
             pulse: Math.random() * Math.PI,
-            pulseSpeed: Math.random() * 0.02 + 0.01
+            pulseSpeed: Math.random() * 0.015 + 0.008
           });
         }
       }
@@ -1067,11 +1124,11 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
         var h = canvas.height;
         ctx.clearRect(0, 0, w, h);
 
-        ctx.fillStyle = 'rgba(226, 186, 98, 0.36)';
+        ctx.fillStyle = 'rgba(197, 160, 89, 0.22)';
         for (var i = 0; i < particles.length; i++) {
           var p = particles[i];
           p.y += p.vy;
-          p.x += p.vx + Math.sin(p.pulse) * 0.12;
+          p.x += p.vx + Math.sin(p.pulse) * 0.08;
           p.pulse += p.pulseSpeed;
 
           if (p.y < -10) {
@@ -1086,8 +1143,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
           ctx.fill();
         }
 
-        // Taxa suave limitada a 30 FPS para manter CPU e bateria/aquecimento do Fire Stick frios
-        setTimeout(drawParticles, 33);
+        setTimeout(drawParticles, 33); // 30 FPS para manter o Fire Stick e TV frios
       }
 
       if (canvas && ctx) {
@@ -1119,7 +1175,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
       setInterval(updateClock, 1000);
       updateClock();
 
-      // --- MOTOR 3: KEEP-AWAKE ENGINE (VIDEO & WAKE LOCK) ---
+      // --- MOTOR 3: KEEP-AWAKE (VÍDEO E WAKE LOCK) ---
       (function initAdiauKeepAwake() {
         var v = document.getElementById('adiau-keep-awake-video');
         if (v) {
@@ -1163,7 +1219,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
         }
       })();
 
-      // --- MOTOR 4: FORMATAÇÃO DE DATAS DA CERIMÔNIA ---
+      // --- MOTOR 4: UTILITÁRIOS DE HORÁRIOS & SUBTRAÇÃO DE 40 MINUTOS ---
       function formatDateBR(raw) {
         if (!raw) return '';
         var str = String(raw).trim();
@@ -1182,6 +1238,35 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
         return str;
       }
 
+      /**
+       * Subtrai minutos de uma data/hora no formato 'YYYY-MM-DD HH:mm' ou 'HH:mm'
+       * Regra de negócio: a saída para o sepultamento é sempre ~40 minutos antes!
+       */
+      function subtractMinutesFromTime(raw, minsToSub) {
+        if (!raw) return '';
+        var str = String(raw).trim();
+        var mFull = str.match(/(\d{4})[-/](\d{2})[-/](\d{2})[\sT](\d{2}):(\d{2})/);
+        if (mFull) {
+          var y = parseInt(mFull[1], 10);
+          var mo = parseInt(mFull[2], 10) - 1;
+          var day = parseInt(mFull[3], 10);
+          var h = parseInt(mFull[4], 10);
+          var mi = parseInt(mFull[5], 10);
+          var d = new Date(y, mo, day, h, mi);
+          d.setMinutes(d.getMinutes() - minsToSub);
+          return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+        }
+        var mTime = str.match(/(\d{2}):(\d{2})/);
+        if (mTime) {
+          var total = parseInt(mTime[1], 10) * 60 + parseInt(mTime[2], 10) - minsToSub;
+          if (total < 0) total += 24 * 60;
+          var resH = Math.floor(total / 60) % 24;
+          var resM = total % 60;
+          return pad2(resH) + ':' + pad2(resM);
+        }
+        return str;
+      }
+
       function calculateYears(birthStr, deathStr) {
         if (!birthStr || !deathStr) return null;
         var b = new Date(birthStr);
@@ -1195,7 +1280,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
         return diff > 0 ? diff : null;
       }
 
-      // --- MOTOR 5: RENDERIZAÇÃO DOS DADOS ---
+      // --- MOTOR 5: APLICAÇÃO DOS DADOS NA TELA ---
       function applyData(response) {
         if (!response) return;
         var overlay = document.getElementById('loadingOverlay');
@@ -1204,7 +1289,6 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
         var svc = response.services || {};
         var item = svc;
 
-        // Se response for lista (múltiplas), pega a transmissão indicada ou a primeira
         if (svc.attendances && Array.isArray(svc.attendances)) {
           if (PARAMS.transmission) {
             for (var i = 0; i < svc.attendances.length; i++) {
@@ -1219,15 +1303,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
           }
         }
 
-        // 1. Logo
-        var logoImg = document.getElementById('brandLogo');
-        var logoSrc = response.clientLogo || (svc.client && svc.client.logoUrl);
-        if (logoImg && logoSrc) {
-          logoImg.src = logoSrc;
-          logoImg.style.display = 'block';
-        }
-
-        // 2. Badge de Local (usa o nome do local da Adiaŭ, não o screenName)
+        // 1. Badge de Local / Sala
         var roomBadge = document.getElementById('roomBadge');
         if (roomBadge) {
           var locLabel = (item.location && item.location.name) || '';
@@ -1236,17 +1312,16 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
           roomBadge.textContent = locLabel.toUpperCase();
         }
 
-        // 3. Nome do Falecido
+        // 2. Nome do Falecido
         var nameEl = document.getElementById('deceasedName');
         var name = item.deceasedName || item.name || '';
         if (nameEl) {
           if (name) {
             nameEl.textContent = name;
-            // Ajusta tamanho caso o nome seja muito longo
-            if (name.length > 32) {
-              nameEl.style.fontSize = 'clamp(1.8rem, 4.2vw, 3rem)';
+            if (name.length > 34) {
+              nameEl.style.fontSize = 'clamp(1.9rem, 4.2vw, 3.2rem)';
             } else if (name.length > 24) {
-              nameEl.style.fontSize = 'clamp(2rem, 4.8vw, 3.6rem)';
+              nameEl.style.fontSize = 'clamp(2.1rem, 5vw, 3.8rem)';
             } else {
               nameEl.style.fontSize = '';
             }
@@ -1255,7 +1330,7 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
           }
         }
 
-        // 4. Datas de Vida
+        // 3. Datas de Vida
         var birthDate = item.deceasedBirthDate;
         var deathDate = item.deceasedDeathDate;
         var datesBlock = document.getElementById('lifeDatesBlock');
@@ -1300,17 +1375,61 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
           datesBlock.style.display = 'none';
         }
 
-        // 5. Horários de Velório
-        var start = item.attendanceStartDate;
-        var end = item.attendanceEndDate;
+        // 4. Cálculo do Sepultamento e Saída Prevista (~40 min antes)
+        var isCremation = (item.eventType === 'CREMATION');
+        var burialTitle = document.getElementById('burialCardTitle');
+        if (burialTitle) {
+          burialTitle.textContent = isCremation ? 'CREMAÇÃO' : 'SEPULTAMENTO';
+        }
+
+        var burialTimeLabel = document.getElementById('burialTimeLabel');
+        if (burialTimeLabel) {
+          burialTimeLabel.textContent = isCremation ? 'Horário da Cremação:' : 'Horário do Sepultamento:';
+        }
+
+        var burialPlace = document.getElementById('burialPlaceVal');
+        if (burialPlace) {
+          burialPlace.textContent = item.burialPlace || (isCremation ? 'Crematório' : 'A definir');
+        }
+
+        // Horário registrado na Adiaŭ para o sepultamento/cremação
+        var burialRaw = item.burialDate || item.attendanceEndDate;
+        var burialTimeVal = document.getElementById('burialTimeVal');
+        var departureTimeVal = document.getElementById('departureTimeVal');
+        var departureBox = document.getElementById('departureBox');
+
+        var departureTimeStr = '';
+
+        if (item.toBeDefined || (!burialRaw && !item.burialDate)) {
+          if (burialTimeVal) burialTimeVal.textContent = 'Horário a definir pela família';
+          if (departureTimeVal) departureTimeVal.textContent = 'Horário a definir';
+          if (departureBox) departureBox.style.opacity = '0.75';
+        } else if (burialRaw) {
+          var bTime = formatTimeOnly(burialRaw);
+          departureTimeStr = subtractMinutesFromTime(burialRaw, 40); // Ex: 13:00 -> 12:20 | 15:00 -> 14:20
+
+          if (burialTimeVal) {
+            burialTimeVal.textContent = bTime ? ('Às ' + bTime) : 'Horário a confirmar';
+          }
+          if (departureTimeVal) {
+            departureTimeVal.textContent = departureTimeStr ? ('Às ' + departureTimeStr) : ('Às ' + bTime);
+          }
+          if (departureBox) departureBox.style.opacity = '1';
+        }
+
+        // 5. Horários de Velório e Homenagens
+        // O velório na sala se encerra quando o cortejo sai (exatamente no horário da saída prevista!)
+        var wakeStart = formatTimeOnly(item.attendanceStartDate);
+        var wakeEnd = departureTimeStr || formatTimeOnly(item.attendanceEndDate);
         var wakeSched = document.getElementById('wakeScheduleVal');
+
         if (wakeSched) {
-          var sTime = formatTimeOnly(start);
-          var eTime = formatTimeOnly(end);
-          if (sTime && eTime) {
-            wakeSched.textContent = sTime + ' às ' + eTime;
-          } else if (sTime || eTime) {
-            wakeSched.textContent = (sTime || eTime);
+          if (wakeStart && wakeEnd) {
+            wakeSched.textContent = wakeStart + ' às ' + wakeEnd;
+          } else if (wakeEnd) {
+            wakeSched.textContent = 'Até às ' + wakeEnd;
+          } else if (wakeStart) {
+            wakeSched.textContent = 'A partir das ' + wakeStart;
           } else {
             wakeSched.textContent = 'Horário em andamento';
           }
@@ -1319,15 +1438,23 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
         // Status do velório
         var statusBadge = document.getElementById('wakeStatusBadge');
         var statusText = document.getElementById('wakeStatusText');
-        if (end) {
-          var endTimestamp = new Date(end.replace(' ', 'T') + ':00-03:00').getTime();
+        var endForStatus = item.attendanceEndDate || burialRaw;
+        if (endForStatus) {
+          var endTimestamp = new Date(endForStatus.replace(' ', 'T') + ':00-03:00').getTime();
           if (!isNaN(endTimestamp) && Date.now() > endTimestamp) {
             if (statusBadge) {
-              statusBadge.style.borderColor = 'rgba(148, 163, 184, 0.4)';
+              statusBadge.style.borderColor = 'rgba(148, 163, 184, 0.3)';
               statusBadge.style.color = '#94a3b8';
-              statusBadge.style.background = 'rgba(148, 163, 184, 0.1)';
+              statusBadge.style.background = 'rgba(148, 163, 184, 0.08)';
             }
             if (statusText) statusText.textContent = 'ENCERRADO';
+          } else {
+            if (statusBadge) {
+              statusBadge.style.borderColor = 'rgba(197, 160, 89, 0.28)';
+              statusBadge.style.color = 'var(--gold-champagne)';
+              statusBadge.style.background = 'rgba(197, 160, 89, 0.08)';
+            }
+            if (statusText) statusText.textContent = 'EM ANDAMENTO';
           }
         }
 
@@ -1336,33 +1463,6 @@ export function renderAdiauHtmlPage(params: AdiauQueryParams, initialData: any |
         if (wakeLoc) {
           var locName = (item.location && item.location.name) || 'Pagliaro Serviços Sociais';
           wakeLoc.textContent = locName;
-        }
-
-        // 6. Sepultamento ou Cremação
-        var isCremation = (item.eventType === 'CREMATION');
-        var burialTitle = document.getElementById('burialCardTitle');
-        if (burialTitle) {
-          burialTitle.textContent = isCremation ? 'CREMAÇÃO' : 'SEPULTAMENTO';
-        }
-
-        var burialPlace = document.getElementById('burialPlaceVal');
-        if (burialPlace) {
-          burialPlace.textContent = item.burialPlace || 'A definir';
-        }
-
-        var burialSched = document.getElementById('burialScheduleVal');
-        if (burialSched) {
-          var bDate = item.burialDate;
-          if (bDate) {
-            var bTime = formatTimeOnly(bDate);
-            burialSched.textContent = 'Saída prevista às ' + bTime;
-          } else if (item.toBeDefined) {
-            burialSched.textContent = 'Horário a definir pela família';
-          } else if (end) {
-            burialSched.textContent = 'Saída prevista às ' + formatTimeOnly(end);
-          } else {
-            burialSched.textContent = 'Horário a confirmar';
-          }
         }
       }
 

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as MusicSlugRouteImport } from './routes/music.$slug'
 import { Route as AdminRoutinesRouteImport } from './routes/admin.routines'
 import { Route as AdminDevicesRouteImport } from './routes/admin.devices'
 import { Route as AdminSlugRouteImport } from './routes/admin.$slug'
@@ -30,6 +31,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminRoute,
+} as any)
+const MusicSlugRoute = MusicSlugRouteImport.update({
+  id: '/music/$slug',
+  path: '/music/$slug',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoutinesRoute = AdminRoutinesRouteImport.update({
   id: '/routines',
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/admin/$slug': typeof AdminSlugRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/routines': typeof AdminRoutinesRoute
+  '/music/$slug': typeof MusicSlugRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/admin/$slug': typeof AdminSlugRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/routines': typeof AdminRoutinesRoute
+  '/music/$slug': typeof MusicSlugRoute
   '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/admin/$slug': typeof AdminSlugRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/routines': typeof AdminRoutinesRoute
+  '/music/$slug': typeof MusicSlugRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
@@ -79,9 +88,16 @@ export interface FileRouteTypes {
     | '/admin/$slug'
     | '/admin/devices'
     | '/admin/routines'
+    | '/music/$slug'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin/$slug' | '/admin/devices' | '/admin/routines' | '/admin'
+  to:
+    | '/'
+    | '/admin/$slug'
+    | '/admin/devices'
+    | '/admin/routines'
+    | '/music/$slug'
+    | '/admin'
   id:
     | '__root__'
     | '/'
@@ -89,12 +105,14 @@ export interface FileRouteTypes {
     | '/admin/$slug'
     | '/admin/devices'
     | '/admin/routines'
+    | '/music/$slug'
     | '/admin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
+  MusicSlugRoute: typeof MusicSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -119,6 +137,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/music/$slug': {
+      id: '/music/$slug'
+      path: '/music/$slug'
+      fullPath: '/music/$slug'
+      preLoaderRoute: typeof MusicSlugRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/admin/routines': {
       id: '/admin/routines'
@@ -163,6 +188,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
+  MusicSlugRoute: MusicSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -150,15 +150,15 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
             />
           </div>
 
-          {/* Campo 2: PIN ou Senha */}
+          {/* Campo 2: PIN Numérico */}
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[11px] font-mono text-neutral-300">
               <label className="flex items-center gap-1.5">
                 <Key className="h-3.5 w-3.5 text-neutral-400" />
-                <span>PIN ou Senha de Acesso:</span>
+                <span>PIN Numérico de Acesso:</span>
               </label>
               <span className="text-[10px] text-neutral-500 font-mono">
-                {pinInput.length > 0 ? `${pinInput.length} caracteres` : "6 dígitos"}
+                {pinInput.length > 0 ? `${pinInput.length}/6 dígitos` : "6 dígitos"}
               </span>
             </div>
 
@@ -167,11 +167,12 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
               type="password"
               inputMode="numeric"
               pattern="[0-9]*"
+              maxLength={6}
               autoComplete="current-password"
               required
-              placeholder="Digite o PIN (ex: 123456) ou senha"
+              placeholder="Digite o PIN numérico (ex: 123456)"
               value={pinInput}
-              onChange={(e) => setPinInput(e.target.value)}
+              onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
               className="w-full bg-black border border-neutral-900 p-2.5 text-sm text-white outline-none focus:border-neutral-500 font-mono tracking-widest transition"
             />
           </div>
